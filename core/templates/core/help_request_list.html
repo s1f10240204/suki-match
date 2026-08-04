@@ -1,21 +1,26 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>Suki-match</title>
-</head>
-<body>
-    <h1>現在のお手伝い募集</h1>
-    <ul>
-        {% for request in help_requests %}
-            <li>
-                <strong>{{ request.title }}</strong><br>
-                {{ request.description }}<br>
-                作成日: {{ request.created_at|date:"Y/m/d H:i" }}
-            </li>
-        {% empty %}
-            <li>現在、募集はありません。</li>
-        {% endfor %}
-    </ul>
-</body>
-</html>
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div>
+    {% for request in help_requests %}
+        <a href="{% url 'core:help_request_detail' request.pk %}" class="card">
+            <div class="card-header">
+                <div class="avatar"></div>
+                <div>
+                    <p class="username">{{ request.requester.username }}</p>
+                    <p class="date">{{ request.created_at|date:"Y/m/d H:i" }}</p>
+                </div>
+            </div>
+            <h2 class="card-title">{{ request.title }}</h2>
+            <p class="card-desc">{{ request.description }}</p>
+            <div>
+                <span class="reward-badge">報酬: {{ request.reward }}</span>
+            </div>
+        </a>
+    {% empty %}
+        <div class="empty-state">
+            現在、募集はありません。
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

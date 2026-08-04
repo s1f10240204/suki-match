@@ -1,0 +1,233 @@
+body {
+    margin: 0;
+    background-color: #f3f2ef;
+    color: #333333;
+    font-family: sans-serif;
+    padding-bottom: 60px;
+}
+@media (min-width: 768px) {
+    body {
+        padding-bottom: 0;
+    }
+}
+a {
+    text-decoration: none;
+    color: inherit;
+}
+.header {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: 56px;
+    display: flex;
+    align-items: center;
+}
+.header-container {
+    max-width: 768px;
+    margin: 0 auto;
+    padding: 0 16px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.logo {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #0a66c2;
+}
+.desktop-nav {
+    display: none;
+}
+@media (min-width: 768px) {
+    .desktop-nav {
+        display: flex;
+        gap: 24px;
+    }
+}
+.nav-item {
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.nav-item:hover {
+    color: #000000;
+}
+.main-container {
+    max-width: 600px;
+    margin: 24px auto 0;
+    padding: 0 16px;
+    min-height: 100vh;
+}
+.mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background-color: #ffffff;
+    border-top: 1px solid #e5e7eb;
+    justify-content: space-around;
+    align-items: center;
+    height: 56px;
+    z-index: 50;
+}
+@media (min-width: 768px) {
+    .mobile-nav {
+        display: none;
+    }
+}
+.mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #0a66c2;
+}
+.mobile-nav-item svg {
+    width: 24px;
+    height: 24px;
+    margin-bottom: 4px;
+}
+.mobile-nav-item span {
+    font-size: 10px;
+    font-weight: 600;
+}
+.card {
+    display: block;
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: background-color 0.2s;
+}
+.card:hover {
+    background-color: #f9fafb;
+}
+.card-detail {
+    margin-bottom: 24px;
+    pointer-events: none;
+}
+.card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.avatar {
+    width: 48px;
+    height: 48px;
+    background-color: #d1d5db;
+    border-radius: 50%;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+.detail-avatar {
+    width: 56px;
+    height: 56px;
+    margin-right: 16px;
+}
+.username {
+    font-weight: bold;
+    font-size: 0.875rem;
+    color: #111827;
+    margin: 0;
+}
+.detail-username {
+    font-size: 1.125rem;
+}
+.date {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+}
+.detail-date {
+    font-size: 0.875rem;
+}
+.card-title {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #111827;
+    margin: 0 0 8px 0;
+}
+.detail-title {
+    font-size: 1.25rem;
+    margin-bottom: 16px;
+}
+.card-desc {
+    font-size: 0.875rem;
+    color: #374151;
+    margin: 0 0 16px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.detail-desc {
+    font-size: 0.875rem;
+    color: #1f2937;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    margin-bottom: 24px;
+    display: block;
+}
+.reward-badge {
+    display: inline-block;
+    background-color: #eaf4fe;
+    color: #0a66c2;
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-weight: 600;
+    border: 1px solid rgba(10,102,194,0.2);
+}
+.reward-box {
+    background-color: #f3f2ef;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+.reward-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin: 0 0 4px 0;
+}
+.reward-value {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #111827;
+    margin: 0;
+}
+.action-area {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 20px;
+    display: flex;
+}
+.btn-primary {
+    flex: 1;
+    background-color: #0a66c2;
+    color: #ffffff;
+    font-weight: bold;
+    padding: 10px 16px;
+    border-radius: 9999px;
+    text-align: center;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.btn-primary:hover {
+    background-color: #004182;
+}
+.empty-state {
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    padding: 32px;
+    text-align: center;
+    color: #6b7280;
+}

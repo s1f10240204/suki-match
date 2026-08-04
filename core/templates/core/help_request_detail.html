@@ -17,12 +17,19 @@
     <div class="detail-desc">{{ help_request.description }}</div>
     
     <div class="reward-box">
-        <p class="reward-label">報酬・条件</p>
-        <p class="reward-value">{{ help_request.reward }}</p>
+        <p class="reward-label">現在の状況</p>
+        <p class="reward-value">{{ help_request.status }}</p>
     </div>
     
     <div class="action-area">
-        <button class="btn-primary">お手伝いする</button>
+        {% if help_request.status == '募集中' %}
+            <form action="{% url 'core:accept_help_request' help_request.pk %}" method="post" class="form-full">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary w-full">お手伝いする</button>
+            </form>
+        {% else %}
+            <button class="btn-disabled w-full" disabled>{{ help_request.status }}</button>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

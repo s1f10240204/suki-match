@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Suki-match</title>
+</head>
+<body>
+    <h1>現在のお手伝い募集</h1>
+    <ul>
+        {% for request in help_requests %}
+            <li>
+                <strong>{{ request.title }}</strong><br>
+                {{ request.description }}<br>
+                作成日: {{ request.created_at|date:"Y/m/d H:i" }}
+            </li>
+        {% empty %}
+            <li>現在、募集はありません。</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

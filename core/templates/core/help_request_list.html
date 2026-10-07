@@ -1,6 +1,21 @@
 {% extends 'core/base.html' %}
 
 {% block content %}
+{% if user.is_authenticated %}
+    <div class="filter-bar">
+        {% if located %}
+            {% if nearby_only %}
+                <span>半径{{ radius }}m以内の依頼</span>
+                <a href="?all=1" class="link">すべて表示</a>
+            {% else %}
+                <span>すべての依頼</span>
+                <a href="{% url 'core:help_request_list' %}" class="link">{{ radius }}m以内のみ</a>
+            {% endif %}
+        {% else %}
+            <span>現在地が未設定です。<a href="{% url 'core:profile' %}" class="link">プロフィール</a>で設定すると近くの依頼だけ表示されます。</span>
+        {% endif %}
+    </div>
+{% endif %}
 <div>
     {% for request in help_requests %}
         <a href="{% url 'core:help_request_detail' request.pk %}" class="card">
@@ -13,14 +28,15 @@
             </div>
             <h2 class="card-title">{{ request.title }}</h2>
             <p class="card-desc">{{ request.description }}</p>
-            <div>
-                <span class="reward-badge">ステータス: {{ request.status }}</span>
+            <div class="badges">
+                <span class="reward-badge">{{ request.duration_minutes }}分</span>
+                {% if request.required_skill %}<span class="reward-badge">{{ request.required_skill }}</span>{% endif %}
+                {% if located %}<span class="reward-badge">約{{ request.distance }}m</span>{% endif %}
+                {% if located and request.required_skill and request.skill_ok %}<span class="reward-badge badge-ok">あなたの得意分野</span>{% endif %}
             </div>
         </a>
     {% empty %}
-        <div class="empty-state">
-            現在、募集はありません。
-        </div>
+        <div class="empty-state">現在、募集はありません。</div>
     {% endfor %}
 </div>
 {% endblock %}

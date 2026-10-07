@@ -1,0 +1,42 @@
+{% extends 'core/base.html' %}
+
+{% block title %}マイページ - Suki-match{% endblock %}
+
+{% block content %}
+<div class="card card-form">
+    <h1 class="card-title detail-title">{{ user.username }}</h1>
+    <div class="stats">
+        <div><p class="reward-label">ランク</p><p class="reward-value">{{ user.rank }}</p></div>
+        <div><p class="reward-label">ポイント</p><p class="reward-value">{{ user.points }}pt</p></div>
+        <div><p class="reward-label">平均評価</p><p class="reward-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p></div>
+    </div>
+</div>
+
+<div class="card card-form">
+    <h2 class="card-title">プロフィール設定</h2>
+    <form method="post" class="form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="button" class="btn-secondary" data-geo-fill="id_latitude,id_longitude">現在地を取得</button>
+        <button type="submit" class="btn-primary w-full">保存</button>
+    </form>
+</div>
+
+<div class="card card-form">
+    <h2 class="card-title">自分の依頼</h2>
+    {% for r in my_requests %}
+        <p><a class="link" href="{% url 'core:help_request_detail' r.pk %}">{{ r.title }}</a> <span class="date">{{ r.status }}</span></p>
+    {% empty %}<p class="date">まだありません。</p>{% endfor %}
+    <h2 class="card-title">お手伝い履歴</h2>
+    {% for m in my_helps %}
+        <p><a class="link" href="{% url 'core:help_request_detail' m.help_request.pk %}">{{ m.help_request.title }}</a> <span class="date">{{ m.status }}</span></p>
+    {% empty %}<p class="date">まだありません。</p>{% endfor %}
+</div>
+
+<div class="card card-form">
+    <h2 class="card-title">受け取ったレビュー</h2>
+    {% for rv in reviews %}
+        <p>★{{ rv.rating }} <span class="date">{{ rv.reviewer.username }}</span><br>{{ rv.comment }}</p>
+    {% empty %}<p class="date">まだありません。</p>{% endfor %}
+</div>
+{% endblock %}

@@ -7,19 +7,33 @@
     <title>{% block title %}Suki-match{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'core/style.css' %}">
 </head>
-<body>
+<body data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
     <header class="header">
         <div class="header-container">
             <a href="{% url 'core:help_request_list' %}" class="logo">Suki-match</a>
             <div class="desktop-nav">
-                <a href="{% url 'core:help_request_list' %}" class="nav-item">
-                    <span>ホーム</span>
-                </a>
+                <a href="{% url 'core:help_request_list' %}" class="nav-item"><span>ホーム</span></a>
+                {% if user.is_authenticated %}
+                    <a href="{% url 'core:help_request_create' %}" class="nav-item"><span>依頼する</span></a>
+                    <a href="{% url 'core:profile' %}" class="nav-item"><span>{{ user.username }}</span></a>
+                    <form action="{% url 'logout' %}" method="post" class="inline-form">
+                        {% csrf_token %}
+                        <button type="submit" class="nav-item nav-button">ログアウト</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="nav-item"><span>ログイン</span></a>
+                    <a href="{% url 'signup' %}" class="nav-item"><span>新規登録</span></a>
+                {% endif %}
             </div>
         </div>
     </header>
 
+    <div id="toast-area" class="toast-area" aria-live="polite"></div>
+
     <main class="main-container">
+        {% for message in messages %}
+            <div class="message message-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
         {% block content %}
         {% endblock %}
     </main>
@@ -29,6 +43,13 @@
             <svg fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
             <span>ホーム</span>
         </a>
+        {% if user.is_authenticated %}
+            <a href="{% url 'core:help_request_create' %}" class="mobile-nav-item"><span class="nav-icon">＋</span><span>依頼する</span></a>
+            <a href="{% url 'core:profile' %}" class="mobile-nav-item"><span class="nav-icon">●</span><span>マイページ</span></a>
+        {% else %}
+            <a href="{% url 'login' %}" class="mobile-nav-item"><span class="nav-icon">→</span><span>ログイン</span></a>
+        {% endif %}
     </nav>
+    <script src="{% static 'core/app.js' %}"></script>
 </body>
 </html>

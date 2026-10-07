@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'core',
 ]
 
@@ -89,3 +90,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'core:help_request_list'
+LOGOUT_REDIRECT_URL = 'core:help_request_list'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

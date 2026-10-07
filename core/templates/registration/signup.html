@@ -1,0 +1,14 @@
+{% extends 'core/base.html' %}
+
+{% block title %}新規登録 - Suki-match{% endblock %}
+
+{% block content %}
+<div class="card card-form">
+    <h1 class="card-title detail-title">新規登録</h1>
+    <form method="post" class="form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn-primary w-full">登録する</button>
+    </form>
+</div>
+{% endblock %}

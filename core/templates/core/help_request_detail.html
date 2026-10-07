@@ -7,29 +7,64 @@
     <div class="card-header">
         <div class="avatar detail-avatar"></div>
         <div>
-            <p class="username detail-username">{{ help_request.requester.username }}</p>
+            <p class="username detail-username">{{ help_request.requester.username }}
+                <span class="rank">{{ help_request.requester.rank }}</span></p>
             <p class="date detail-date">{{ help_request.created_at|date:"Y/m/d H:i" }}</p>
         </div>
     </div>
-    
+
     <h1 class="card-title detail-title">{{ help_request.title }}</h1>
-    
     <div class="detail-desc">{{ help_request.description }}</div>
-    
+
+    <div class="badges">
+        <span class="reward-badge">{{ help_request.duration_minutes }}分</span>
+        {% if help_request.required_skill %}<span class="reward-badge">{{ help_request.required_skill }}</span>{% endif %}
+        {% if distance is not None %}<span class="reward-badge">あなたから約{{ distance }}m</span>{% endif %}
+    </div>
+
     <div class="reward-box">
         <p class="reward-label">現在の状況</p>
         <p class="reward-value">{{ help_request.status }}</p>
+        {% if match %}<p class="date">ヘルパー: {{ match.helper.username }}({{ match.helper.rank }})</p>{% endif %}
     </div>
-    
+
+    {% if blocked_reason %}<p class="notice">{{ blocked_reason }}</p>{% endif %}
+
     <div class="action-area">
-        {% if help_request.status == '募集中' %}
+        {% if not user.is_authenticated %}
+            <a href="{% url 'login' %}?next={{ request.path }}" class="btn-primary">ログインしてお手伝いする</a>
+        {% elif can_accept %}
             <form action="{% url 'core:accept_help_request' help_request.pk %}" method="post" class="form-full">
                 {% csrf_token %}
                 <button type="submit" class="btn-primary w-full">お手伝いする</button>
+            </form>
+        {% elif help_request.status == '進行中' and is_requester %}
+            <form action="{% url 'core:complete_help_request' help_request.pk %}" method="post" class="form-full">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary w-full">完了にする</button>
             </form>
         {% else %}
             <button class="btn-disabled w-full" disabled>{{ help_request.status }}</button>
         {% endif %}
     </div>
+
+    {% if help_request.status == '募集中' and is_requester or help_request.status == '進行中' and is_requester or help_request.status == '進行中' and is_helper %}
+        <form action="{% url 'core:cancel_help_request' help_request.pk %}" method="post" class="cancel-form"
+              onsubmit="return confirm('キャンセルしますか?');">
+            {% csrf_token %}
+            <button type="submit" class="btn-link">{% if is_helper %}お手伝いをキャンセル{% else %}依頼を取り下げる{% endif %}</button>
+        </form>
+    {% endif %}
 </div>
+
+{% if review_target %}
+<div class="card card-form">
+    <h2 class="card-title">{{ review_target.username }}さんをレビュー</h2>
+    <form action="{% url 'core:submit_review' help_request.pk %}" method="post" class="form">
+        {% csrf_token %}
+        {{ review_form.as_p }}
+        <button type="submit" class="btn-primary w-full">送信</button>
+    </form>
+</div>
+{% endif %}
 {% endblock %}

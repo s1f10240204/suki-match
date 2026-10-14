@@ -1,0 +1,31 @@
+{% extends 'core/base.html' %}
+
+{% block title %}依頼の多い時間帯 - Suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>依頼が出やすい時間帯</h1></div>
+<section class="card">
+    <form method="get" class="inline-form">
+        <select name="area" onchange="this.form.submit()">
+            <option value="">すべてのエリア</option>
+            {% if user.is_authenticated and user.area_label %}<option value="{{ user.area_label }}"{% if area == user.area_label %} selected{% endif %}>自分のエリア({{ user.area_label }})</option>{% endif %}
+            {% for a in areas %}<option value="{{ a.area_label }}"{% if area == a.area_label %} selected{% endif %}>{{ a.area_label }}({{ a.c }}件)</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-outline btn-sm">表示</button></noscript>
+    </form>
+    <p class="meta">直近90日・{{ total }}件の依頼を、投稿された時刻ごとに集計しています。</p>
+    {% if total %}
+        <div class="hour-chart" role="img" aria-label="時間帯別の依頼件数">
+            {% for h in hours %}
+                <div class="hour-col" title="{{ h.hour }}時台: {{ h.count }}件">
+                    <span class="hour-bar" style="height: {{ h.pct }}%"></span>
+                    <span class="hour-label">{% if h.hour|divisibleby:3 %}{{ h.hour }}{% endif %}</span>
+                </div>
+            {% endfor %}
+        </div>
+        <p class="help">よく依頼が出る時間帯にアプリを開いておくと、お手伝いのチャンスが増えます。活動拠点を登録しておくと、その付近の依頼も通知されます。</p>
+    {% else %}
+        <p class="meta">まだデータがありません。</p>
+    {% endif %}
+</section>
+{% endblock %}

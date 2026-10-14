@@ -1,42 +1,87 @@
 {% extends 'core/base.html' %}
 
 {% block title %}マイページ - Suki-match{% endblock %}
+{% block extra_head %}{% include 'core/_leaflet.html' %}{% endblock %}
 
 {% block content %}
-<div class="card card-form">
-    <h1 class="card-title detail-title">{{ user.username }}</h1>
-    <div class="stats">
-        <div><p class="reward-label">ランク</p><p class="reward-value">{{ user.rank }}</p></div>
-        <div><p class="reward-label">ポイント</p><p class="reward-value">{{ user.points }}pt</p></div>
-        <div><p class="reward-label">平均評価</p><p class="reward-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p></div>
+<section class="card profile-card">
+    <div class="profile-top">
+        {% include 'core/_avatar.html' with u=user size='lg' %}
+        <div>
+            <h1 class="profile-name">{{ user.username }}</h1>
+            <p class="meta">{{ user.area_label|default:"エリア未設定" }}</p>
+        </div>
     </div>
-</div>
+    <div class="level-box">
+        <div class="level-row">
+            <span class="rank-badge rank-lg">{{ user.rank }}</span>
+            <span class="level">Lv.{{ user.level }}</span>
+            <span class="meta">{{ user.points }}pt{% if user.level < 100 %} · 次のレベルまであと{{ points_to_next }}pt{% endif %}</span>
+        </div>
+        <div class="progress"><span style="width: {{ level_progress }}%"></span></div>
+    </div>
+    <div class="stats-row">
+        <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">平均評価</p></div>
+        <div><p class="stat-value">{{ help_count }}</p><p class="meta">お手伝い完了</p></div>
+        <div><p class="stat-value">{{ request_count }}</p><p class="meta">依頼</p></div>
+    </div>
+    <div class="button-row">
+        <a href="{% url 'core:profile_edit' %}" class="btn btn-outline btn-sm">プロフィール編集</a>
+        <a href="{% url 'core:public_profile' user.username %}" class="btn btn-ghost btn-sm">公開プロフィール</a>
+        <a href="{% url 'core:account_settings' %}" class="btn btn-ghost btn-sm">アカウント設定</a>
+    </div>
+</section>
 
-<div class="card card-form">
-    <h2 class="card-title">プロフィール設定</h2>
-    <form method="post" class="form">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="button" class="btn-secondary" data-geo-fill="id_latitude,id_longitude">現在地を取得</button>
-        <button type="submit" class="btn-primary w-full">保存</button>
-    </form>
-</div>
+{% if sanctions %}
+<section class="card card-alert">
+    <h2 class="section-title">ペナルティ</h2>
+    {% for s in sanctions %}
+        <p><strong>{{ s.get_level_display }}</strong>{% if s.ends_at %}({{ s.ends_at|date:"n/j H:i" }}まで){% endif %}<br><span class="meta">{{ s.reason }}</span></p>
+    {% endfor %}
+</section>
+{% endif %}
 
-<div class="card card-form">
-    <h2 class="card-title">自分の依頼</h2>
+<section class="card">
+    <h2 class="section-title">活動拠点</h2>
+    <p class="help">登録した拠点の近く({{ radius }}m以内)の依頼も通知・表示されます。</p>
+    {% for base in bases %}
+        <div class="list-row">
+            <span>{{ base.label }} <span class="meta">{{ base.area_label }}</span></span>
+            <form method="post" action="{% url 'core:delete_base' base.pk %}">{% csrf_token %}<button class="btn btn-ghost btn-sm">削除</button></form>
+        </div>
+    {% endfor %}
+    <details class="add-base">
+        <summary>拠点を追加する</summary>
+        <form method="post" action="{% url 'core:add_base' %}" class="form">
+            {% csrf_token %}
+            {% include 'core/_field.html' with field=base_form.label %}
+            {{ base_form.latitude }}{{ base_form.longitude }}
+            {% include 'core/_location_picker.html' with lat_id=base_form.latitude.auto_id lng_id=base_form.longitude.auto_id label='拠点の場所' %}
+            <button class="btn btn-primary btn-block">追加</button>
+        </form>
+    </details>
+</section>
+
+<section class="card">
+    <h2 class="section-title">自分の依頼</h2>
     {% for r in my_requests %}
-        <p><a class="link" href="{% url 'core:help_request_detail' r.pk %}">{{ r.title }}</a> <span class="date">{{ r.status }}</span></p>
-    {% empty %}<p class="date">まだありません。</p>{% endfor %}
-    <h2 class="card-title">お手伝い履歴</h2>
+        <a class="list-row" href="{% url 'core:help_request_detail' r.pk %}"><span>{{ r.title }}</span><span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></a>
+    {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+    <h2 class="section-title">お手伝い履歴</h2>
     {% for m in my_helps %}
-        <p><a class="link" href="{% url 'core:help_request_detail' m.help_request.pk %}">{{ m.help_request.title }}</a> <span class="date">{{ m.status }}</span></p>
-    {% empty %}<p class="date">まだありません。</p>{% endfor %}
-</div>
+        <a class="list-row" href="{% url 'core:help_request_detail' m.help_request.pk %}"><span>{{ m.help_request.title }}</span><span class="status status-{{ m.status }}">{{ m.get_status_display }}</span></a>
+    {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+</section>
 
-<div class="card card-form">
-    <h2 class="card-title">受け取ったレビュー</h2>
+<section class="card">
+    <h2 class="section-title">受け取ったレビュー</h2>
     {% for rv in reviews %}
-        <p>★{{ rv.rating }} <span class="date">{{ rv.reviewer.username }}</span><br>{{ rv.comment }}</p>
-    {% empty %}<p class="date">まだありません。</p>{% endfor %}
-</div>
+        <div class="review"><p><span class="stars">{% for i in "12345"|make_list %}{% if forloop.counter <= rv.rating %}★{% else %}☆{% endif %}{% endfor %}</span> <span class="meta">{{ rv.reviewer.username }} · {{ rv.created_at|date:"Y/n/j" }}</span></p>{% if rv.comment %}<p>{{ rv.comment }}</p>{% endif %}</div>
+    {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+</section>
+
+<form method="post" action="{% url 'account_logout' %}" class="logout-form">
+    {% csrf_token %}
+    <button class="btn btn-ghost btn-block">ログアウト</button>
+</form>
 {% endblock %}

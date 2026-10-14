@@ -1,0 +1,17 @@
+{% extends 'core/base.html' %}
+
+{% block title %}通知 - Suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>通知</h1></div>
+<section class="card">
+    {% for n in items %}
+        <a class="list-row notification{% if not n.is_read %} is-unread{% endif %}" href="{{ n.url|default:'#' }}">
+            <span>{{ n.text }}</span>
+            <span class="meta">{{ n.created_at|date:"n/j H:i" }}</span>
+        </a>
+    {% empty %}
+        <p class="meta">通知はまだありません。</p>
+    {% endfor %}
+</section>
+{% endblock %}

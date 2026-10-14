@@ -1,8 +1,121 @@
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
-from .models import User, HelpRequest, Match, Review
+from datetime import timedelta
 
-admin.site.register(User, UserAdmin)
-admin.site.register(HelpRequest)
-admin.site.register(Match)
+from django.conf import settings
+from django.contrib import admin, messages
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils import timezone
+
+from . import skills
+from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting,
+                     PresetTag, Report, Review, Sanction, Skill, User)
+
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin):
+    list_display = ('username', 'email', 'area_label', 'level', 'points', 'is_active')
+    fieldsets = BaseUserAdmin.fieldsets + (
+        ('Suki-match', {'fields': ('avatar', 'motivation', 'bio', 'skills', 'area_label',
+                                   'latitude', 'longitude', 'location_updated_at', 'points', 'level')}),
+    )
+    filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)
+
+
+@admin.register(Skill)
+class SkillAdmin(admin.ModelAdmin):
+    list_display = ('name', 'is_official', 'canonical', 'created_by', 'created_at')
+    list_filter = ('is_official', ('canonical', admin.EmptyFieldListFilter))
+    search_fields = ('name', 'normalized')
+    actions = ['merge_into_first']
+
+    @admin.action(description='選択したタグを、最初に作られたタグへ統合する')
+    def merge_into_first(self, request, queryset):
+        selected = list(queryset.order_by('-is_official', 'created_at'))
+        if len(selected) < 2:
+            self.message_user(request, '2つ以上選んでください。', messages.WARNING)
+            return
+        skills.merge(selected[0], selected[1:])
+        self.message_user(request, f'{len(selected) - 1}件を「{selected[0].resolved.name}」に統合しました。')
+
+
+@admin.register(HelpRequest)
+class HelpRequestAdmin(admin.ModelAdmin):
+    list_display = ('title', 'requester', 'mode', 'status', 'area_label', 'expires_at', 'created_at')
+    list_filter = ('status', 'mode')
+    search_fields = ('title', 'description', 'requester__username')
+
+
+@admin.register(Match)
+class MatchAdmin(admin.ModelAdmin):
+    list_display = ('help_request', 'helper', 'status', 'penalized', 'created_at', 'canceled_at')
+    list_filter = ('status', 'penalized')
+
+
+@admin.register(Sanction)
+class SanctionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'level', 'reason', 'source', 'starts_at', 'ends_at')
+    list_filter = ('level', 'source')
+    search_fields = ('user__username', 'reason')
+    actions = ['end_now']
+
+    @admin.action(description='選択したペナルティを今すぐ解除する')
+    def end_now(self, request, queryset):
+        queryset.update(ends_at=timezone.now())
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ('sender', 'short_body', 'risk_score', 'risk_labels', 'is_hidden', 'created_at')
+    list_filter = ('is_hidden',)
+    ordering = ('-risk_score', '-created_at')
+    actions = ['hide', 'unhide']
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.GET.get('review') == '1':  # 要確認: /admin/core/message/?review=1
+            qs = qs.filter(risk_score__gte=settings.MODERATION_REVIEW_THRESHOLD)
+        return qs
+
+    @admin.display(description='本文')
+    def short_body(self, obj):
+        return obj.body[:40]
+
+    @admin.action(description='非表示にする')
+    def hide(self, request, queryset):
+        queryset.update(is_hidden=True)
+
+    @admin.action(description='表示に戻す')
+    def unhide(self, request, queryset):
+        queryset.update(is_hidden=False)
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = ('target_user', 'category', 'reporter', 'status', 'created_at')
+    list_filter = ('status', 'category')
+    list_editable = ('status',)
+    actions = ['suspend_7_days', 'ban']
+
+    def _sanction(self, request, queryset, level, days):
+        for report in queryset.select_related('target_user'):
+            Sanction.objects.create(
+                user=report.target_user, level=level, source=Sanction.Source.ADMIN,
+                reason=f'通報対応({report.get_category_display()})',
+                ends_at=timezone.now() + timedelta(days=days) if days else None)
+            report.status, report.handled_by = Report.Status.RESOLVED, request.user
+            report.save(update_fields=['status', 'handled_by'])
+
+    @admin.action(description='対象ユーザーを7日間「依頼・受付ともに停止」にする')
+    def suspend_7_days(self, request, queryset):
+        self._sanction(request, queryset, Sanction.Level.NO_ACTIVITY, 7)
+
+    @admin.action(description='対象ユーザーを利用停止(BAN)にする')
+    def ban(self, request, queryset):
+        self._sanction(request, queryset, Sanction.Level.BANNED, None)
+
+
 admin.site.register(Review)
+admin.site.register(Application)
+admin.site.register(PresetTag)
+admin.site.register(Notification)
+admin.site.register(NotificationSetting)
+admin.site.register(ActivityBase)

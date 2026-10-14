@@ -1,0 +1,9 @@
+{% comment %}場所の入力: 現在地ボタン + 地図タップ。lat_id / lng_id に hidden input の id を渡す{% endcomment %}
+<div class="location-picker" data-location-picker data-lat-input="{{ lat_id }}" data-lng-input="{{ lng_id }}">
+    <div class="location-head">
+        <span class="field-label">{{ label|default:'場所' }}</span>
+        <button type="button" class="btn btn-outline btn-sm" data-geo-button>現在地を取得</button>
+    </div>
+    <p class="geo-status" data-geo-status>{% if note %}{{ note }}{% else %}現在地を取得するか、地図をタップして指定してください。{% endif %}</p>
+    <div class="map" data-map></div>
+</div>

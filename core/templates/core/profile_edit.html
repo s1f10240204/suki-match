@@ -1,0 +1,30 @@
+{% extends 'core/base.html' %}
+
+{% block title %}プロフィール編集 - Suki-match{% endblock %}
+{% block extra_head %}{% include 'core/_leaflet.html' %}{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>プロフィール編集</h1></div>
+<form method="post" enctype="multipart/form-data" class="card form" novalidate>
+    {% csrf_token %}
+    {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+    <div class="avatar-edit">
+        {% include 'core/_avatar.html' with u=user size='lg' %}
+        {% include 'core/_field.html' with field=form.avatar %}
+    </div>
+    {% include 'core/_field.html' with field=form.motivation %}
+    {% include 'core/_field.html' with field=form.bio %}
+    {% include 'core/_field.html' with field=form.skill_names %}
+
+    <h2 class="section-title">現在地</h2>
+    {{ form.latitude }}{{ form.longitude }}
+    {% if user.area_label %}
+        {% include 'core/_location_picker.html' with lat_id=form.latitude.auto_id lng_id=form.longitude.auto_id label='現在地' note='現在の登録エリア: '|add:user.area_label %}
+    {% else %}
+        {% include 'core/_location_picker.html' with lat_id=form.latitude.auto_id lng_id=form.longitude.auto_id label='現在地' %}
+    {% endif %}
+    <p class="help">他の人には「{{ user.area_label|default:'東京都北区赤羽' }}」のような大まかなエリアだけが表示されます。</p>
+
+    <button type="submit" class="btn btn-primary btn-block">保存</button>
+</form>
+{% endblock %}

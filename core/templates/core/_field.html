@@ -1,0 +1,14 @@
+<div class="field field-{{ field.widget_type }}{% if field.errors %} has-error{% endif %}">
+    {% if field.widget_type == 'checkbox' %}
+        <label class="check">{{ field }} {{ field.label }}</label>
+    {% else %}
+        <label class="field-label"{% if field.widget_type != 'radioselect' and field.widget_type != 'checkboxselectmultiple' %} for="{{ field.id_for_label }}"{% endif %}>{{ field.label }}{% if field.field.required %}<span class="req">必須</span>{% endif %}</label>
+        {% if field.widget_type == 'radioselect' or field.widget_type == 'checkboxselectmultiple' %}
+            <div class="chips-choice">{{ field }}</div>
+        {% else %}
+            {{ field }}
+        {% endif %}
+    {% endif %}
+    {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+    {% for error in field.errors %}<p class="error">{{ error }}</p>{% endfor %}
+</div>

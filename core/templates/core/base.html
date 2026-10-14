@@ -6,50 +6,83 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Suki-match{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'core/style.css' %}">
+    {% block extra_head %}{% endblock %}
 </head>
 <body data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
     <header class="header">
-        <div class="header-container">
+        <div class="header-inner">
             <a href="{% url 'core:help_request_list' %}" class="logo">Suki-match</a>
-            <div class="desktop-nav">
-                <a href="{% url 'core:help_request_list' %}" class="nav-item"><span>ホーム</span></a>
+            <nav class="desktop-nav">
+                <a href="{% url 'core:help_request_list' %}">さがす</a>
+                <a href="{% url 'core:help_request_create' %}">依頼する</a>
+                <a href="{% url 'core:stats' %}">統計</a>
+            </nav>
+            <div class="header-actions">
                 {% if user.is_authenticated %}
-                    <a href="{% url 'core:help_request_create' %}" class="nav-item"><span>依頼する</span></a>
-                    <a href="{% url 'core:profile' %}" class="nav-item"><span>{{ user.username }}</span></a>
-                    <form action="{% url 'logout' %}" method="post" class="inline-form">
-                        {% csrf_token %}
-                        <button type="submit" class="nav-item nav-button">ログアウト</button>
-                    </form>
+                    <a href="{% url 'core:notifications' %}" class="icon-button" aria-label="通知">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                        {% if unread_count %}<span class="dot-count" id="unread-count">{{ unread_count }}</span>{% endif %}
+                    </a>
+                    <a href="{% url 'core:profile' %}" class="header-avatar" aria-label="マイページ">
+                        {% include 'core/_avatar.html' with u=user size='sm' %}
+                    </a>
                 {% else %}
-                    <a href="{% url 'login' %}" class="nav-item"><span>ログイン</span></a>
-                    <a href="{% url 'signup' %}" class="nav-item"><span>新規登録</span></a>
+                    <a href="{% url 'account_login' %}" class="btn btn-ghost btn-sm">ログイン</a>
+                    <a href="{% url 'account_signup' %}" class="btn btn-primary btn-sm">新規登録</a>
                 {% endif %}
             </div>
         </div>
     </header>
 
+    {% if active_matches or pending_requests %}
+    <div class="active-bar" role="status">
+        <div class="active-bar-inner">
+            {% for m in active_matches %}
+                <a href="{% url 'core:help_request_detail' m.help_request.pk %}" class="active-item">
+                    <span class="pulse"></span>
+                    <span class="active-label">進行中</span>
+                    <span class="active-title">{{ m.help_request.title }}</span>
+                    <span class="active-sub">{% if m.helper_id == user.pk %}依頼者: {{ m.help_request.requester.username }}{% else %}ヘルパー: {{ m.helper.username }}{% endif %}</span>
+                </a>
+            {% endfor %}
+            {% for hr in pending_requests %}
+                <a href="{% url 'core:help_request_detail' hr.pk %}" class="active-item">
+                    <span class="active-label label-warn">応募{{ hr.applicants }}件</span>
+                    <span class="active-title">{{ hr.title }}</span>
+                    <span class="active-sub">承認してください</span>
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 
-    <main class="main-container">
+    <main class="main {% block main_class %}{% endblock %}">
         {% for message in messages %}
             <div class="message message-{{ message.tags }}">{{ message }}</div>
         {% endfor %}
-        {% block content %}
-        {% endblock %}
+        {% block content %}{% endblock %}
     </main>
 
-    <nav class="mobile-nav">
-        <a href="{% url 'core:help_request_list' %}" class="mobile-nav-item">
-            <svg fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
-            <span>ホーム</span>
+    <nav class="tabbar">
+        <a href="{% url 'core:help_request_list' %}" class="{% if request.resolver_match.url_name == 'help_request_list' %}is-active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>さがす</span>
         </a>
-        {% if user.is_authenticated %}
-            <a href="{% url 'core:help_request_create' %}" class="mobile-nav-item"><span class="nav-icon">＋</span><span>依頼する</span></a>
-            <a href="{% url 'core:profile' %}" class="mobile-nav-item"><span class="nav-icon">●</span><span>マイページ</span></a>
-        {% else %}
-            <a href="{% url 'login' %}" class="mobile-nav-item"><span class="nav-icon">→</span><span>ログイン</span></a>
-        {% endif %}
+        <a href="{% url 'core:help_request_create' %}" class="{% if request.resolver_match.url_name == 'help_request_create' %}is-active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>依頼する</span>
+        </a>
+        <a href="{% if active_matches %}{% url 'core:chat' active_matches.0.pk %}{% else %}{% url 'core:notifications' %}{% endif %}" class="{% if request.resolver_match.url_name == 'chat' %}is-active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>メッセージ</span>
+        </a>
+        <a href="{% url 'core:notifications' %}" class="{% if request.resolver_match.url_name == 'notifications' %}is-active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/></svg><span>通知</span>
+        </a>
+        <a href="{% url 'core:profile' %}" class="{% if request.resolver_match.url_name == 'profile' %}is-active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>マイページ</span>
+        </a>
     </nav>
     <script src="{% static 'core/app.js' %}"></script>
+    {% block extra_body %}{% endblock %}
 </body>
 </html>

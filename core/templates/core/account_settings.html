@@ -1,0 +1,34 @@
+{% extends 'core/base.html' %}
+
+{% block title %}アカウント設定 - Suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>アカウント設定</h1></div>
+
+<form method="post" class="card form">
+    {% csrf_token %}
+    <h2 class="section-title">ユーザー名</h2>
+    {% include 'core/_field.html' with field=account_form.username %}
+    <button name="save_account" class="btn btn-primary btn-block">ユーザー名を変更</button>
+</form>
+
+<section class="card">
+    <h2 class="section-title">ログイン情報</h2>
+    <a class="list-row" href="{% url 'account_email' %}"><span>メールアドレス</span><span class="meta">{{ user.email|default:"未登録" }} ›</span></a>
+    <a class="list-row" href="{% url 'account_change_password' %}"><span>パスワードの変更</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'socialaccount_connections' %}"><span>Googleアカウント連携</span><span class="meta">›</span></a>
+</section>
+
+<form method="post" class="card form">
+    {% csrf_token %}
+    <h2 class="section-title">メール通知</h2>
+    <p class="help">アプリを開いていないときに、届いたお知らせをまとめてメールで送ります。</p>
+    {% include 'core/_field.html' with field=notify_form.email_activity %}
+    {% include 'core/_field.html' with field=notify_form.email_nearby %}
+    <div class="grid-2">
+        {% include 'core/_field.html' with field=notify_form.quiet_start %}
+        {% include 'core/_field.html' with field=notify_form.quiet_end %}
+    </div>
+    <button name="save_notify" class="btn btn-primary btn-block">通知設定を保存</button>
+</form>
+{% endblock %}

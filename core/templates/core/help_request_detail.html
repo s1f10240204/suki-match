@@ -3,68 +3,158 @@
 {% block title %}{{ help_request.title }} - Suki-match{% endblock %}
 
 {% block content %}
-<div class="card card-detail">
-    <div class="card-header">
-        <div class="avatar detail-avatar"></div>
-        <div>
-            <p class="username detail-username">{{ help_request.requester.username }}
-                <span class="rank">{{ help_request.requester.rank }}</span></p>
-            <p class="date detail-date">{{ help_request.created_at|date:"Y/m/d H:i" }}</p>
-        </div>
-    </div>
-
-    <h1 class="card-title detail-title">{{ help_request.title }}</h1>
-    <div class="detail-desc">{{ help_request.description }}</div>
-
-    <div class="badges">
-        <span class="reward-badge">{{ help_request.duration_minutes }}分</span>
-        {% if help_request.required_skill %}<span class="reward-badge">{{ help_request.required_skill }}</span>{% endif %}
-        {% if distance is not None %}<span class="reward-badge">あなたから約{{ distance }}m</span>{% endif %}
-    </div>
-
-    <div class="reward-box">
-        <p class="reward-label">現在の状況</p>
-        <p class="reward-value">{{ help_request.status }}</p>
-        {% if match %}<p class="date">ヘルパー: {{ match.helper.username }}({{ match.helper.rank }})</p>{% endif %}
-    </div>
-
-    {% if blocked_reason %}<p class="notice">{{ blocked_reason }}</p>{% endif %}
-
-    <div class="action-area">
-        {% if not user.is_authenticated %}
-            <a href="{% url 'login' %}?next={{ request.path }}" class="btn-primary">ログインしてお手伝いする</a>
-        {% elif can_accept %}
-            <form action="{% url 'core:accept_help_request' help_request.pk %}" method="post" class="form-full">
-                {% csrf_token %}
-                <button type="submit" class="btn-primary w-full">お手伝いする</button>
-            </form>
-        {% elif help_request.status == '進行中' and is_requester %}
-            <form action="{% url 'core:complete_help_request' help_request.pk %}" method="post" class="form-full">
-                {% csrf_token %}
-                <button type="submit" class="btn-primary w-full">完了にする</button>
-            </form>
-        {% else %}
-            <button class="btn-disabled w-full" disabled>{{ help_request.status }}</button>
+<article class="card">
+    <div class="card-top">
+        <span class="status status-{{ help_request.status }}">{{ help_request.get_status_display }}</span>
+        {% if help_request.scheduled_for %}
+            <span class="time-chip">{{ help_request.scheduled_for|date:"n/j(D) H:i" }}〜</span>
+        {% elif help_request.status == 'open' %}
+            <span class="time-chip" data-countdown="{{ help_request.expires_at|date:'c' }}">締切 {{ help_request.expires_at|date:"H:i" }}</span>
         {% endif %}
     </div>
+    <h1 class="detail-title">{{ help_request.title }}</h1>
+    <div class="chips">
+        <span class="chip">{{ help_request.duration_minutes }}分</span>
+        <span class="chip{% if help_request.mode == 'approval' %} chip-approval{% endif %}">{{ help_request.get_mode_display }}</span>
+        {% for s in help_request.required_skills.all %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}
+        {% if skill_ok and help_request.required_skills.all %}<span class="chip chip-ok">あなたの得意分野</span>{% endif %}
+    </div>
+    {% if help_request.preset_tags.all %}
+        <ul class="preset-list">{% for t in help_request.preset_tags.all %}<li>{{ t.label }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if help_request.description %}<p class="detail-desc">{{ help_request.description }}</p>{% endif %}
 
-    {% if help_request.status == '募集中' and is_requester or help_request.status == '進行中' and is_requester or help_request.status == '進行中' and is_helper %}
-        <form action="{% url 'core:cancel_help_request' help_request.pk %}" method="post" class="cancel-form"
-              onsubmit="return confirm('キャンセルしますか?');">
+    <section class="location-box">
+        <h2 class="section-title">場所</h2>
+        {% if show_exact %}
+            <p><strong>{{ help_request.address_detail|default:"詳しい場所の記載はありません" }}</strong></p>
+            <p class="meta">{{ help_request.area_label }}</p>
+            <a class="link" target="_blank" rel="noopener"
+               href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図アプリで開く</a>
+        {% else %}
+            <p>{{ help_request.area_label|default:"エリア未取得" }}{% if distance_text %}<span class="meta">(あなたから{{ distance_text }})</span>{% endif %}</p>
+            <p class="meta">詳しい場所は、マッチングが成立した相手にだけ表示されます。</p>
+        {% endif %}
+    </section>
+
+    <a href="{% url 'core:public_profile' help_request.requester.username %}" class="person">
+        {% include 'core/_avatar.html' with u=help_request.requester %}
+        <div>
+            <p class="person-name">{{ help_request.requester.username }} <span class="rank-badge">{{ help_request.requester.rank }} Lv.{{ help_request.requester.level }}</span></p>
+            <p class="meta">依頼者{% if help_request.requester.area_label %} · {{ help_request.requester.area_label }}{% endif %}</p>
+            {% if help_request.requester.motivation %}<p class="person-quote">{{ help_request.requester.motivation }}</p>{% endif %}
+        </div>
+    </a>
+    {% if match %}
+        <a href="{% url 'core:public_profile' match.helper.username %}" class="person">
+            {% include 'core/_avatar.html' with u=match.helper %}
+            <div>
+                <p class="person-name">{{ match.helper.username }} <span class="rank-badge">{{ match.helper.rank }} Lv.{{ match.helper.level }}</span></p>
+                <p class="meta">ヘルパー</p>
+                {% if match.helper.motivation %}<p class="person-quote">「{{ match.helper.motivation }}」</p>{% endif %}
+            </div>
+        </a>
+    {% endif %}
+</article>
+
+<section class="card action-card">
+    {% if not user.is_authenticated %}
+        <a href="{% url 'account_login' %}?next={{ request.path }}" class="btn btn-primary btn-block">ログインしてお手伝いする</a>
+
+    {% elif is_requester %}
+        {% if help_request.status == 'open' %}
+            {% if help_request.mode == 'approval' %}
+                <h2 class="section-title">応募者</h2>
+                {% for app in applications %}
+                    <div class="applicant">
+                        <a href="{% url 'core:public_profile' app.applicant.username %}" class="person person-compact">
+                            {% include 'core/_avatar.html' with u=app.applicant size='sm' %}
+                            <div>
+                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>
+                                {% if app.message %}<p class="person-quote">{{ app.message }}</p>{% endif %}
+                                {% if app.applicant.motivation %}<p class="meta">理由: {{ app.applicant.motivation }}</p>{% endif %}
+                            </div>
+                        </a>
+                        <form method="post" action="{% url 'core:approve_application' app.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-primary btn-sm">この人にお願いする</button>
+                        </form>
+                    </div>
+                {% empty %}
+                    <p class="meta">まだ応募はありません。近くの人に通知しています。</p>
+                {% endfor %}
+            {% else %}
+                <p class="meta">先着順で募集中です。引き受けた人がいると通知が届きます。</p>
+            {% endif %}
+        {% elif help_request.status == 'in_progress' %}
+            <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>
+            <form method="post" action="{% url 'core:complete_help_request' help_request.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-primary btn-block">完了にする</button>
+            </form>
+        {% endif %}
+
+    {% elif is_helper and help_request.status == 'in_progress' %}
+        <a href="{% url 'core:chat' match.pk %}" class="btn btn-primary btn-block">チャットを開く</a>
+        <p class="meta">終わったら、依頼者が「完了」にするとポイントが付与されます。</p>
+
+    {% elif help_request.status == 'open' %}
+        {% if help_block_reason %}
+            <p class="notice">{{ help_block_reason }}</p>
+        {% elif help_request.mode == 'first_come' %}
+            {% if not skill_ok %}<p class="notice">この依頼は指定スキルを持つ方向けです(受けることはできます)。</p>{% endif %}
+            <form method="post" action="{% url 'core:accept_help_request' help_request.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-primary btn-block">お手伝いする(すぐ決定)</button>
+            </form>
+        {% elif my_application and my_application.status == 'applied' %}
+            <p class="notice notice-info">応募中です。依頼者の承認をお待ちください。</p>
+            <form method="post" action="{% url 'core:withdraw_application' my_application.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-ghost btn-block">応募を取り消す</button>
+            </form>
+        {% elif my_application and my_application.status != 'withdrawn' %}
+            <p class="meta">この依頼への応募は「{{ my_application.get_status_display }}」となりました。</p>
+        {% else %}
+            <form method="post" action="{% url 'core:apply_help_request' help_request.pk %}" class="form">
+                {% csrf_token %}
+                {% include 'core/_field.html' with field=application_form.message %}
+                <button class="btn btn-primary btn-block">応募する</button>
+            </form>
+        {% endif %}
+    {% else %}
+        <p class="meta">この依頼は「{{ help_request.get_status_display }}」です。</p>
+    {% endif %}
+
+    {% if review_form %}
+        <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form">
             {% csrf_token %}
-            <button type="submit" class="btn-link">{% if is_helper %}お手伝いをキャンセル{% else %}依頼を取り下げる{% endif %}</button>
+            <h2 class="section-title">{{ review_target.username }}さんを評価する</h2>
+            {% include 'core/_field.html' with field=review_form.rating %}
+            {% include 'core/_field.html' with field=review_form.comment %}
+            <button class="btn btn-primary btn-block">レビューを送信</button>
         </form>
     {% endif %}
-</div>
 
-{% if review_target %}
-<div class="card card-form">
-    <h2 class="card-title">{{ review_target.username }}さんをレビュー</h2>
-    <form action="{% url 'core:submit_review' help_request.pk %}" method="post" class="form">
-        {% csrf_token %}
-        {{ review_form.as_p }}
-        <button type="submit" class="btn-primary w-full">送信</button>
-    </form>
-</div>
+    {% if is_requester and help_request.status == 'open' or is_requester and help_request.status == 'in_progress' or is_helper and help_request.status == 'in_progress' %}
+        <details class="cancel-box">
+            <summary>{% if is_helper %}お手伝いをキャンセルする{% else %}依頼を取り下げる{% endif %}</summary>
+            {% if grace_seconds %}
+                <p class="notice notice-info">あと<span data-countdown-seconds="{{ grace_seconds }}">{{ grace_seconds }}秒</span>はペナルティなしでキャンセルできます。</p>
+            {% elif match and help_request.status == 'in_progress' %}
+                <p class="notice">マッチング成立から1分を過ぎています。キャンセルするとペナルティ(警告→一時的な利用制限)の対象になります。</p>
+            {% endif %}
+            <form method="post" action="{% url 'core:cancel_help_request' help_request.pk %}" class="form"
+                  onsubmit="return confirm('本当にキャンセルしますか?');">
+                {% csrf_token %}
+                {% include 'core/_field.html' with field=cancel_form.reason %}
+                <button class="btn btn-danger btn-block">キャンセルする</button>
+            </form>
+        </details>
+    {% endif %}
+</section>
+
+{% if user.is_authenticated and not is_requester %}
+    <p class="report-link"><a href="{% url 'core:report_user' help_request.requester.username %}?request={{ help_request.pk }}">この依頼を通報する</a></p>
 {% endif %}
 {% endblock %}

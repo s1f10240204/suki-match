@@ -1,15 +1,36 @@
 {% extends 'core/base.html' %}
 
 {% block title %}依頼する - Suki-match{% endblock %}
+{% block extra_head %}{% include 'core/_leaflet.html' %}{% endblock %}
 
 {% block content %}
-<div class="card card-form">
-    <h1 class="card-title detail-title">15分のお手伝いを依頼する</h1>
-    <form method="post" class="form">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="button" class="btn-secondary" data-geo-fill="id_latitude,id_longitude">現在地を取得</button>
-        <button type="submit" class="btn-primary w-full">投稿して近くの人に知らせる</button>
-    </form>
-</div>
+<div class="page-head"><h1>お手伝いを依頼する</h1></div>
+<form method="post" class="card form" novalidate>
+    {% csrf_token %}
+    {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+    {% include 'core/_field.html' with field=form.title %}
+    {% include 'core/_field.html' with field=form.mode %}
+
+    <h2 class="section-title">内容</h2>
+    {% include 'core/_field.html' with field=form.preset_tags %}
+    {% include 'core/_field.html' with field=form.description %}
+    {% include 'core/_field.html' with field=form.skill_names %}
+
+    <h2 class="section-title">時間</h2>
+    <div class="grid-2">
+        {% include 'core/_field.html' with field=form.duration_minutes %}
+        {% include 'core/_field.html' with field=form.listing_minutes %}
+    </div>
+    {% include 'core/_field.html' with field=form.scheduled_for %}
+
+    <h2 class="section-title">場所</h2>
+    {{ form.latitude }}{{ form.longitude }}
+    {% include 'core/_location_picker.html' with lat_id=form.latitude.auto_id lng_id=form.longitude.auto_id label='待ち合わせ場所' %}
+    {% for error in form.latitude.errors %}<p class="error">{{ error }}</p>{% endfor %}
+    <p class="help">一覧には「北区赤羽」のような大まかなエリアだけが表示されます。</p>
+    {% include 'core/_field.html' with field=form.address_detail %}
+
+    <button type="submit" class="btn btn-primary btn-block">投稿して近くの人に知らせる</button>
+</form>
 {% endblock %}

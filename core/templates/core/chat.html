@@ -1,0 +1,37 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{{ other.username }}さんとのチャット - Suki-match{% endblock %}
+{% block main_class %}chat-page{% endblock %}
+
+{% block content %}
+<div class="chat-head card">
+    <a href="{% url 'core:public_profile' other.username %}" class="person person-compact">
+        {% include 'core/_avatar.html' with u=other size='sm' %}
+        <p class="person-name">{{ other.username }} <span class="rank-badge">{{ other.rank }}</span></p>
+    </a>
+    <p class="meta chat-place"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a>({{ match.get_status_display }})</p>
+    <p class="meta chat-place">場所: {{ help_request.address_detail|default:help_request.area_label }}
+        <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図</a></p>
+</div>
+
+<div class="chat-log" id="chat-log" data-chat-id="{{ match.pk }}" data-user-id="{{ user.pk }}"
+     data-report-url="{% url 'core:report_user' other.username %}">
+    <p class="chat-note">連絡先(LINE・電話番号など)の交換や、依頼と関係のない誘いはお控えください。やり取りは安全のため確認されることがあります。</p>
+    {% for m in chat_messages %}
+        <div class="bubble-row {% if m.sender_id == user.pk %}mine{% endif %}">
+            <div class="bubble{% if m.is_hidden %} bubble-hidden{% endif %}">{% if m.is_hidden %}このメッセージは相手に表示されていません{% else %}{{ m.body }}{% endif %}</div>
+            <span class="bubble-meta">{{ m.created_at|date:"H:i" }}{% if m.sender_id != user.pk %} · <a href="{% url 'core:report_user' other.username %}?message={{ m.pk }}">通報</a>{% endif %}</span>
+        </div>
+    {% endfor %}
+</div>
+
+{% if chat_open %}
+    <form method="post" class="chat-form" id="chat-form">
+        {% csrf_token %}
+        {{ form.body }}
+        <button class="btn btn-primary">送信</button>
+    </form>
+{% else %}
+    <p class="notice">このチャットは終了しました。</p>
+{% endif %}
+{% endblock %}

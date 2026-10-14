@@ -1,0 +1,42 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{{ target.username }} - Suki-match{% endblock %}
+
+{% block content %}
+<section class="card profile-card">
+    <div class="profile-top">
+        {% include 'core/_avatar.html' with u=target size='lg' %}
+        <div>
+            <h1 class="profile-name">{{ target.username }}</h1>
+            <p><span class="rank-badge">{{ target.rank }} Lv.{{ target.level }}</span></p>
+            <p class="meta">{{ target.area_label|default:"エリア非公開" }}</p>
+        </div>
+    </div>
+    {% if target.motivation %}
+        <div class="motivation">
+            <p class="meta">お手伝いする理由</p>
+            <p class="person-quote">「{{ target.motivation }}」</p>
+        </div>
+    {% endif %}
+    {% if target.bio %}<p class="detail-desc">{{ target.bio }}</p>{% endif %}
+    {% if skills %}
+        <div class="chips">{% for s in skills %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}</div>
+    {% endif %}
+    <div class="stats-row">
+        <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">評価({{ review_count }}件)</p></div>
+        <div><p class="stat-value">{{ help_count }}</p><p class="meta">お手伝い完了</p></div>
+        <div><p class="stat-value">{{ target.date_joined|date:"Y/n" }}</p><p class="meta">登録</p></div>
+    </div>
+</section>
+
+<section class="card">
+    <h2 class="section-title">最近のレビュー</h2>
+    {% for rv in reviews %}
+        <div class="review"><p><span class="stars">{% for i in "12345"|make_list %}{% if forloop.counter <= rv.rating %}★{% else %}☆{% endif %}{% endfor %}</span> <span class="meta">{{ rv.reviewer.username }}</span></p>{% if rv.comment %}<p>{{ rv.comment }}</p>{% endif %}</div>
+    {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+</section>
+
+{% if user.is_authenticated and user != target %}
+    <p class="report-link"><a href="{% url 'core:report_user' target.username %}">このユーザーを通報する</a></p>
+{% endif %}
+{% endblock %}

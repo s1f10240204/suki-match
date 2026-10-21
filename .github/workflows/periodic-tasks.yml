@@ -1,0 +1,22 @@
+# 公開中のアプリの定期処理(掲載期限切れの締め切り・通知メールのまとめ送信)を30分ごとに呼び出す。
+# Render の無料プランには cron がないため、GitHub Actions で代わりに実行する。
+# 設定: リポジトリの Settings → Secrets and variables → Actions
+#   Variables: APP_URL   (例: https://suki-match.onrender.com)
+#   Secrets:   TASKS_TOKEN(Render の環境変数 TASKS_TOKEN と同じ値)
+name: periodic-tasks
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    if: ${{ vars.APP_URL != '' }}
+    steps:
+      - name: Call /tasks/run/
+        run: |
+          curl --fail --silent --show-error --max-time 120 --retry 2 --retry-delay 30 \
+            -X POST -H "X-Tasks-Token: ${{ secrets.TASKS_TOKEN }}" \
+            "${{ vars.APP_URL }}/tasks/run/"

@@ -3,9 +3,12 @@
   "configurations": [
     {
       "name": "suki-match",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": "venv/Scripts/python.exe",
       "runtimeArgs": ["manage.py", "runserver", "8000"],
-      "port": 8000
+      "port": 8000,
+      "env": {
+        "EMAIL_BACKEND": "django.core.mail.backends.console.EmailBackend"
+      }
     }
   ]
 }

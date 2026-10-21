@@ -1,0 +1,1 @@
+{% autoescape off %}メールアドレスの確認コード{% if code %}: {{ code }}{% endif %}{% endautoescape %}

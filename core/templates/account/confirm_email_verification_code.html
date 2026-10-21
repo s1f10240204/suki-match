@@ -1,0 +1,60 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}メールアドレスの確認{% endblock head_title %}
+
+{% block content %}
+<section class="card code-card">
+    <div class="code-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>
+    </div>
+    <h1 class="code-title">確認コードを入力</h1>
+    <p class="code-lead"><strong>{{ email }}</strong> に6桁の確認コードを送りました。<br>メールに書かれた数字を入力してください。</p>
+
+    <form method="post" action="{% url 'account_email_verification_sent' %}" class="code-form" novalidate>
+        {% csrf_token %}
+        <label for="id_code" class="sr-only">確認コード</label>
+        <input type="text" name="code" id="id_code" class="code-input" inputmode="numeric" pattern="[0-9]*"
+               maxlength="6" autocomplete="one-time-code" placeholder="000000" required
+               value="{{ verify_form.code.value|default:'' }}" data-code-input autofocus>
+        {% for error in verify_form.code.errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {% for error in verify_form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {{ redirect_field }}
+        <button type="submit" class="btn btn-primary btn-block">確認する</button>
+    </form>
+
+    <div class="code-help">
+        <p class="meta">メールが届かないときは、迷惑メールフォルダもご確認ください。</p>
+        {% if can_resend %}
+            <form method="post" action="{% url 'account_email_verification_sent' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="resend">
+                {{ redirect_field }}
+                <button type="submit" class="btn btn-ghost btn-block" data-resend-seconds="{{ EMAIL_CODE_RESEND_SECONDS }}">コードを再送する</button>
+            </form>
+        {% else %}
+            <p class="meta">再送の上限に達しました。しばらくしてから、もう一度登録をやり直してください。</p>
+        {% endif %}
+        {% if can_change %}
+            <details class="code-change">
+                <summary>別のメールアドレスに変更する</summary>
+                <form method="post" action="{% url 'account_email_verification_sent' %}" class="form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="change">
+                    {{ change_form.email }}
+                    {% for error in change_form.email.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                    {{ redirect_field }}
+                    <button type="submit" class="btn btn-outline btn-block">変更してコードを送る</button>
+                </form>
+            </details>
+        {% endif %}
+        {% if cancel_url %}
+            <a href="{{ cancel_url }}" class="btn btn-ghost btn-block">キャンセル</a>
+        {% else %}
+            <form method="post" action="{% url 'account_logout' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'account_login' %}">
+                <button type="submit" class="btn-text">登録をやめる</button>
+            </form>
+        {% endif %}
+    </div>
+</section>
+{% endblock content %}

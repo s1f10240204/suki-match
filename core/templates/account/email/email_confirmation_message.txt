@@ -1,0 +1,8 @@
+{% extends "account/email/base_message.txt" %}
+{% block content %}{% autoescape off %}{% if code %}以下の6桁の確認コードを、登録画面に入力してください。
+
+    {{ code }}
+
+コードの有効期限は15分です。期限が切れた場合は、画面の「コードを再送する」から新しいコードを受け取れます。{% else %}以下のリンクを開いて、メールアドレスの確認を完了してください。
+
+{{ activate_url }}{% endif %}{% endautoescape %}{% endblock content %}

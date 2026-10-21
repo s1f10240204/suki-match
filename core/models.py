@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 from math import floor, sqrt
 
@@ -7,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .text import normalize_text
+from .text import reading as reading_of
 
 LEVEL_MAX = 100
 # (必要レベル, ランク名) 大きい順に判定する
@@ -18,7 +20,7 @@ RANKS = [
     (1, 'ビギナー'),
 ]
 
-DEFAULT_LISTING_MINUTES = 60
+DEFAULT_LISTING_MINUTES = 180  # 掲載時間を指定しなかったときの既定(3時間)
 # 公開用座標の格子サイズ(度)。緯度0.0025度 ≒ 約280m
 PUBLIC_GRID_DEG = 0.0025
 
@@ -43,6 +45,7 @@ def snap_to_grid(value):
 class Skill(models.Model):
     name = models.CharField('スキル名', max_length=30, unique=True)
     normalized = models.CharField(max_length=30, db_index=True, editable=False)
+    reading = models.CharField('読み', max_length=60, blank=True, db_index=True, editable=False)
     is_official = models.BooleanField('公式', default=False)
     created_by = models.ForeignKey('User', null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='created_skills', verbose_name='作成者')
@@ -60,6 +63,7 @@ class Skill(models.Model):
 
     def save(self, *args, **kwargs):
         self.normalized = normalize_text(self.name)
+        self.reading = reading_of(self.name)[:60]
         super().save(*args, **kwargs)
 
     @property
@@ -67,9 +71,24 @@ class Skill(models.Model):
         return self.canonical or self
 
 
+def avatar_upload_to(instance, filename):
+    # 推測されにくいファイル名にする(写真はモザイク判定つきのビュー経由でのみ配信)
+    return f'avatars/{uuid.uuid4().hex}.jpg'
+
+
 class User(AbstractUser):
+    class PhotoStatus(models.TextChoices):
+        NONE = 'none', '未登録'
+        PENDING = 'pending', '審査中'
+        APPROVED = 'approved', '承認済み'
+        REJECTED = 'rejected', '再提出が必要'
+
     email = models.EmailField('メールアドレス', unique=True, null=True, blank=True)
-    avatar = models.ImageField('アイコン画像', upload_to='avatars/', blank=True)
+    avatar = models.ImageField('顔写真', upload_to=avatar_upload_to, blank=True)
+    avatar_status = models.CharField('顔写真の審査', max_length=20, choices=PhotoStatus.choices,
+                                     default=PhotoStatus.NONE, db_index=True)
+    avatar_reject_reason = models.CharField('差し戻し理由', max_length=200, blank=True)
+    avatar_reviewed_at = models.DateTimeField('審査日時', null=True, blank=True)
     motivation = models.CharField('お手伝いする理由', max_length=200, blank=True,
                                   help_text='例: 子育てがひと段落したので、地域の役に立ちたい')
     bio = models.TextField('自己紹介', blank=True)
@@ -96,6 +115,10 @@ class User(AbstractUser):
     @property
     def has_location(self):
         return self.latitude is not None and self.longitude is not None
+
+    @property
+    def photo_approved(self):
+        return bool(self.avatar) and self.avatar_status == self.PhotoStatus.APPROVED
 
     def add_points(self, amount):
         self.points += amount
@@ -358,3 +381,17 @@ class ActivityBase(models.Model):
 
     class Meta:
         verbose_name = verbose_name_plural = '活動拠点'
+
+
+class StoredFile(models.Model):
+    """DatabaseStorage(core/storage.py)が使う、DB上のファイル。"""
+    name = models.CharField(max_length=255, unique=True)
+    content = models.BinaryField()
+    size = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '保存ファイル'
+
+    def __str__(self):
+        return self.name

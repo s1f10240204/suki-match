@@ -1,6 +1,7 @@
+import tempfile
 from datetime import time as dtime
 from datetime import timedelta
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest import mock
 
 from asgiref.sync import sync_to_async
@@ -15,7 +16,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from . import geocoding, moderation, services, skills
+from . import geocoding, images, moderation, services, skills
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, PresetTag, Report,
                      Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
@@ -28,6 +29,9 @@ FAR = (LAT + 0.01, LNG)     # 約1.1km
 
 
 def make_user(name, loc=(LAT, LNG), skills_=(), **extra):
+    # 既定は「顔写真の審査済み」ユーザー(写真ファイルは使わないテストが多いのでパスだけ入れる)
+    extra.setdefault('avatar', 'avatars/test.jpg')
+    extra.setdefault('avatar_status', User.PhotoStatus.APPROVED)
     user = User.objects.create_user(name, email=f'{name}@example.com', password='pw-12345',
                                     latitude=loc[0] if loc else None, longitude=loc[1] if loc else None,
                                     location_updated_at=timezone.now() if loc else None, **extra)
@@ -122,7 +126,7 @@ class SkillTests(BaseTestCase):
         self.client.force_login(make_user('u'))
         self.assertTrue(Skill.objects.get(name='スマホ操作').is_official)  # 初期データ
         response = self.client.get(reverse('core:skill_search'), {'q': 'ｽﾏﾎ'})
-        self.assertEqual(response.json()['results'][0], {'name': 'スマホ操作', 'official': True})
+        self.assertEqual(response.json()['results'][0], {'name': 'スマホ操作', 'official': True, 'similar': False})
 
 
 class MatchingTests(BaseTestCase):
@@ -488,3 +492,210 @@ class WebSocketTests(TransactionTestCase):
         outsider = await sync_to_async(make_user)('outsider')
         self.assertFalse((await self._communicator(f'/ws/chat/{match.pk}/', outsider).connect())[0])
         self.assertFalse((await self._communicator('/ws/notifications/', AnonymousUser()).connect())[0])
+
+
+def jpeg_upload(name='face.jpg', color=(200, 150, 120), size=(1200, 900), exif=None):
+    """テスト用の画像(必要ならEXIFつき)。"""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+    buffer = BytesIO()
+    Image.new('RGB', size, color).save(buffer, format='JPEG', **({'exif': exif} if exif else {}))
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/jpeg')
+
+
+@override_settings(GEOCODER_ENABLED=False, MEDIA_ROOT=tempfile.mkdtemp(prefix='suki-test-media-'))
+class PhotoTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_photo_required_before_requesting_or_helping(self):
+        user = make_user('nophoto', avatar='', avatar_status=User.PhotoStatus.NONE)
+        hr = make_request(make_user('req'))
+        self.assertIn('顔写真の登録が必要', services.accept_block_reason(user))
+        self.assertIn('顔写真', services.post_block_reason(user))
+        with self.assertRaises(services.ServiceError):
+            services.accept_first_come(hr, user)
+        self.client.force_login(user)
+        self.assertRedirects(self.client.get(reverse('core:help_request_create')), reverse('core:profile'))
+
+    def test_profile_upload_strips_exif_and_waits_for_review(self):
+        from PIL import Image
+        user = make_user('uploader', avatar='', avatar_status=User.PhotoStatus.NONE)
+        self.client.force_login(user)
+        exif = Image.Exif()
+        exif[0x010F] = 'TestCamera'  # Make
+        response = self.client.post(reverse('core:profile_edit'), {
+            'motivation': '', 'bio': '', 'skill_names': '', 'photo': jpeg_upload(exif=exif.tobytes())})
+        self.assertRedirects(response, reverse('core:profile'))
+        user.refresh_from_db()
+        self.assertEqual(user.avatar_status, User.PhotoStatus.PENDING)
+        with user.avatar.open('rb') as f:
+            saved = Image.open(f)
+            self.assertEqual(len(saved.getexif()), 0)
+            self.assertLessEqual(max(saved.size), 800)
+        self.assertIn('審査中', services.accept_block_reason(user))
+
+        services.review_photo(user, approve=True)
+        self.assertEqual(services.accept_block_reason(user), '')
+        self.assertTrue(Notification.objects.filter(user=user, kind='photo').exists())
+
+    def test_profile_requires_photo_when_missing(self):
+        user = make_user('need', avatar='', avatar_status=User.PhotoStatus.NONE)
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:profile_edit'), {'motivation': 'x', 'bio': '', 'skill_names': ''})
+        self.assertContains(response, '顔写真は必須です')
+
+    def test_mosaic_until_matched(self):
+        requester = make_user('req', avatar='', avatar_status=User.PhotoStatus.NONE)
+        services.set_photo(requester, images.normalize_photo(jpeg_upload()))
+        services.review_photo(requester, approve=True)
+        helper, stranger = make_user('helper'), make_user('stranger')
+        url = reverse('core:user_photo', args=[requester.pk])
+
+        with requester.avatar.open('rb') as f:
+            original = f.read()
+        self.client.force_login(stranger)
+        mosaic = b''.join(self.client.get(url).streaming_content)
+        self.assertNotEqual(mosaic, original)
+
+        services.accept_first_come(make_request(requester), helper)
+        self.client.force_login(helper)
+        self.assertEqual(b''.join(self.client.get(url).streaming_content), original)
+
+    def test_unreviewed_photo_hidden_from_others(self):
+        user = make_user('pending', avatar='', avatar_status=User.PhotoStatus.NONE)
+        services.set_photo(user, images.normalize_photo(jpeg_upload()))
+        url = reverse('core:user_photo', args=[user.pk])
+        self.client.force_login(make_user('other'))
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.client.force_login(user)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_rejected_photo_explains_reason(self):
+        user = make_user('ng')
+        services.review_photo(user, approve=False, reason='顔が写っていません')
+        self.assertIn('顔が写っていません', services.photo_block_reason(user))
+
+
+class ListingAndMessageTests(BaseTestCase):
+    def test_recommended_requests_come_first(self):
+        requester = make_user('req')
+        plain = make_request(requester, loc=(LAT + 0.0005, LNG))
+        matched = make_request(requester, loc=(LAT + 0.003, LNG), skill_names=['見守り'])
+        other_skill = make_request(requester, loc=(LAT + 0.001, LNG), skill_names=['料理'])
+        self.client.force_login(make_user('helper', skills_=['見守り']))
+        context = self.client.get(reverse('core:help_request_list')).context
+        self.assertEqual(context['recommended'], [matched])
+        self.assertEqual(context['others'], [plain, other_skill])  # 登録外スキルでも近ければ表示
+
+    def test_listing_time_is_optional_and_long(self):
+        user = make_user('me')
+        self.client.force_login(user)
+        base = {'title': '荷物', 'mode': 'first_come', 'description': '重い', 'duration_minutes': 15,
+                'latitude': LAT, 'longitude': LNG, 'skill_names': ''}
+        self.client.post(reverse('core:help_request_create'), {**base, 'listing_minutes': ''})
+        self.client.post(reverse('core:help_request_create'), {**base, 'listing_minutes': 4320})
+        first, second = HelpRequest.objects.order_by('pk')
+        self.assertAlmostEqual((first.expires_at - first.created_at).total_seconds(), 180 * 60, delta=10)
+        self.assertAlmostEqual((second.expires_at - second.created_at).total_seconds(), 3 * 24 * 3600, delta=10)
+
+    def test_now_ignores_scheduled_time(self):
+        self.client.force_login(make_user('me'))
+        later = (timezone.localtime() + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M')
+        self.client.post(reverse('core:help_request_create'), {
+            'title': '荷物', 'mode': 'first_come', 'description': '重い', 'duration_minutes': 15, 'when': 'now',
+            'scheduled_for': later, 'latitude': LAT, 'longitude': LNG, 'skill_names': ''})
+        self.assertIsNone(HelpRequest.objects.get().scheduled_for)
+
+    def test_message_tab_is_blocked_without_match(self):
+        user = make_user('lonely')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(response, 'data-toast="現在はマッチングしていないため、メッセージ機能は使用できません。"')
+        self.assertRedirects(self.client.get(reverse('core:message_list')), reverse('core:help_request_list'))
+
+        match = services.accept_first_come(make_request(make_user('req')), user)
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(response, reverse('core:message_list'))
+        self.assertRedirects(self.client.get(reverse('core:message_list')), reverse('core:chat', args=[match.pk]))
+
+
+class SimilarityTests(BaseTestCase):
+    def test_metrics(self):
+        self.assertEqual(skills.jaccard('みまもり', 'みまもり'), 1.0)
+        self.assertGreater(skills.jaccard('みまもり', 'こどものみまもり'), 0.3)
+        self.assertAlmostEqual(skills.levenshtein_ratio('すまほ', 'すまほそうさ'), 0.5)
+        self.assertGreaterEqual(skills.similarity('見守り', 'みまもり', '子どもの見守り', 'こどものみまもり'), 0.8)
+
+    def test_search_by_reading_and_similar(self):
+        self.assertEqual([s.name for s in skills.search('みま')][:1], ['見守り'])
+        results = skills.search('子守り')
+        self.assertIn('見守り', [s.name for s in results if s.is_similar])
+
+
+@override_settings(GEOCODER_ENABLED=False, ACCOUNT_EMAIL_VERIFICATION='mandatory',
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class EmailCodeTests(TestCase):
+    def test_signup_sends_six_digit_code_from_suki_match(self):
+        import re
+        response = self.client.post(reverse('account_signup'), {
+            'email': 'code@example.com', 'username': 'coder',
+            'password1': 'complex-pass-99', 'password2': 'complex-pass-99'})
+        self.assertRedirects(response, reverse('account_email_verification_sent'), fetch_redirect_response=False)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertTrue(message.subject.startswith('[suki-match]'))
+        self.assertNotIn('127.0.0.1', message.subject + message.body)
+        self.assertNotIn('testserver', message.subject + message.body)
+        code = re.search(r'\b(\d{6})\b', message.body).group(1)
+
+        page = self.client.get(reverse('account_email_verification_sent'))
+        self.assertContains(page, 'data-resend-seconds')
+        self.client.post(reverse('account_email_verification_sent'), {'code': code})
+        from allauth.account.models import EmailAddress
+        self.assertTrue(EmailAddress.objects.get(email='code@example.com').verified)
+
+
+DB_STORAGES = {
+    'default': {'BACKEND': 'core.storage.DatabaseStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+
+
+@override_settings(GEOCODER_ENABLED=False, STORAGES=DB_STORAGES)
+class DatabaseStorageTests(TestCase):
+    """本番(Render)と同じく、顔写真をDBに保存する構成での動作。"""
+
+    def test_photo_flow_with_database_storage(self):
+        from .models import StoredFile
+        requester = make_user('req', avatar='', avatar_status=User.PhotoStatus.NONE)
+        services.set_photo(requester, images.normalize_photo(jpeg_upload()))
+        services.review_photo(requester, approve=True)
+        self.assertEqual(StoredFile.objects.count(), 2)  # 元写真とモザイク
+
+        url = reverse('core:user_photo', args=[requester.pk])
+        self.client.force_login(make_user('stranger'))
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+
+        old = requester.avatar.name
+        services.set_photo(requester, images.normalize_photo(jpeg_upload(color=(10, 20, 30))))
+        self.assertFalse(StoredFile.objects.filter(name=old).exists())  # 古い写真は消える
+
+
+class OperationsTests(BaseTestCase):
+    def test_healthz(self):
+        self.assertEqual(self.client.get(reverse('core:healthz')).content, b'ok')
+
+    @override_settings(TASKS_TOKEN='secret-token')
+    def test_run_tasks_requires_token(self):
+        make_request(make_user('req'), expires_at=timezone.now() - timedelta(minutes=1))
+        url = reverse('core:run_tasks')
+        self.assertEqual(self.client.post(url).status_code, 403)
+        self.assertEqual(self.client.post(url, HTTP_X_TASKS_TOKEN='wrong').status_code, 403)
+        response = self.client.post(url, HTTP_X_TASKS_TOKEN='secret-token')
+        self.assertEqual(response.json()['expired'], 1)
+
+    def test_run_tasks_disabled_without_token(self):
+        self.assertEqual(self.client.post(reverse('core:run_tasks'), HTTP_X_TASKS_TOKEN='').status_code, 403)

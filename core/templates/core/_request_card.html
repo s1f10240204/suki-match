@@ -1,0 +1,26 @@
+{% load suki %}
+<a href="{% url 'core:help_request_detail' hr.pk %}" class="card request-card{% if hr.recommended %} is-recommended{% endif %}">
+    <div class="card-top">
+        {% if hr.scheduled_for %}
+            <span class="time-chip">{{ hr.scheduled_for|date:"n/j(D) H:i" }}〜</span>
+        {% else %}
+            <span class="time-chip" data-countdown="{{ hr.expires_at|date:'c' }}">締切 {{ hr.expires_at|date:"n/j H:i" }}</span>
+        {% endif %}
+        {% if hr.recommended %}<span class="chip chip-recommend">おすすめ</span>{% endif %}
+        {% if hr.distance_text %}<span class="meta distance">{{ hr.distance_text }}</span>{% endif %}
+    </div>
+    <h3 class="card-title">{{ hr.title }}</h3>
+    {% if hr.description %}<p class="card-desc">{{ hr.description }}</p>{% endif %}
+    <div class="chips">
+        <span class="chip">{{ hr.duration_minutes }}分</span>
+        <span class="chip{% if hr.mode == 'approval' %} chip-approval{% endif %}">{% if hr.mode == 'approval' %}承認制{% else %}先着順{% endif %}</span>
+        {% for s in hr.required_skills.all %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}
+        {% for t in hr.preset_tags.all %}<span class="chip chip-tag">{{ t.label }}</span>{% endfor %}
+    </div>
+    <div class="card-foot">
+        {% avatar hr.requester 'xs' %}
+        <span>{{ hr.requester.username }}</span>
+        <span class="rank-badge">{{ hr.requester.rank }}</span>
+        {% if hr.area_label %}<span class="meta">{{ hr.area_label }}</span>{% endif %}
+    </div>
+</a>

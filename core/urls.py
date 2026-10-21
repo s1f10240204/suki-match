@@ -16,6 +16,8 @@ urlpatterns = [
     path('applications/<int:pk>/approve/', views.approve_application, name='approve_application'),
     path('applications/<int:pk>/withdraw/', views.withdraw_application, name='withdraw_application'),
     path('matches/<int:pk>/chat/', views.chat, name='chat'),
+    path('messages/', views.message_list, name='message_list'),
+    path('photos/<int:pk>/', views.user_photo, name='user_photo'),
     path('me/', views.profile, name='profile'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),
@@ -26,4 +28,6 @@ urlpatterns = [
     path('users/<str:username>/report/', views.report_user, name='report_user'),
     path('stats/', views.stats, name='stats'),
     path('api/skills/', views.skill_search, name='skill_search'),
+    path('healthz/', views.healthz, name='healthz'),
+    path('tasks/run/', views.run_tasks, name='run_tasks'),
 ]

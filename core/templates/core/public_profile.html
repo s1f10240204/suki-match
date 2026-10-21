@@ -1,11 +1,12 @@
 {% extends 'core/base.html' %}
+{% load suki %}
 
-{% block title %}{{ target.username }} - Suki-match{% endblock %}
+{% block title %}{{ target.username }} - suki-match{% endblock %}
 
 {% block content %}
 <section class="card profile-card">
     <div class="profile-top">
-        {% include 'core/_avatar.html' with u=target size='lg' %}
+        {% avatar target 'lg' %}
         <div>
             <h1 class="profile-name">{{ target.username }}</h1>
             <p><span class="rank-badge">{{ target.rank }} Lv.{{ target.level }}</span></p>

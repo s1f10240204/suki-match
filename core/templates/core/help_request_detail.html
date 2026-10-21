@@ -1,6 +1,8 @@
 {% extends 'core/base.html' %}
+{% load suki %}
 
-{% block title %}{{ help_request.title }} - Suki-match{% endblock %}
+{% block title %}{{ help_request.title }} - suki-match{% endblock %}
+{% block extra_head %}{% if show_exact %}{% include 'core/_maps.html' %}{% endif %}{% endblock %}
 
 {% block content %}
 <article class="card">
@@ -29,8 +31,9 @@
         {% if show_exact %}
             <p><strong>{{ help_request.address_detail|default:"詳しい場所の記載はありません" }}</strong></p>
             <p class="meta">{{ help_request.area_label }}</p>
+            <div class="map map-view" data-map-view data-lat="{{ help_request.latitude }}" data-lng="{{ help_request.longitude }}"></div>
             <a class="link" target="_blank" rel="noopener"
-               href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図アプリで開く</a>
+               href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">Googleマップアプリで開く</a>
         {% else %}
             <p>{{ help_request.area_label|default:"エリア未取得" }}{% if distance_text %}<span class="meta">(あなたから{{ distance_text }})</span>{% endif %}</p>
             <p class="meta">詳しい場所は、マッチングが成立した相手にだけ表示されます。</p>
@@ -38,7 +41,7 @@
     </section>
 
     <a href="{% url 'core:public_profile' help_request.requester.username %}" class="person">
-        {% include 'core/_avatar.html' with u=help_request.requester %}
+        {% avatar help_request.requester %}
         <div>
             <p class="person-name">{{ help_request.requester.username }} <span class="rank-badge">{{ help_request.requester.rank }} Lv.{{ help_request.requester.level }}</span></p>
             <p class="meta">依頼者{% if help_request.requester.area_label %} · {{ help_request.requester.area_label }}{% endif %}</p>
@@ -47,7 +50,7 @@
     </a>
     {% if match %}
         <a href="{% url 'core:public_profile' match.helper.username %}" class="person">
-            {% include 'core/_avatar.html' with u=match.helper %}
+            {% avatar match.helper %}
             <div>
                 <p class="person-name">{{ match.helper.username }} <span class="rank-badge">{{ match.helper.rank }} Lv.{{ match.helper.level }}</span></p>
                 <p class="meta">ヘルパー</p>
@@ -68,7 +71,7 @@
                 {% for app in applications %}
                     <div class="applicant">
                         <a href="{% url 'core:public_profile' app.applicant.username %}" class="person person-compact">
-                            {% include 'core/_avatar.html' with u=app.applicant size='sm' %}
+                            {% avatar app.applicant 'sm' %}
                             <div>
                                 <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>
                                 {% if app.message %}<p class="person-quote">{{ app.message }}</p>{% endif %}

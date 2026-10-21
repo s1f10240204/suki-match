@@ -1,17 +1,41 @@
 {% extends 'core/base.html' %}
+{% load suki %}
 
-{% block title %}通知 - Suki-match{% endblock %}
+{% block title %}通知 - suki-match{% endblock %}
 
 {% block content %}
 <div class="page-head"><h1>通知</h1></div>
-<section class="card">
-    {% for n in items %}
-        <a class="list-row notification{% if not n.is_read %} is-unread{% endif %}" href="{{ n.url|default:'#' }}">
-            <span>{{ n.text }}</span>
-            <span class="meta">{{ n.created_at|date:"n/j H:i" }}</span>
-        </a>
-    {% empty %}
-        <p class="meta">通知はまだありません。</p>
-    {% endfor %}
-</section>
+
+{% regroup items by local_date as days %}
+{% for day in days %}
+    <h2 class="list-heading">{% if day.grouper == today %}今日{% elif day.grouper == yesterday %}昨日{% else %}{{ day.grouper|date:"n月j日(D)" }}{% endif %}</h2>
+    <ul class="notice-list">
+        {% for n in day.list %}
+            <li>
+                <a class="notice-item kind-{{ n.kind }}{% if not n.is_read %} is-unread{% endif %}" href="{{ n.url|default:'#' }}">
+                    <span class="notice-icon" aria-hidden="true">
+                        {% if n.kind == 'nearby_request' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg>
+                        {% elif n.kind == 'message' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        {% elif n.kind == 'matched' or n.kind == 'completed' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>
+                        {% elif n.kind == 'applied' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M18 8v6M15 11h6"/></svg>
+                        {% elif n.kind == 'sanction' or n.kind == 'canceled' or n.kind == 'warning' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>
+                        {% elif n.kind == 'photo' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                        {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/></svg>{% endif %}
+                    </span>
+                    <span class="notice-body">
+                        <span class="notice-text">{{ n.text }}</span>
+                        <span class="notice-time">{{ n.created_at|ago }}</span>
+                    </span>
+                    {% if not n.is_read %}<span class="unread-dot" aria-label="未読"></span>{% endif %}
+                </a>
+            </li>
+        {% endfor %}
+    </ul>
+{% empty %}
+    <div class="empty-state">
+        <div class="empty-illust" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/></svg></div>
+        <p>通知はまだありません。</p>
+        <p class="meta">近くで依頼が出たり、マッチングが決まったりするとここに届きます。</p>
+    </div>
+{% endfor %}
 {% endblock %}

@@ -3,21 +3,58 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 
-from . import skills
+from . import services, skills
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting,
                      PresetTag, Report, Review, Sanction, Skill, User)
 
 
+PHOTO_REJECT_REASON = '顔がはっきり写った本人の写真を登録してください'
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('username', 'email', 'area_label', 'level', 'points', 'is_active')
+    list_display = ('username', 'photo_thumb', 'avatar_status', 'email', 'area_label', 'level', 'is_active')
+    list_filter = ('avatar_status',) + BaseUserAdmin.list_filter
+    readonly_fields = ('photo_preview',)
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Suki-match', {'fields': ('avatar', 'motivation', 'bio', 'skills', 'area_label',
+        ('顔写真の審査', {'fields': ('photo_preview', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at')}),
+        ('suki-match', {'fields': ('motivation', 'bio', 'skills', 'area_label',
                                    'latitude', 'longitude', 'location_updated_at', 'points', 'level')}),
     )
     filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)
+    actions = ['approve_photos', 'reject_photos']
+
+    def _img(self, obj, size):
+        if not obj.avatar:
+            return '-'
+        return format_html('<img src="{}?m=0" style="width:{}px;height:{}px;object-fit:cover;border-radius:8px">',
+                           reverse('core:user_photo', args=[obj.pk]), size, size)
+
+    @admin.display(description='写真')
+    def photo_thumb(self, obj):
+        return self._img(obj, 40)
+
+    @admin.display(description='写真')
+    def photo_preview(self, obj):
+        return self._img(obj, 240)
+
+    @admin.action(description='選択したユーザーの顔写真を承認する')
+    def approve_photos(self, request, queryset):
+        users = list(queryset.exclude(avatar=''))
+        for user in users:
+            services.review_photo(user, approve=True)
+        self.message_user(request, f'{len(users)}人の顔写真を承認しました。')
+
+    @admin.action(description='選択したユーザーの顔写真を差し戻す(再提出を依頼)')
+    def reject_photos(self, request, queryset):
+        users = list(queryset.exclude(avatar=''))
+        for user in users:
+            services.review_photo(user, approve=False, reason=PHOTO_REJECT_REASON)
+        self.message_user(request, f'{len(users)}人の顔写真を差し戻しました。')
 
 
 @admin.register(Skill)

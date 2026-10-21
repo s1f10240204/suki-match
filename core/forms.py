@@ -5,13 +5,18 @@ from django import forms
 from django.urls import reverse_lazy
 from django.utils import timezone
 
+from . import images
 from . import skills as skill_service
-from .models import ActivityBase, Application, HelpRequest, NotificationSetting, PresetTag, Report, User
+from .models import (DEFAULT_LISTING_MINUTES, ActivityBase, Application, HelpRequest, NotificationSetting, PresetTag,
+                     Report, User)
+from .services import set_photo
 
-LISTING_CHOICES = [(15, '15分'), (30, '30分'), (60, '1時間'), (120, '2時間'), (180, '3時間')]
+LISTING_CHOICES = [('', 'おまかせ(3時間)'), (30, '30分'), (60, '1時間'), (180, '3時間'), (360, '6時間'),
+                   (720, '12時間'), (1440, '1日'), (4320, '3日'), (10080, '7日')]
+DURATION_CHOICES = [(15, '15分'), (30, '30分'), (45, '45分'), (60, '1時間')]
 SCHEDULE_MIN_LEAD = timedelta(minutes=30)
 SCHEDULE_MAX_LEAD = timedelta(days=7)
-LOCATION_REQUIRED = '場所を指定してください(「現在地を取得」または地図をタップ)。'
+LOCATION_REQUIRED = '場所を指定してください(住所で検索、現在地を取得、または地図をタップ)。'
 
 
 class SkillNamesField(forms.CharField):
@@ -38,13 +43,18 @@ def validate_skill_limit(names, user):
 
 # 緯度経度は hidden。画面の「現在地を取得」ボタンと地図で入力する
 class ProfileForm(forms.ModelForm):
+    photo = forms.ImageField(
+        label='顔写真', required=False,
+        help_text='顔がはっきり写った本人の写真を登録してください。運営の審査後に依頼・お手伝いができます。'
+                  'マッチングが成立するまで、他の人にはモザイクがかかった状態で表示されます。',
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}))
     skill_names = SkillNamesField(label='できること', help_text='候補にないスキルは新しく追加できます')
     latitude = forms.FloatField(required=False, widget=forms.HiddenInput)
     longitude = forms.FloatField(required=False, widget=forms.HiddenInput)
 
     class Meta:
         model = User
-        fields = ('avatar', 'motivation', 'bio')
+        fields = ('motivation', 'bio')
         widgets = {'bio': forms.Textarea(attrs={'rows': 3})}
 
     def __init__(self, *args, **kwargs):
@@ -53,11 +63,24 @@ class ProfileForm(forms.ModelForm):
         self.fields['latitude'].initial = self.instance.latitude
         self.fields['longitude'].initial = self.instance.longitude
 
+    def clean_photo(self):
+        uploaded = self.cleaned_data.get('photo')
+        if not uploaded:
+            if not self.instance.avatar:
+                raise forms.ValidationError('顔写真は必須です。')
+            return None
+        try:
+            return images.normalize_photo(uploaded)
+        except images.InvalidImage as e:
+            raise forms.ValidationError(str(e))
+
     def clean_skill_names(self):
         return validate_skill_limit(self.cleaned_data['skill_names'], self.instance)
 
     def save(self, commit=True):
         user = super().save(commit)
+        if self.cleaned_data.get('photo'):
+            set_photo(user, self.cleaned_data['photo'])
         user.skills.set(skill_service.resolve_names(self.cleaned_data['skill_names'], user))
         return user
 
@@ -70,8 +93,11 @@ class AccountForm(forms.ModelForm):
 
 
 class HelpRequestForm(forms.ModelForm):
-    listing_minutes = forms.TypedChoiceField(label='掲載時間', choices=LISTING_CHOICES, coerce=int, initial=60,
-                                             help_text='この時間を過ぎると自動で締め切ります')
+    duration_minutes = forms.TypedChoiceField(label='かかる時間', choices=DURATION_CHOICES, coerce=int, initial=15,
+                                              widget=forms.RadioSelect)
+    listing_minutes = forms.TypedChoiceField(label='募集する期間', choices=LISTING_CHOICES, coerce=int, required=False,
+                                             empty_value=None,
+                                             help_text='この時間を過ぎると自動で締め切ります(指定しなければ3時間)')
     skill_names = SkillNamesField(label='必要なスキル',
                                   help_text='指定すると、そのスキルを持つ近くの人にだけ通知します(空欄なら誰でも)')
 
@@ -96,14 +122,11 @@ class HelpRequestForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
         self.fields['preset_tags'].queryset = PresetTag.objects.all()
-        self.fields['scheduled_for'].label = '手伝ってほしい日時(予約掲載)'
-        self.fields['scheduled_for'].help_text = '今すぐではなく後日の依頼のときだけ指定します'
-
-    def clean_duration_minutes(self):
-        minutes = self.cleaned_data['duration_minutes']
-        if not 5 <= minutes <= 60:
-            raise forms.ValidationError('5〜60分の範囲で指定してください。')
-        return minutes
+        self.fields['scheduled_for'].label = '日時'
+        self.fields['scheduled_for'].help_text = '7日先まで指定できます'
+        self.fields['title'].widget.attrs['placeholder'] = '例: 保育園のお迎え後、15分だけ子どもを見ていてほしい'
+        self.fields['address_detail'].widget.attrs['placeholder'] = '例: 〇〇マンション3階 / 公園の入口'
+        self.fields['mode'].label = '決め方'
 
     def clean_scheduled_for(self):
         when = self.cleaned_data.get('scheduled_for')
@@ -117,6 +140,9 @@ class HelpRequestForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        if self.data.get('when') == 'now':  # 「今すぐ」を選んだら日時指定は無視する
+            cleaned['scheduled_for'] = None
+            self.errors.pop('scheduled_for', None)
         if not cleaned.get('description') and not cleaned.get('preset_tags'):
             self.add_error('description', '詳細を書くか、定型タグを1つ以上選んでください。')
         return cleaned
@@ -128,8 +154,8 @@ class HelpRequestForm(forms.ModelForm):
         """依頼者・掲載期限・スキルを設定して保存する。"""
         help_request = super().save(commit=False)
         help_request.requester = self.user
-        help_request.expires_at = (help_request.scheduled_for
-                                   or timezone.now() + timedelta(minutes=self.cleaned_data['listing_minutes']))
+        listing = self.cleaned_data.get('listing_minutes') or DEFAULT_LISTING_MINUTES
+        help_request.expires_at = help_request.scheduled_for or timezone.now() + timedelta(minutes=listing)
         help_request.save()
         self.save_m2m()
         help_request.required_skills.set(skill_service.resolve_names(self.cleaned_data['skill_names'], self.user))

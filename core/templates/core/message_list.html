@@ -1,0 +1,21 @@
+{% extends 'core/base.html' %}
+{% load suki %}
+
+{% block title %}メッセージ - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>メッセージ</h1></div>
+<section class="card">
+    {% for match in chats %}
+        <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
+            {% avatar match.other 'md' %}
+            <span class="chat-row-body">
+                <span class="person-name">{{ match.other.username }}</span>
+                <span class="meta">{{ match.help_request.title }}</span>
+                <span class="chat-row-last">{% if match.last_message %}{{ match.last_message.body|truncatechars:40 }}{% else %}まだメッセージはありません{% endif %}</span>
+            </span>
+            <span class="status status-{{ match.status }}">{{ match.get_status_display }}</span>
+        </a>
+    {% endfor %}
+</section>
+{% endblock %}

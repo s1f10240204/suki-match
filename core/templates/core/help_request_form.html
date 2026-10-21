@@ -1,36 +1,74 @@
 {% extends 'core/base.html' %}
 
-{% block title %}依頼する - Suki-match{% endblock %}
-{% block extra_head %}{% include 'core/_leaflet.html' %}{% endblock %}
+{% block title %}依頼する - suki-match{% endblock %}
+{% block extra_head %}{% include 'core/_maps.html' %}{% endblock %}
 
 {% block content %}
-<div class="page-head"><h1>お手伝いを依頼する</h1></div>
-<form method="post" class="card form" novalidate>
+<form method="post" class="stepper form" data-stepper novalidate>
     {% csrf_token %}
+    <div class="stepper-head">
+        <h1>お手伝いを依頼する</h1>
+        <ol class="stepper-progress" aria-label="入力の進み具合">
+            <li data-step-dot>内容</li><li data-step-dot>日時</li><li data-step-dot>場所</li><li data-step-dot>確認</li>
+        </ol>
+    </div>
     {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
 
-    {% include 'core/_field.html' with field=form.title %}
-    {% include 'core/_field.html' with field=form.mode %}
+    <section class="card step" data-step data-title="何を手伝ってほしいですか?">
+        <h2 class="step-title">何を手伝ってほしいですか?</h2>
+        {% include 'core/_field.html' with field=form.title %}
+        {% include 'core/_field.html' with field=form.preset_tags %}
+        <details class="more"{% if form.description.value %} open{% endif %}>
+            <summary>詳しく書く(任意)</summary>
+            {% include 'core/_field.html' with field=form.description %}
+        </details>
+        {% for error in form.description.errors %}<p class="error">{{ error }}</p>{% endfor %}
+    </section>
 
-    <h2 class="section-title">内容</h2>
-    {% include 'core/_field.html' with field=form.preset_tags %}
-    {% include 'core/_field.html' with field=form.description %}
-    {% include 'core/_field.html' with field=form.skill_names %}
-
-    <h2 class="section-title">時間</h2>
-    <div class="grid-2">
+    <section class="card step" data-step>
+        <h2 class="step-title">いつ手伝ってほしいですか?</h2>
+        <div class="field">
+            <span class="field-label">タイミング</span>
+            <div class="chips-choice"><div>
+                <label><input type="radio" name="when" value="now" data-when{% if not form.scheduled_for.value %} checked{% endif %}> 今すぐ</label>
+                <label><input type="radio" name="when" value="later" data-when{% if form.scheduled_for.value %} checked{% endif %}> 日時を指定</label>
+            </div></div>
+        </div>
+        <div data-when-later>{% include 'core/_field.html' with field=form.scheduled_for %}</div>
         {% include 'core/_field.html' with field=form.duration_minutes %}
-        {% include 'core/_field.html' with field=form.listing_minutes %}
+        <details class="more" data-when-now{% if form.listing_minutes.errors %} open{% endif %}>
+            <summary>募集する期間を変える(任意・おまかせなら3時間)</summary>
+            {% include 'core/_field.html' with field=form.listing_minutes %}
+        </details>
+    </section>
+
+    <section class="card step" data-step>
+        <h2 class="step-title">どこで手伝ってほしいですか?</h2>
+        {{ form.latitude }}{{ form.longitude }}
+        {% include 'core/_location_picker.html' with lat_id=form.latitude.auto_id lng_id=form.longitude.auto_id label='待ち合わせ場所' %}
+        {% for error in form.latitude.errors %}<p class="error" data-location-error>{{ error }}</p>{% endfor %}
+        <p class="help">一覧では「北区赤羽」のような大まかなエリアだけが表示され、正確な場所はマッチングした相手にだけ伝わります。</p>
+        {% include 'core/_field.html' with field=form.address_detail %}
+    </section>
+
+    <section class="card step" data-step>
+        <h2 class="step-title">内容を確認して投稿</h2>
+        <dl class="summary" data-summary>
+            <div><dt>内容</dt><dd data-summary-title>-</dd></div>
+            <div><dt>日時</dt><dd data-summary-when>-</dd></div>
+            <div><dt>場所</dt><dd data-summary-place>-</dd></div>
+        </dl>
+        {% include 'core/_field.html' with field=form.mode %}
+        <details class="more"{% if form.skill_names.value %} open{% endif %}>
+            <summary>スキルで絞り込む(任意)</summary>
+            {% include 'core/_field.html' with field=form.skill_names %}
+        </details>
+    </section>
+
+    <div class="stepper-nav">
+        <button type="button" class="btn btn-ghost" data-step-back>戻る</button>
+        <button type="button" class="btn btn-primary" data-step-next>次へ</button>
+        <button type="submit" class="btn btn-primary" data-step-submit>投稿して近くの人に知らせる</button>
     </div>
-    {% include 'core/_field.html' with field=form.scheduled_for %}
-
-    <h2 class="section-title">場所</h2>
-    {{ form.latitude }}{{ form.longitude }}
-    {% include 'core/_location_picker.html' with lat_id=form.latitude.auto_id lng_id=form.longitude.auto_id label='待ち合わせ場所' %}
-    {% for error in form.latitude.errors %}<p class="error">{{ error }}</p>{% endfor %}
-    <p class="help">一覧には「北区赤羽」のような大まかなエリアだけが表示されます。</p>
-    {% include 'core/_field.html' with field=form.address_detail %}
-
-    <button type="submit" class="btn btn-primary btn-block">投稿して近くの人に知らせる</button>
 </form>
 {% endblock %}

@@ -1,0 +1,9 @@
+{% autoescape off %}{{ site_name|default:"suki-match" }} をご利用いただきありがとうございます。
+
+{% block content %}{% endblock content %}
+
+――――――――――――――
+{{ site_name|default:"suki-match" }}
+近所の「助けたい」と「助けてほしい」を、15分のスキマ時間でつなぐ
+※このメールは送信専用です。お心当たりのない場合は破棄してください。
+{% endautoescape %}

@@ -1,0 +1,4 @@
+{% if user.avatar_status == 'approved' %}<span class="photo-status is-ok">顔写真 承認済み</span>
+{% elif user.avatar_status == 'pending' %}<span class="photo-status is-wait">顔写真 審査中</span>
+{% elif user.avatar_status == 'rejected' %}<span class="photo-status is-ng">顔写真 再提出が必要{% if user.avatar_reject_reason %}({{ user.avatar_reject_reason }}){% endif %}</span>
+{% else %}<a href="{% url 'core:profile_edit' %}" class="photo-status is-ng">顔写真が未登録です</a>{% endif %}

@@ -1,12 +1,17 @@
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg
-from django.http import Http404, JsonResponse
+from django.conf import settings
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import services, skills
+from . import images, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
@@ -52,13 +57,18 @@ def help_request_list(request):
             hr.within_radius = exact <= services.RADIUS_METERS
             hr.distance_text = services.distance_label(public)
             hr.skill_ok = hr.requester_id != user.pk and services.skill_matches(user, hr)
-            hr.sort_key = public
+            # 登録スキルと一致する(スキル指定のある)依頼は「おすすめ」として上に出す
+            hr.recommended = hr.skill_ok and bool(hr.required_skills.all())
+            hr.sort_key = (not hr.recommended, public)
         if not show_all:
             help_requests = [hr for hr in help_requests if hr.within_radius]
         help_requests.sort(key=lambda hr: hr.sort_key)
+    recommended = [hr for hr in help_requests if getattr(hr, 'recommended', False)]
+    others = [hr for hr in help_requests if not getattr(hr, 'recommended', False)]
     return render(request, 'core/help_request_list.html', {
-        'help_requests': help_requests, 'located': bool(points), 'show_all': show_all,
-        'tab': tab, 'radius': services.RADIUS_METERS})
+        'help_requests': help_requests, 'recommended': recommended, 'others': others,
+        'located': bool(points), 'show_all': show_all, 'tab': tab, 'radius': services.RADIUS_METERS,
+        'photo_block_reason': services.photo_block_reason(user) if user.is_authenticated else ''})
 
 
 @login_required
@@ -216,6 +226,20 @@ def chat(request, pk):
     })
 
 
+@login_required
+def message_list(request):
+    chats = services.open_chats(request.user)
+    if not chats:
+        messages.info(request, '現在はマッチングしていないため、メッセージ機能は使用できません。')
+        return redirect('core:help_request_list')
+    if len(chats) == 1:
+        return redirect('core:chat', pk=chats[0].pk)
+    for match in chats:
+        match.other = match.other_user(request.user)
+        match.last_message = match.messages.exclude(is_hidden=True).order_by('-created_at').first()
+    return render(request, 'core/message_list.html', {'chats': chats})
+
+
 # ---------- マイページ・アカウント ----------
 
 @login_required
@@ -272,8 +296,12 @@ def account_settings(request):
 @login_required
 def notifications(request):
     items = list(request.user.notifications.all()[:50])
+    for n in items:
+        n.local_date = timezone.localtime(n.created_at).date()
     request.user.notifications.filter(is_read=False).update(is_read=True)
-    return render(request, 'core/notifications.html', {'items': items})
+    today = timezone.localdate()
+    return render(request, 'core/notifications.html', {
+        'items': items, 'today': today, 'yesterday': today - timedelta(days=1)})
 
 
 @login_required
@@ -297,6 +325,22 @@ def delete_base(request, pk):
     get_object_or_404(request.user.bases, pk=pk).delete()
     messages.info(request, '活動拠点を削除しました。')
     return redirect('core:profile')
+
+
+# ---------- 顔写真 ----------
+
+def user_photo(request, pk):
+    """顔写真。マッチング成立前の相手にはモザイク版を返す。審査前の写真は本人と運営にだけ見せる。"""
+    target = get_object_or_404(User, pk=pk, is_active=True)
+    if not target.avatar:
+        raise Http404
+    is_self_or_staff = request.user.is_authenticated and (request.user.pk == target.pk or request.user.is_staff)
+    if not target.photo_approved and not is_self_or_staff:
+        raise Http404
+    name = target.avatar.name if services.photo_revealed(request.user, target) else images.ensure_mosaic(target.avatar.name)
+    response = FileResponse(target.avatar.storage.open(name, 'rb'), content_type='image/jpeg')
+    response['Cache-Control'] = 'private, max-age=60'
+    return response
 
 
 # ---------- 公開プロフィール・通報 ----------
@@ -349,4 +393,22 @@ def stats(request):
 @login_required
 def skill_search(request):
     results = skills.search(request.GET.get('q', ''))
-    return JsonResponse({'results': [{'name': s.name, 'official': s.is_official} for s in results]})
+    return JsonResponse({'results': [{'name': s.name, 'official': s.is_official, 'similar': s.is_similar}
+                                     for s in results]})
+
+
+# ---------- 運用 ----------
+
+def healthz(request):
+    """ホスティング(Render)の死活確認用。"""
+    return HttpResponse('ok', content_type='text/plain')
+
+
+@csrf_exempt
+@require_POST
+def run_tasks(request):
+    """期限切れの締め切りとメールのまとめ送信。GitHub Actions などから合言葉つきで定期的に呼ぶ。"""
+    token = request.headers.get('X-Tasks-Token', '')
+    if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
+        return HttpResponseForbidden('forbidden')
+    return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests()})

@@ -1,0 +1,12 @@
+{% comment %}地図ライブラリの読み込み。GOOGLE_MAPS_API_KEY があれば Google Maps、なければ OpenStreetMap(Leaflet)で代替{% endcomment %}
+{% if GOOGLE_MAPS_API_KEY %}
+<script>
+    window.SUKI_MAPS = { provider: 'google', mapId: '{{ GOOGLE_MAPS_MAP_ID|escapejs }}' };
+    window.sukiMapsReady = function () { window.SUKI_MAPS.ready = true; document.dispatchEvent(new Event('suki:maps-ready')); };
+</script>
+<script async src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY|urlencode }}&loading=async&callback=sukiMapsReady&libraries=marker&language=ja&region=JP"></script>
+{% else %}
+<script>window.SUKI_MAPS = { provider: 'leaflet' };</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+{% endif %}

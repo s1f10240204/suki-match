@@ -14,7 +14,7 @@ from django.db.models.functions import ExtractHour
 from django.urls import reverse
 from django.utils import timezone
 
-from . import moderation
+from . import images, moderation
 from .geocoding import area_label_for
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification,
                      NotificationSetting, Report, Review, Sanction, User)
@@ -128,8 +128,24 @@ def is_suspicious(user):
     return matches.filter(status=Match.Status.CANCELED).count() / total > ANOMALY_CANCEL_RATE
 
 
+def photo_block_reason(user):
+    """顔写真の審査が済んでいないと、依頼も応募もできない。"""
+    status = user.avatar_status if user.avatar else User.PhotoStatus.NONE
+    if status == User.PhotoStatus.APPROVED:
+        return ''
+    if status == User.PhotoStatus.PENDING:
+        return '顔写真の審査中です。審査が終わると依頼・お手伝いができるようになります。'
+    if status == User.PhotoStatus.REJECTED:
+        reason = f'(理由: {user.avatar_reject_reason})' if user.avatar_reject_reason else ''
+        return f'顔写真が承認されませんでした{reason}。別の写真を登録してください。'
+    return '依頼・お手伝いには顔写真の登録が必要です。プロフィールから登録してください。'
+
+
 def accept_block_reason(user):
     """お手伝いを受けられない理由。受けられるなら空文字。"""
+    photo = photo_block_reason(user)
+    if photo:
+        return photo
     sanction = strongest_sanction(user)
     if sanction is not None:
         return f'{_until(sanction)}「{sanction.get_level_display()}」中のため、お手伝いを受けられません。'
@@ -139,10 +155,50 @@ def accept_block_reason(user):
 
 
 def post_block_reason(user):
+    photo = photo_block_reason(user)
+    if photo:
+        return photo
     sanction = strongest_sanction(user)
     if sanction is not None and sanction.level in (Sanction.Level.NO_ACTIVITY, Sanction.Level.BANNED):
         return f'{_until(sanction)}「{sanction.get_level_display()}」中のため、依頼を投稿できません。'
     return ''
+
+
+# ---------- 顔写真 ----------
+
+def set_photo(user, photo):
+    """images.normalize_photo 済みの顔写真を保存して審査待ちにする。"""
+    old = user.avatar.name if user.avatar else ''
+    user.avatar.save(photo.name, photo, save=False)
+    user.avatar_status, user.avatar_reject_reason, user.avatar_reviewed_at = User.PhotoStatus.PENDING, '', None
+    user.save(update_fields=['avatar', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at'])
+    if old:
+        images.delete_photo(old)
+
+
+def review_photo(user, approve, reason=''):
+    user.avatar_status = User.PhotoStatus.APPROVED if approve else User.PhotoStatus.REJECTED
+    user.avatar_reject_reason = '' if approve else reason[:200]
+    user.avatar_reviewed_at = timezone.now()
+    user.save(update_fields=['avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at'])
+    if approve:
+        images.ensure_mosaic(user.avatar.name)
+        notify(user, 'photo', '顔写真が承認されました。依頼・お手伝いができるようになりました', reverse('core:profile'))
+    else:
+        notify(user, 'photo', '顔写真が承認されませんでした。プロフィールから別の写真を登録してください',
+               reverse('core:profile_edit'))
+
+
+def photo_revealed(viewer, target):
+    """モザイクなしで見せてよいか: 本人・運営、またはマッチング成立済みの相手。"""
+    if not viewer.is_authenticated:
+        return False
+    if viewer.pk == target.pk or viewer.is_staff:
+        return True
+    active = [Match.Status.IN_PROGRESS, Match.Status.DONE]
+    return Match.objects.filter(status__in=active).filter(
+        Q(helper=viewer, help_request__requester=target) | Q(helper=target, help_request__requester=viewer)
+    ).exists()
 
 
 # ---------- 通知 ----------
@@ -198,7 +254,8 @@ def nearby_helpers(help_request):
             candidate_ids.add(base.user_id)
     candidate_ids.discard(help_request.requester_id)
 
-    return [user for user in User.objects.filter(pk__in=candidate_ids, is_active=True).order_by('pk')
+    return [user for user in User.objects.filter(pk__in=candidate_ids, is_active=True,
+                                                 avatar_status=User.PhotoStatus.APPROVED).order_by('pk')
             if skill_matches(user, help_request) and not accept_block_reason(user)]
 
 
@@ -408,6 +465,14 @@ def chat_is_open(match):
         return True
     return (match.status == Match.Status.DONE and match.completed_at is not None
             and match.completed_at > timezone.now() - timedelta(days=CHAT_OPEN_DAYS_AFTER_DONE))
+
+
+def open_chats(user):
+    """メッセージできるマッチング(進行中、または完了から3日以内)。"""
+    since = timezone.now() - timedelta(days=CHAT_OPEN_DAYS_AFTER_DONE)
+    return list(Match.objects.filter(Q(helper=user) | Q(help_request__requester=user))
+                .filter(Q(status=Match.Status.IN_PROGRESS) | Q(status=Match.Status.DONE, completed_at__gt=since))
+                .select_related('help_request__requester', 'helper').order_by('-created_at'))
 
 
 def message_payload(message):

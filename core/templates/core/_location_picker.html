@@ -1,9 +1,14 @@
-{% comment %}場所の入力: 現在地ボタン + 地図タップ。lat_id / lng_id に hidden input の id を渡す{% endcomment %}
+{% comment %}場所の入力: 住所検索 + 現在地 + 地図タップ/ピンのドラッグ。lat_id / lng_id に hidden input の id を渡す{% endcomment %}
 <div class="location-picker" data-location-picker data-lat-input="{{ lat_id }}" data-lng-input="{{ lng_id }}">
-    <div class="location-head">
-        <span class="field-label">{{ label|default:'場所' }}</span>
-        <button type="button" class="btn btn-outline btn-sm" data-geo-button>現在地を取得</button>
+    <span class="field-label">{{ label|default:'場所' }}</span>
+    <div class="address-search">
+        <input type="search" placeholder="住所・駅名・施設名で検索" aria-label="住所で検索" data-address-input enterkeyhint="search">
+        <button type="button" class="btn btn-primary btn-sm" data-address-button>検索</button>
     </div>
-    <p class="geo-status" data-geo-status>{% if note %}{{ note }}{% else %}現在地を取得するか、地図をタップして指定してください。{% endif %}</p>
+    <button type="button" class="btn-text geo-button" data-geo-button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>
+        現在地を使う
+    </button>
+    <p class="geo-status" data-geo-status role="status">{% if note %}{{ note }}{% else %}住所で検索するか、現在地を使うか、地図をタップしてピンを置いてください。{% endif %}</p>
     <div class="map" data-map></div>
 </div>

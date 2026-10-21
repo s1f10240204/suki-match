@@ -1,12 +1,13 @@
 {% extends 'core/base.html' %}
+{% load suki %}
 
-{% block title %}{{ other.username }}さんとのチャット - Suki-match{% endblock %}
+{% block title %}{{ other.username }}さんとのチャット - suki-match{% endblock %}
 {% block main_class %}chat-page{% endblock %}
 
 {% block content %}
 <div class="chat-head card">
     <a href="{% url 'core:public_profile' other.username %}" class="person person-compact">
-        {% include 'core/_avatar.html' with u=other size='sm' %}
+        {% avatar other 'sm' %}
         <p class="person-name">{{ other.username }} <span class="rank-badge">{{ other.rank }}</span></p>
     </a>
     <p class="meta chat-place"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a>({{ match.get_status_display }})</p>

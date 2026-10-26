@@ -3,6 +3,8 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.http import HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -13,6 +15,28 @@ from .models import (ActivityBase, Application, HelpRequest, Match, Message, Not
 
 
 PHOTO_REJECT_REASON = '顔がはっきり写った本人の写真を登録してください'
+
+
+class PasswordConfirmMixin:
+    """間違って押すと危ないアクションに、パスワード再入力つきの確認画面を挟む共通処理。"""
+
+    def password_confirmed_action(self, request, queryset, *, action_name, title, warning, execute):
+        if request.POST.get('confirm_execute'):
+            if not request.user.check_password(request.POST.get('confirm_password', '')):
+                self.message_user(request, 'パスワードが違います。実行していません。', messages.ERROR)
+            else:
+                execute()
+            return HttpResponseRedirect(request.path)
+        opts = self.model._meta
+        context = {
+            **self.admin_site.each_context(request),
+            'title': title,
+            'warning': warning,
+            'objects': list(queryset),
+            'action_name': action_name,
+            'changelist_url': reverse(f'admin:{opts.app_label}_{opts.model_name}_changelist'),
+        }
+        return TemplateResponse(request, 'admin/confirm_with_password.html', context)
 
 
 @admin.register(User)
@@ -88,7 +112,7 @@ class MatchAdmin(admin.ModelAdmin):
 
 
 @admin.register(Sanction)
-class SanctionAdmin(admin.ModelAdmin):
+class SanctionAdmin(PasswordConfirmMixin, admin.ModelAdmin):
     list_display = ('user', 'level', 'reason', 'source', 'starts_at', 'ends_at')
     list_filter = ('level', 'source')
     search_fields = ('user__username', 'reason')
@@ -96,7 +120,11 @@ class SanctionAdmin(admin.ModelAdmin):
 
     @admin.action(description='選択したペナルティを今すぐ解除する')
     def end_now(self, request, queryset):
-        queryset.update(ends_at=timezone.now())
+        return self.password_confirmed_action(
+            request, queryset, action_name='end_now',
+            title='ペナルティを今すぐ解除しますか？',
+            warning='選択したペナルティが直ちに解除され、対象ユーザーが再び活動できるようになります。',
+            execute=lambda: queryset.update(ends_at=timezone.now()))
 
 
 @admin.register(Message)
@@ -126,7 +154,7 @@ class MessageAdmin(admin.ModelAdmin):
 
 
 @admin.register(Report)
-class ReportAdmin(admin.ModelAdmin):
+class ReportAdmin(PasswordConfirmMixin, admin.ModelAdmin):
     list_display = ('target_user', 'category', 'reporter', 'status', 'created_at')
     list_filter = ('status', 'category')
     list_editable = ('status',)
@@ -143,11 +171,19 @@ class ReportAdmin(admin.ModelAdmin):
 
     @admin.action(description='対象ユーザーを7日間「依頼・受付ともに停止」にする')
     def suspend_7_days(self, request, queryset):
-        self._sanction(request, queryset, Sanction.Level.NO_ACTIVITY, 7)
+        return self.password_confirmed_action(
+            request, queryset, action_name='suspend_7_days',
+            title='対象ユーザーを7日間停止しますか？',
+            warning='選択した通報の対象ユーザーが、7日間「依頼・受付ともに停止」になります。通報は「対応済み」になります。',
+            execute=lambda: self._sanction(request, queryset, Sanction.Level.NO_ACTIVITY, 7))
 
     @admin.action(description='対象ユーザーを利用停止(BAN)にする')
     def ban(self, request, queryset):
-        self._sanction(request, queryset, Sanction.Level.BANNED, None)
+        return self.password_confirmed_action(
+            request, queryset, action_name='ban',
+            title='対象ユーザーを利用停止(BAN)にしますか？',
+            warning='選択した通報の対象ユーザーが利用停止(BAN)になります。通報は「対応済み」になります。',
+            execute=lambda: self._sanction(request, queryset, Sanction.Level.BANNED, None))
 
 
 admin.site.register(Review)

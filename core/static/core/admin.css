@@ -38,22 +38,6 @@ body {
     letter-spacing: 0.02em;
 }
 
-.manage-dashboard-link {
-    display: inline-block;
-    margin-left: 18px;
-    padding: 6px 14px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.18);
-    color: #fff !important;
-    font-weight: 700;
-    font-size: 12.5px;
-    vertical-align: middle;
-}
-
-.manage-dashboard-link:hover {
-    background: rgba(255, 255, 255, 0.32);
-}
-
 .module,
 #changelist .actions,
 .paginator,
@@ -101,4 +85,66 @@ select {
     --link-fg: #a9d3ba;
     --header-bg: #2c5741;
     --breadcrumbs-bg: #244a36;
+}
+
+/* 危険な操作のパスワード確認画面 */
+.confirm-danger {
+    background: var(--body-bg, #fff);
+    border: 1px solid #e5ded2;
+    border-left: 6px solid #ba2121;
+    border-radius: 14px;
+    padding: 22px 26px;
+    max-width: 640px;
+}
+
+.confirm-warning {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 14px;
+}
+
+.confirm-target-label {
+    font-weight: 700;
+    margin: 0 0 6px;
+}
+
+.confirm-targets {
+    margin: 0 0 18px;
+    padding-left: 20px;
+}
+
+.confirm-label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.confirm-input {
+    width: 100%;
+    max-width: 340px;
+    padding: 10px 12px;
+    font-size: 16px;
+    border-radius: 10px;
+}
+
+.confirm-buttons {
+    margin-top: 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.confirm-danger-btn {
+    background: #ba2121;
+    color: #fff;
+    border: none;
+    padding: 11px 22px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-family: var(--font-family-primary);
+    cursor: pointer;
+}
+
+.confirm-danger-btn:hover {
+    background: #971b1b;
 }

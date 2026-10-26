@@ -14,7 +14,7 @@ from django.db.models.functions import ExtractHour
 from django.urls import reverse
 from django.utils import timezone
 
-from . import images, moderation
+from . import images, line_api, moderation
 from .geocoding import area_label_for
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification,
                      NotificationSetting, Report, Review, Sanction, User)
@@ -213,6 +213,7 @@ def notify(user, kind, text, url=''):
     """通知履歴に残し、接続中ならWebSocketでも届ける。メールは定期処理でまとめて送る。"""
     notification = Notification.objects.create(user=user, kind=kind, text=text[:200], url=url)
     push(f'user_{user.pk}', {'type': 'notify', 'kind': kind, 'message': notification.text, 'url': url})
+    line_api.maybe_notify(user, kind, notification.text, url)
     return notification
 
 

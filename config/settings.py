@@ -39,6 +39,12 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 60 * 60 * 24
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+# LINE連携(ログイン用チャネル / 通知用Messaging APIチャネル)。未設定なら機能ごと無効
+LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID', '')
+LINE_LOGIN_CHANNEL_SECRET = os.environ.get('LINE_LOGIN_CHANNEL_SECRET', '')
+LINE_MESSAGING_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_MESSAGING_CHANNEL_ACCESS_TOKEN', '')
+LINE_MESSAGING_CHANNEL_SECRET = os.environ.get('LINE_MESSAGING_CHANNEL_SECRET', '')
+LINE_OFFICIAL_ACCOUNT_ID = os.environ.get('LINE_OFFICIAL_ACCOUNT_ID', '')  # 公式アカウントのベーシックID(例: @123abcde)
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 
 INSTALLED_APPS = [
@@ -59,6 +65,9 @@ INSTALLED_APPS = [
 # Googleの認証情報が設定されているときだけGoogleログインを有効化する
 if GOOGLE_CLIENT_ID:
     INSTALLED_APPS.append('allauth.socialaccount.providers.google')
+# LINEログインも認証情報があるときだけ有効化する
+if LINE_LOGIN_CHANNEL_ID:
+    INSTALLED_APPS.append('allauth.socialaccount.providers.line')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -208,6 +217,10 @@ SOCIALACCOUNT_PROVIDERS = {
         'APPS': [{'client_id': GOOGLE_CLIENT_ID, 'secret': GOOGLE_CLIENT_SECRET}] if GOOGLE_CLIENT_ID else [],
         'SCOPE': ['profile', 'email'],
         'VERIFIED_EMAIL': True,
+    },
+    'line': {
+        'APPS': [{'client_id': LINE_LOGIN_CHANNEL_ID, 'secret': LINE_LOGIN_CHANNEL_SECRET, 'key': ''}] if LINE_LOGIN_CHANNEL_ID else [],
+        'SCOPE': ['profile', 'openid'],
     },
 }
 

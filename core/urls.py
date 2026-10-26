@@ -18,6 +18,7 @@ urlpatterns = [
     path('matches/<int:pk>/chat/', views.chat, name='chat'),
     path('messages/', views.message_list, name='message_list'),
     path('photos/<int:pk>/', views.user_photo, name='user_photo'),
+    path('line/webhook/', views.line_webhook, name='line_webhook'),
     path('me/', views.profile, name='profile'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),

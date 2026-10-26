@@ -447,3 +447,7 @@ details.more[open] > summary { margin-bottom: 8px; }
 .code-change { text-align: left; }
 .code-change summary { cursor: pointer; color: var(--primary-dark); font-weight: 700; font-size: .88rem; padding: 6px 0; }
 
+
+/* ---------- LINE連携 ---------- */
+.line-btn { background: #06c755; color: #fff; border: none; }
+.line-btn:hover { background: #05b34c; color: #fff; }

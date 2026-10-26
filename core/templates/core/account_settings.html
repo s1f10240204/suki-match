@@ -1,4 +1,5 @@
 {% extends 'core/base.html' %}
+{% load socialaccount %}
 
 {% block title %}アカウント設定 - suki-match{% endblock %}
 
@@ -16,15 +17,32 @@
     <h2 class="section-title">ログイン情報</h2>
     <a class="list-row" href="{% url 'account_email' %}"><span>メールアドレス</span><span class="meta">{{ user.email|default:"未登録" }} ›</span></a>
     <a class="list-row" href="{% url 'account_change_password' %}"><span>パスワードの変更</span><span class="meta">›</span></a>
-    <a class="list-row" href="{% url 'socialaccount_connections' %}"><span>Googleアカウント連携</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'socialaccount_connections' %}"><span>外部アカウント連携</span><span class="meta">›</span></a>
+</section>
+
+<section class="card">
+    <h2 class="section-title">LINE連携</h2>
+    {% if line_linked %}
+    <p class="help">連携済みです。お知らせをLINEにも送ります（下の通知設定で変更できます）。</p>
+    {% elif line_login_enabled %}
+    <p class="help">LINEアカウントと連携すると、LINEでログインできるようになり、お知らせをLINEでも受け取れるようになります。</p>
+    <a class="btn line-btn" href="{% provider_login_url 'line' process='connect' %}">LINEと連携する</a>
+    {% else %}
+    <p class="help">LINE連携は現在準備中です。</p>
+    {% endif %}
+    {% if line_friend_url %}
+    <p class="help">通知を受け取るには、公式アカウントの友だち追加も必要です。<a href="{{ line_friend_url }}" target="_blank" rel="noopener">友だち追加はこちら</a></p>
+    {% endif %}
 </section>
 
 <form method="post" class="card form">
     {% csrf_token %}
-    <h2 class="section-title">メール通知</h2>
-    <p class="help">アプリを開いていないときに、届いたお知らせをまとめてメールで送ります。</p>
+    <h2 class="section-title">通知（メール・LINE）</h2>
+    <p class="help">アプリを開いていないときに、届いたお知らせをメールやLINEで送ります。</p>
     {% include 'core/_field.html' with field=notify_form.email_activity %}
     {% include 'core/_field.html' with field=notify_form.email_nearby %}
+    {% include 'core/_field.html' with field=notify_form.line_activity %}
+    {% include 'core/_field.html' with field=notify_form.line_nearby %}
     <div class="grid-2">
         {% include 'core/_field.html' with field=notify_form.quiet_start %}
         {% include 'core/_field.html' with field=notify_form.quiet_end %}

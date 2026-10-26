@@ -189,7 +189,7 @@ class ReportForm(forms.ModelForm):
 class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
-        fields = ('email_nearby', 'email_activity', 'quiet_start', 'quiet_end')
+        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby', 'quiet_start', 'quiet_end')
         widgets = {
             'quiet_start': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
             'quiet_end': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),

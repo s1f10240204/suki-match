@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.contrib import messages
@@ -12,7 +13,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.templatetags.static import static
 
-from . import images, services, skills
+from . import images, line_api, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
@@ -307,8 +308,13 @@ def account_settings(request):
             form.save()
             messages.success(request, '設定を保存しました。')
             return redirect('core:account_settings')
+    line_friend_url = (f'https://line.me/R/ti/p/{settings.LINE_OFFICIAL_ACCOUNT_ID}'
+                       if settings.LINE_OFFICIAL_ACCOUNT_ID else '')
     return render(request, 'core/account_settings.html', {
-        'account_form': account_form, 'notify_form': notify_form})
+        'account_form': account_form, 'notify_form': notify_form,
+        'line_login_enabled': bool(settings.LINE_LOGIN_CHANNEL_ID),
+        'line_linked': bool(request.user.line_user_id),
+        'line_friend_url': line_friend_url})
 
 
 @login_required
@@ -483,3 +489,33 @@ def service_worker(request):
     response['Cache-Control'] = 'no-cache'
     return response
 
+
+
+# ---------- LINE Webhook ----------
+
+@csrf_exempt
+@require_POST
+def line_webhook(request):
+    """LINE 公式アカウントの Webhook。友だち追加への返信と、ブロック時の連携解除だけ扱う。"""
+    if not line_api.verify_signature(request.body, request.headers.get('X-Line-Signature', '')):
+        return HttpResponseForbidden('invalid signature')
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return HttpResponseForbidden('invalid body')
+    for event in payload.get('events', []):
+        event_type = event.get('type')
+        line_user_id = (event.get('source') or {}).get('userId', '')
+        if event_type == 'unfollow' and line_user_id:
+            User.objects.filter(line_user_id=line_user_id).update(line_user_id='')
+        elif event_type == 'follow':
+            line_api.send_reply(event.get('replyToken', ''),
+                                '友だち追加ありがとうございます！\n'
+                                '通知を受け取るには、suki-match の「アカウント設定」から LINE 連携をしてください。\n'
+                                f'{settings.SITE_URL}/settings/')
+        elif event_type == 'message':
+            line_api.send_reply(event.get('replyToken', ''),
+                                'このアカウントからは通知をお届けします。\n'
+                                'お問い合わせや操作は suki-match のサイトからお願いします。\n'
+                                f'{settings.SITE_URL}/')
+    return HttpResponse('OK')

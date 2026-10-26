@@ -46,7 +46,7 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ('photo_preview',)
     fieldsets = BaseUserAdmin.fieldsets + (
         ('顔写真の審査', {'fields': ('photo_preview', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at')}),
-        ('suki-match', {'fields': ('motivation', 'bio', 'skills', 'area_label',
+        ('suki-match', {'fields': ('line_user_id', 'motivation', 'bio', 'skills', 'area_label',
                                    'latitude', 'longitude', 'location_updated_at', 'points', 'level')}),
     )
     filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)

@@ -89,6 +89,7 @@ class User(AbstractUser):
                                      default=PhotoStatus.NONE, db_index=True)
     avatar_reject_reason = models.CharField('差し戻し理由', max_length=200, blank=True)
     avatar_reviewed_at = models.DateTimeField('審査日時', null=True, blank=True)
+    line_user_id = models.CharField('LINEユーザーID', max_length=64, blank=True, default='', db_index=True)
     motivation = models.CharField('お手伝いする理由', max_length=200, blank=True,
                                   help_text='例: 子育てがひと段落したので、地域の役に立ちたい')
     bio = models.TextField('自己紹介', blank=True)
@@ -356,6 +357,8 @@ class NotificationSetting(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_setting')
     email_nearby = models.BooleanField('近くの新しい依頼をメールで受け取る', default=False)
     email_activity = models.BooleanField('マッチング・メッセージをメールで受け取る', default=True)
+    line_activity = models.BooleanField('マッチング・メッセージをLINEで受け取る', default=True)
+    line_nearby = models.BooleanField('近くの新しい依頼をLINEで受け取る', default=False)
     quiet_start = models.TimeField('メールを止める時間(開始)', null=True, blank=True)
     quiet_end = models.TimeField('メールを止める時間(終了)', null=True, blank=True)
 

@@ -55,3 +55,27 @@ def area_label_for(lat, lng):
     except Exception:  # ネットワーク障害等で依頼投稿を止めない
         logger.warning('reverse geocoding failed', exc_info=True)
         return ''
+
+
+SEARCH_URL = 'https://msearch.gsi.go.jp/address-search/AddressSearch'
+
+
+def search_area(query):
+    """地名・住所・駅名などから候補を最大10件返す（国土地理院 住所検索API）。
+
+    各候補は {'name', 'lat', 'lng'}。取得できなければ空リスト。
+    """
+    if not settings.GEOCODER_ENABLED or not query:
+        return []
+    try:
+        data = json.loads(_fetch(f'{SEARCH_URL}?{urlencode({"q": query})}'))
+        results = []
+        for feature in data[:10]:
+            coords = (feature.get('geometry') or {}).get('coordinates') or []
+            title = (feature.get('properties') or {}).get('title', '')
+            if len(coords) == 2 and title:
+                results.append({'name': title, 'lat': coords[1], 'lng': coords[0]})
+        return results
+    except Exception:  # ネットワーク障害等で操作を止めない
+        logger.warning('forward geocoding failed', exc_info=True)
+        return []

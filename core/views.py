@@ -522,6 +522,8 @@ def line_webhook(request):
             message = event.get('message') or {}
             if message.get('type') == 'text':
                 line_chat.handle_message(user, message.get('text', ''), reply_token)
+            elif message.get('type') == 'location':
+                line_chat.handle_location(user, message.get('latitude'), message.get('longitude'), reply_token)
         elif event_type == 'postback':
             line_chat.handle_postback(user, (event.get('postback') or {}).get('data', ''), reply_token)
     return HttpResponse('OK')

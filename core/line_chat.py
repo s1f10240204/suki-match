@@ -1,7 +1,8 @@
-"""LINEチャットでの依頼投稿・検索・応募の会話処理。
+"""LINEチャットでの依頼投稿・検索・応募・エリア設定の会話処理。
 
 リッチメニューやテキストコマンドから起動し、投稿は会話形式で入力する。
 実際の投稿・応募は Web と同じ services の関数を通すので、利用条件も同じになる。
+エリアは位置情報メッセージ、または地名・駅名の検索から選べる。
 """
 from urllib.parse import parse_qs
 
@@ -9,13 +10,14 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
-from . import line_api, services
+from . import geocoding, line_api, services
 from .models import HelpRequest, LineChatState
 
 CANCEL_WORDS = {'やめる', 'キャンセル', '中止', 'やっぱりやめる'}
-COMMANDS = {'依頼する', '依頼を探す', '進行中'}
+COMMANDS = {'依頼する', '依頼を探す', '進行中', 'エリア設定'}
 DURATIONS = {'15分': 15, '30分': 30, '1時間': 60, '2時間': 120}
 GREEN = '#4c8b6b'
+AREA_HOW_ITEMS = [('位置情報を送る', '位置情報を送る'), ('エリア名で指定', 'エリア名で指定')]
 
 
 def _abs(path):
@@ -46,14 +48,18 @@ def _save(state, step=None, **data):
     state.save(update_fields=['step', 'data'])
 
 
+def _unlinked(reply_token):
+    _reply(reply_token, line_api.text_message(
+        'suki-match のアカウントと連携すると、LINEから依頼したり受けたりできます。\n'
+        f'連携はこちら: {_abs(reverse("core:account_settings"))}'))
+
+
 # ---------- メッセージ入口 ----------
 
 def handle_message(user, text, reply_token):
     text = (text or '').strip()
     if user is None:
-        _reply(reply_token, line_api.text_message(
-            'suki-match のアカウントと連携すると、LINEから依頼したり受けたりできます。\n'
-            f'連携はこちら: {_abs(reverse("core:account_settings"))}'))
+        _unlinked(reply_token)
         return
     state = _state(user)
     if text in CANCEL_WORDS:
@@ -66,6 +72,8 @@ def handle_message(user, text, reply_token):
             _start_post(user, state, reply_token)
         elif text == '依頼を探す':
             _browse(user, reply_token)
+        elif text == 'エリア設定':
+            _start_area_setting(user, state, reply_token)
         else:
             _status(user, reply_token)
         return
@@ -76,7 +84,21 @@ def handle_message(user, text, reply_token):
         '下のメニューから選んでください。\n'
         '・「依頼する」: 会話で依頼を投稿\n'
         '・「依頼を探す」: 近くの募集中の依頼を表示\n'
-        '・「進行中」: マッチング中や応募の状況を確認'))
+        '・「進行中」: マッチング中や応募の状況を確認\n'
+        '・「エリア設定」: 登録エリアの変更'))
+
+
+def handle_location(user, latitude, longitude, reply_token):
+    """位置情報メッセージ。エリア入力待ちのときだけ受け付ける。"""
+    if user is None:
+        _unlinked(reply_token)
+        return
+    state = _state(user)
+    if state.step != 'area_location' or latitude is None or longitude is None:
+        _reply(reply_token, line_api.text_message(
+            '位置情報ありがとうございます。エリアを変更したいときは「エリア設定」と送ってください。'))
+        return
+    _apply_area(user, state, float(latitude), float(longitude), reply_token)
 
 
 def handle_postback(user, data, reply_token):
@@ -96,17 +118,96 @@ def handle_postback(user, data, reply_token):
         _accept(user, params.get('req', ''), reply_token)
 
 
+# ---------- エリア設定（投稿フローと単独設定で共用） ----------
+
+def _start_area_setting(user, state, reply_token):
+    _save(state, 'area_how', area_for='profile')
+    current = f'現在の登録エリア: {user.area_label}\n' if user.area_label else '登録エリアは未設定です。\n'
+    _reply(reply_token, line_api.text_message(
+        current + 'エリアの設定方法を選んでください。',
+        quick_reply_items=AREA_HOW_ITEMS))
+
+
+def _ask_area_how(user, state, reply_token):
+    """投稿フローのエリア選択。登録済みエリアがあれば「そのまま使う」も選べる。"""
+    _save(state, 'post_area', area_for='post')
+    items = []
+    if user.latitude is not None and user.longitude is not None:
+        items.append(('登録エリアを使う', '登録エリアを使う'))
+    items += AREA_HOW_ITEMS
+    current = f'登録エリア: {user.area_label or "未設定"}\n'
+    _reply(reply_token, line_api.text_message(
+        current + '依頼のエリアを選んでください。新しい場所を選ぶと、登録エリアもその場所に更新されます。',
+        quick_reply_items=items))
+
+
+def _area_how_input(user, state, text, reply_token):
+    """area_how / post_area の選択肢入力。"""
+    if text == '登録エリアを使う' and state.data.get('area_for') == 'post':
+        if user.latitude is None or user.longitude is None:
+            _reply(reply_token, line_api.text_message('登録エリアが未設定です。下の方法から選んでください。',
+                                                      quick_reply_items=AREA_HOW_ITEMS))
+            return
+        _save(state, 'post_confirm', latitude=user.latitude, longitude=user.longitude)
+        _reply(reply_token, _confirm_message(user, state.data))
+        return
+    if text == '位置情報を送る':
+        _save(state, 'area_location')
+        _reply(reply_token, line_api.text_message(
+            'トーク画面の「＋」ボタン→「位置情報」から、場所を送ってください。'))
+        return
+    if text == 'エリア名で指定':
+        _save(state, 'area_text')
+        _reply(reply_token, line_api.text_message(
+            'エリア名や駅名を送ってください（例: 東京都北区赤羽、池袋駅）。'))
+        return
+    _reply(reply_token, line_api.text_message('下のボタンから選んでください。'))
+
+
+def _area_text_input(user, state, text, reply_token):
+    candidates = geocoding.search_area(text)
+    if not candidates:
+        _reply(reply_token, line_api.text_message(
+            '見つかりませんでした。都道府県名から入れるなど、別の書き方で送ってみてください。'))
+        return
+    if user.latitude is not None and user.longitude is not None:
+        candidates.sort(key=lambda c: services.distance_m(user.latitude, user.longitude, c['lat'], c['lng']))
+    candidates = candidates[:3]
+    _save(state, 'area_pick', candidates=candidates)
+    lines = ['候補が見つかりました。番号で選んでください。']
+    for i, cand in enumerate(candidates, 1):
+        lines.append(f'{i}. {cand["name"]}')
+    _reply(reply_token, line_api.text_message(
+        '\n'.join(lines), quick_reply_items=[(f'{i}番', str(i)) for i in range(1, len(candidates) + 1)]))
+
+
+def _area_pick_input(user, state, text, reply_token):
+    candidates = state.data.get('candidates') or []
+    try:
+        cand = candidates[int(text) - 1]
+    except (ValueError, IndexError):
+        _reply(reply_token, line_api.text_message('下のボタンから番号を選んでください。'))
+        return
+    _apply_area(user, state, cand['lat'], cand['lng'], reply_token)
+
+
+def _apply_area(user, state, lat, lng, reply_token):
+    services.update_user_location(user, lat, lng)
+    if state.data.get('area_for') == 'post':
+        _save(state, 'post_confirm', latitude=lat, longitude=lng)
+        _reply(reply_token, _confirm_message(user, state.data))
+    else:
+        _clear(state)
+        _reply(reply_token, line_api.text_message(
+            f'登録エリアを「{user.area_label or "設定した場所"}」に変更しました。'))
+
+
 # ---------- 依頼する ----------
 
 def _start_post(user, state, reply_token):
     reason = services.post_block_reason(user)
     if reason:
         _reply(reply_token, line_api.text_message(reason))
-        return
-    if user.latitude is None or user.longitude is None:
-        _reply(reply_token, line_api.text_message(
-            '活動エリアが未設定のため、LINEからはまだ投稿できません。\n'
-            f'プロフィールで場所を設定してください: {_abs(reverse("core:profile_edit"))}'))
         return
     _save(state, 'post_title')
     _reply(reply_token, line_api.text_message(
@@ -116,7 +217,16 @@ def _start_post(user, state, reply_token):
 
 def _step_input(user, state, text, reply_token):
     step = state.step
-    if step == 'post_title':
+    if step in ('post_area', 'area_how'):
+        _area_how_input(user, state, text, reply_token)
+    elif step == 'area_text':
+        _area_text_input(user, state, text, reply_token)
+    elif step == 'area_pick':
+        _area_pick_input(user, state, text, reply_token)
+    elif step == 'area_location':
+        _reply(reply_token, line_api.text_message(
+            '位置情報を待っています。トーク画面の「＋」ボタン→「位置情報」から送ってください。やめるときは「やめる」と送ってください。'))
+    elif step == 'post_title':
         if not text:
             _reply(reply_token, line_api.text_message('タイトルを送ってください。'))
             return
@@ -159,8 +269,7 @@ def _step_input(user, state, text, reply_token):
                 '下のボタンから選んでください。',
                 quick_reply_items=[('今すぐ', '今すぐ'), ('日時を指定する', '日時を指定')]))
             return
-        _save(state, 'post_confirm')
-        _reply(reply_token, _confirm_message(user, state.data))
+        _ask_area_how(user, state, reply_token)
     else:
         _clear(state)
         _reply(reply_token, line_api.text_message('最初からやり直してください。メニューの「依頼する」からどうぞ。'))
@@ -202,7 +311,7 @@ def _post_confirm(user, state, reply_token):
     help_request = HelpRequest.objects.create(
         requester=user, title=data['title'], description=data.get('description', ''),
         mode=data.get('mode', 'first_come'), duration_minutes=data.get('duration', 15),
-        latitude=user.latitude, longitude=user.longitude)
+        latitude=data.get('latitude', user.latitude), longitude=data.get('longitude', user.longitude))
     count = services.publish_request(help_request)
     _clear(state)
     _reply(reply_token, line_api.text_message(

@@ -1,0 +1,15 @@
+{% extends "core/base.html" %}
+{% block title %}LINEリッチメニュー設定 | suki-match{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>LINE リッチメニュー設定</h1>
+  <p>LINE公式アカウントのトーク画面下部に表示されるメニュー（依頼する／依頼を探す／進行中／依頼フォーム／アカウント設定／サイトを開く）を登録します。1回実行すれば全ユーザーに表示されます。メニュー内容を変えたときは、もう一度実行してください。</p>
+  {% if result %}
+  <p><strong>結果:</strong> {{ result }}</p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <button class="btn primary" type="submit">リッチメニューを登録する</button>
+  </form>
+</section>
+{% endblock %}

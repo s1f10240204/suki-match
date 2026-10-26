@@ -19,6 +19,7 @@ urlpatterns = [
     path('messages/', views.message_list, name='message_list'),
     path('photos/<int:pk>/', views.user_photo, name='user_photo'),
     path('line/webhook/', views.line_webhook, name='line_webhook'),
+    path('line/richmenu/setup/', views.line_richmenu_setup, name='line_richmenu_setup'),
     path('me/', views.profile, name='profile'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),

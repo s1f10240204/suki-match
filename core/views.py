@@ -2,6 +2,8 @@ import json
 from datetime import timedelta
 
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.staticfiles import finders
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Q
 from django.conf import settings
@@ -13,7 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.templatetags.static import static
 
-from . import images, line_api, services, skills
+from . import images, line_api, line_chat, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
@@ -496,7 +498,7 @@ def service_worker(request):
 @csrf_exempt
 @require_POST
 def line_webhook(request):
-    """LINE 公式アカウントの Webhook。友だち追加への返信と、ブロック時の連携解除だけ扱う。"""
+    """LINE 公式アカウントの Webhook。チャットでの操作は line_chat に委譲する。"""
     if not line_api.verify_signature(request.body, request.headers.get('X-Line-Signature', '')):
         return HttpResponseForbidden('invalid signature')
     try:
@@ -506,16 +508,37 @@ def line_webhook(request):
     for event in payload.get('events', []):
         event_type = event.get('type')
         line_user_id = (event.get('source') or {}).get('userId', '')
+        reply_token = event.get('replyToken', '')
+        user = User.objects.filter(line_user_id=line_user_id).first() if line_user_id else None
         if event_type == 'unfollow' and line_user_id:
             User.objects.filter(line_user_id=line_user_id).update(line_user_id='')
         elif event_type == 'follow':
-            line_api.send_reply(event.get('replyToken', ''),
+            line_api.send_reply(reply_token,
                                 '友だち追加ありがとうございます！\n'
+                                '下のメニューから、依頼したり・探したりできます。\n'
                                 '通知を受け取るには、suki-match の「アカウント設定」から LINE 連携をしてください。\n'
-                                f'{settings.SITE_URL}/settings/')
+                                f'{settings.SITE_URL}/me/settings/')
         elif event_type == 'message':
-            line_api.send_reply(event.get('replyToken', ''),
-                                'このアカウントからは通知をお届けします。\n'
-                                'お問い合わせや操作は suki-match のサイトからお願いします。\n'
-                                f'{settings.SITE_URL}/')
+            message = event.get('message') or {}
+            if message.get('type') == 'text':
+                line_chat.handle_message(user, message.get('text', ''), reply_token)
+        elif event_type == 'postback':
+            line_chat.handle_postback(user, (event.get('postback') or {}).get('data', ''), reply_token)
     return HttpResponse('OK')
+
+
+@staff_member_required
+def line_richmenu_setup(request):
+    """リッチメニューを LINE 側に登録する（スタッフ用・1回だけ実行すればよい）。"""
+    result = None
+    if request.method == 'POST':
+        image_path = finders.find('core/line/richmenu.png')
+        if not image_path:
+            result = 'メニュー画像が見つかりませんでした。'
+        elif not line_api.messaging_configured():
+            result = 'LINE Messaging API が未設定のため実行できません。'
+        else:
+            with open(image_path, 'rb') as fh:
+                result = line_api.setup_rich_menu(fh.read())
+    return render(request, 'core/line_richmenu_setup.html', {'result': result})
+

@@ -398,3 +398,15 @@ class StoredFile(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class LineChatState(models.Model):
+    """LINEチャットでの依頼投稿フローの途中状態。"""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='line_chat_state')
+    step = models.CharField(max_length=30, blank=True)
+    data = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'LINEチャット状態'

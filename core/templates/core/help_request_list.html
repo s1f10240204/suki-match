@@ -4,7 +4,7 @@
 {% block content %}
 {% if not user.is_authenticated %}
 <section class="hero">
-    <p class="hero-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg></p>
+    <p class="hero-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.6 12.8c.6-4.2 3.2-6.6 7.7-7.4-.4 4.2-3.1 7-7.7 7.4Z"/><path d="M11.4 12.8c-.6-4.2-3.2-6.6-7.7-7.4.4 4.2 3.1 7 7.7 7.4Z"/><rect x="11.15" y="12.6" width="1.7" height="8.4" rx="0.85"/></svg></p>
     <h1 class="hero-title">スキマ時間で、近くの困りごとをお手伝い</h1>
     <p class="hero-lead">suki-match は、近くの人の「ちょっと困った」と、あなたの「少しなら手伝える」をつなぐマッチングサービスです。</p>
     <ol class="hero-steps">
@@ -84,7 +84,7 @@
 {% empty %}
     {% if not recommended %}
     <div class="empty-state">
-        <div class="empty-illust" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg></div>
+        <div class="empty-illust" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12.6 12.8c.6-4.2 3.2-6.6 7.7-7.4-.4 4.2-3.1 7-7.7 7.4Z"/><path d="M11.4 12.8c-.6-4.2-3.2-6.6-7.7-7.4.4 4.2 3.1 7 7.7 7.4Z"/><path d="M12 12.8V21"/></svg></div>
         {% if filtering %}
         <p>条件に合う依頼が見つかりませんでした。</p>
         <a href="?tab={{ tab }}" class="link">検索条件をクリアする</a>

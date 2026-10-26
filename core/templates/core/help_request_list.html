@@ -2,6 +2,22 @@
 {% load suki %}
 
 {% block content %}
+{% if not user.is_authenticated %}
+<section class="hero">
+    <p class="hero-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg></p>
+    <h1 class="hero-title">スキマ時間で、近くの困りごとをお手伝い</h1>
+    <p class="hero-lead">suki-match は、近くの人の「ちょっと困った」と、あなたの「少しなら手伝える」をつなぐマッチングサービスです。</p>
+    <ol class="hero-steps">
+        <li><span class="hero-step-num">1</span><span>困りごとを依頼するか、近くの依頼を探す</span></li>
+        <li><span class="hero-step-num">2</span><span>マッチングしたら、チャットで相談</span></li>
+        <li><span class="hero-step-num">3</span><span>お手伝いが終わったら、評価を交換しよう</span></li>
+    </ol>
+    <p class="hero-cta">
+        <a href="{% url 'account_signup' %}" class="btn btn-primary">無料ではじめる</a>
+        <a href="{% url 'account_login' %}" class="btn btn-ghost">ログイン</a>
+    </p>
+</section>
+{% endif %}
 {% if photo_block_reason %}
     <a href="{% url 'core:profile_edit' %}" class="banner">
         <span class="banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
@@ -15,9 +31,30 @@
 </div>
 
 <div class="segmented">
-    <a href="?tab=now" class="{% if tab == 'now' %}is-active{% endif %}">今すぐ</a>
-    <a href="?tab=scheduled" class="{% if tab == 'scheduled' %}is-active{% endif %}">日時指定</a>
+    <a href="?tab=now{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'now' %}is-active{% endif %}">今すぐ</a>
+    <a href="?tab=scheduled{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'scheduled' %}is-active{% endif %}">日時指定</a>
 </div>
+
+<form method="get" class="search-form" role="search">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+    <div class="search-row">
+        <input type="search" name="q" value="{{ q }}" placeholder="キーワードで探す（例：買い物、荷物）" aria-label="キーワード">
+        <button type="submit" class="btn btn-primary btn-sm">検索</button>
+    </div>
+    <div class="search-row">
+        <select name="tag" aria-label="タグで絞り込み">
+            <option value="">タグ：すべて</option>
+            {% for t in preset_tags %}<option value="{{ t.pk }}"{% if selected_tag == t.pk %} selected{% endif %}>{{ t.label }}</option>{% endfor %}
+        </select>
+        <select name="skill" aria-label="スキルで絞り込み">
+            <option value="">スキル：すべて</option>
+            {% for s in all_skills %}<option value="{{ s.pk }}"{% if selected_skill == s.pk %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+        </select>
+        {% if filtering %}<a href="?tab={{ tab }}" class="link search-clear">条件をクリア</a>{% endif %}
+    </div>
+    {% if filtering %}<p class="meta">{{ help_requests|length }}件の依頼が見つかりました</p>{% endif %}
+</form>
 
 {% if user.is_authenticated %}
     <div class="filter-bar">
@@ -48,8 +85,13 @@
     {% if not recommended %}
     <div class="empty-state">
         <div class="empty-illust" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg></div>
+        {% if filtering %}
+        <p>条件に合う依頼が見つかりませんでした。</p>
+        <a href="?tab={{ tab }}" class="link">検索条件をクリアする</a>
+        {% else %}
         <p>{% if tab == 'scheduled' %}日時指定の依頼はまだありません。{% else %}いま募集中の依頼はありません。{% endif %}</p>
         <a href="{% url 'core:stats' %}" class="link">依頼が出やすい時間帯を見る</a>
+        {% endif %}
     </div>
     {% endif %}
 {% endfor %}

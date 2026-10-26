@@ -21,7 +21,7 @@
     {% for m in chat_messages %}
         <div class="bubble-row {% if m.sender_id == user.pk %}mine{% endif %}">
             <div class="bubble{% if m.is_hidden %} bubble-hidden{% endif %}">{% if m.is_hidden %}このメッセージは相手に表示されていません{% else %}{{ m.body }}{% endif %}</div>
-            <span class="bubble-meta">{{ m.created_at|date:"H:i" }}{% if m.sender_id != user.pk %} · <a href="{% url 'core:report_user' other.username %}?message={{ m.pk }}">通報</a>{% endif %}</span>
+            <span class="bubble-meta">{{ m.created_at|date:"H:i" }}{% if m.sender_id == user.pk and m.read_at %} · <span class="read-mark">既読</span>{% endif %}{% if m.sender_id != user.pk %} · <a href="{% url 'core:report_user' other.username %}?message={{ m.pk }}">通報</a>{% endif %}</span>
         </div>
     {% endfor %}
 </div>

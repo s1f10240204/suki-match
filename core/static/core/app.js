@@ -567,11 +567,26 @@
             row.appendChild(meta);
             log.appendChild(row);
             scrollDown();
+            if (!mine && document.visibilityState === 'visible') { chat.send({ type: 'read' }); }
+        };
+
+        var markAllMineRead = function () {
+            var metas = log.querySelectorAll('.bubble-row.mine .bubble-meta');
+            for (var i = 0; i < metas.length; i++) {
+                if (!metas[i].querySelector('.read-mark')) {
+                    var s = document.createElement('span');
+                    s.className = 'read-mark';
+                    s.textContent = '既読';
+                    metas[i].appendChild(document.createTextNode(' · '));
+                    metas[i].appendChild(s);
+                }
+            }
         };
 
         var chat = connect('/ws/chat/' + log.dataset.chatId + '/', {
             message: function (data) {
                 if (data.error) { toast(data.error, '', 'warning'); return; }
+                if (data.kind === 'read') { if (data.reader_id !== me) { markAllMineRead(); } return; }
                 appendMessage(data.message);
             }
         });
@@ -639,5 +654,15 @@
                 });
             }, 15000);
         }, 0);
+    });
+})();
+
+
+/* PWA: Service Worker の登録(ホーム画面への追加に必要) */
+(function () {
+    if (!('serviceWorker' in navigator)) { return; }
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') { return; }
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
     });
 })();

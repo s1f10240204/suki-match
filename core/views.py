@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,12 +10,13 @@ from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.templatetags.static import static
 
 from . import images, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
-from .models import Application, HelpRequest, Match, Message, Review, Sanction, User
+from .models import Application, HelpRequest, Match, Message, PresetTag, Review, Sanction, Skill, User
 from .services import ServiceError
 
 
@@ -46,6 +47,17 @@ def help_request_list(request):
     qs = (HelpRequest.objects.filter(status=HelpRequest.Status.OPEN, expires_at__gt=timezone.now(),
                                      scheduled_for__isnull=(tab == 'now'))
           .select_related('requester').prefetch_related('required_skills', 'preset_tags'))
+    q = request.GET.get('q', '').strip()
+    tag_id = request.GET.get('tag', '')
+    skill_id = request.GET.get('skill', '')
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q) | Q(area_label__icontains=q))
+    if tag_id.isdigit():
+        qs = qs.filter(preset_tags__id=int(tag_id))
+    if skill_id.isdigit():
+        qs = qs.filter(required_skills__id=int(skill_id))
+    if tag_id.isdigit() or skill_id.isdigit():
+        qs = qs.distinct()
     help_requests = list(qs.order_by('scheduled_for' if tab == 'scheduled' else 'expires_at'))
 
     user = request.user
@@ -68,7 +80,11 @@ def help_request_list(request):
     return render(request, 'core/help_request_list.html', {
         'help_requests': help_requests, 'recommended': recommended, 'others': others,
         'located': bool(points), 'show_all': show_all, 'tab': tab, 'radius': services.RADIUS_METERS,
-        'photo_block_reason': services.photo_block_reason(user) if user.is_authenticated else ''})
+        'photo_block_reason': services.photo_block_reason(user) if user.is_authenticated else '',
+        'q': q, 'preset_tags': PresetTag.objects.all(), 'all_skills': Skill.objects.all(),
+        'selected_tag': int(tag_id) if tag_id.isdigit() else '',
+        'selected_skill': int(skill_id) if skill_id.isdigit() else '',
+        'filtering': bool(q or tag_id or skill_id)})
 
 
 @login_required
@@ -237,6 +253,8 @@ def message_list(request):
     for match in chats:
         match.other = match.other_user(request.user)
         match.last_message = match.messages.exclude(is_hidden=True).order_by('-created_at').first()
+        match.unread_count = (match.messages.filter(read_at__isnull=True, is_hidden=False)
+                              .exclude(sender=request.user).count())
     return render(request, 'core/message_list.html', {'chats': chats})
 
 
@@ -429,3 +447,38 @@ def too_many_requests(request, exception=None):
     allauth のレート制限などが返すデフォルトの英語画面の代わりに使う。
     """
     return render(request, 'core/429.html', status=429)
+
+
+def pwa_manifest(request):
+    """PWAマニフェスト(ホーム画面に追加したときの名前・アイコンなど)。"""
+    return JsonResponse({
+        'name': 'suki-match',
+        'short_name': 'suki-match',
+        'description': 'スキマ時間で、近くの困りごとをお手伝いするマッチングサービス',
+        'lang': 'ja',
+        'id': '/',
+        'start_url': '/',
+        'scope': '/',
+        'display': 'standalone',
+        'background_color': '#fbf8f3',
+        'theme_color': '#4c8b6b',
+        'icons': [
+            {'src': static('core/icons/icon-192.png'), 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+            {'src': static('core/icons/icon-512.png'), 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+            {'src': static('core/icons/icon-maskable-512.png'), 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+        ],
+    }, content_type='application/manifest+json')
+
+
+def service_worker(request):
+    """最小の Service Worker(ホーム画面への追加に必要)。ページは常にネットワークから取得する。"""
+    js = ("self.addEventListener('install', function () { self.skipWaiting(); });\n"
+          "self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });\n"
+          "self.addEventListener('fetch', function (e) {\n"
+          "    if (e.request.method !== 'GET') { return; }\n"
+          "    e.respondWith(fetch(e.request));\n"
+          "});\n")
+    response = HttpResponse(js, content_type='application/javascript')
+    response['Service-Worker-Allowed'] = '/'
+    response['Cache-Control'] = 'no-cache'
+    return response

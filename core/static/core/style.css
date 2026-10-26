@@ -380,6 +380,31 @@ details.more[open] > summary { margin-bottom: 8px; }
 .chat-form input { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; font-size: 16px; background: #fff; }
 .chat-form .btn { flex: none; white-space: nowrap; }
 
+/* ---------- 既読・未読 ---------- */
+.read-mark { color: var(--ok); font-weight: 700; }
+.unread-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.chat-row-last.is-unread { color: var(--text); font-weight: 700; }
+.tabbar a { position: relative; }
+.tab-badge { position: absolute; top: 4px; right: calc(50% - 22px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); }
+
+/* ---------- 紹介ヒーロー(未ログイン) ---------- */
+.hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+.hero-logo { width: 46px; height: 46px; display: grid; place-items: center; background: var(--primary); color: #fff; border-radius: 15px; }
+.hero-logo svg { width: 25px; height: 25px; }
+.hero-title { font-size: 1.32rem; font-weight: 700; line-height: 1.5; margin: 14px 0 8px; }
+.hero-lead { color: var(--muted); font-size: .92rem; }
+.hero-steps { list-style: none; margin: 16px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hero-steps li { display: flex; align-items: center; gap: 10px; font-size: .94rem; }
+.hero-step-num { flex: none; width: 25px; height: 25px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; font-size: .82rem; display: grid; place-items: center; }
+.hero-cta { display: flex; gap: 8px; margin-top: 14px; }
+
+/* ---------- 依頼の検索・絞り込み ---------- */
+.search-form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; }
+.search-row { display: flex; gap: 8px; align-items: center; }
+.search-row input[type='search'] { flex: 1; min-width: 0; padding: 10px 14px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; font-size: 16px; background: #fff; }
+.search-row select { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 12px; border: 1.5px solid #e2d9cd; font: inherit; background: #fff; }
+.search-clear { white-space: nowrap; font-size: .85rem; }
+
 /* ---------- 統計 ---------- */
 .hour-chart { display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 3px; height: 180px; margin: 16px 0 8px; padding-bottom: 18px; }
 .hour-col { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }

@@ -5,6 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="theme-color" content="#fbf8f3">
+    <meta name="description" content="suki-matchは、近くの人のちょっとした困りごとと、スキマ時間に手伝える人をマッチングするサービスです。">
+    <link rel="icon" type="image/svg+xml" href="{% static 'core/icons/favicon.svg' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'core/icons/favicon-32.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'core/icons/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% url 'core:pwa_manifest' %}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="suki-match">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="suki-match">
+    <meta property="og:title" content="suki-match - 近くの困りごとマッチング">
+    <meta property="og:description" content="スキマ時間で、近くの困りごとをお手伝い。近くの人とつながる、ちいさな助け合いのマッチングサービスです。">
+    <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}/">
+    <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'core/icons/og-image.png' %}">
+    <meta name="twitter:card" content="summary_large_image">
     <title>{% block title %}suki-match{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -76,6 +91,7 @@
         {% if open_chat_count %}
             <a href="{% url 'core:message_list' %}" class="{% if name == 'chat' or name == 'message_list' %}is-active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>メッセージ</span>
+                {% if unread_message_count %}<span class="tab-badge">{{ unread_message_count }}</span>{% endif %}
             </a>
         {% else %}
             <button type="button" class="is-disabled" data-toast="現在はマッチングしていないため、メッセージ機能は使用できません。" aria-disabled="true">

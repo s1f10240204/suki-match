@@ -3,6 +3,7 @@ from collections import deque
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.utils import timezone
 
 from . import services
 from .models import Match
@@ -57,6 +58,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self.sent_at = deque(maxlen=self.RATE_LIMIT)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
+        await self._mark_read()  # 開いた時点で相手のメッセージを既読にする
 
     async def disconnect(self, code):
         if hasattr(self, 'group'):
@@ -68,6 +70,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         return match is not None and user.pk in match.participants()
 
     async def receive_json(self, content, **kwargs):
+        if content.get('type') == 'read':
+            await self._mark_read()
+            return
         now = time.monotonic()
         if len(self.sent_at) == self.RATE_LIMIT and now - self.sent_at[0] < self.RATE_WINDOW:
             await self.send_json({'error': '送信が速すぎます。少し待ってから送ってください。'})
@@ -85,3 +90,20 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_message(self, event):
         await self.send_json({'message': event['message']})
+
+    @database_sync_to_async
+    def _mark_read_db(self):
+        match = Match.objects.filter(pk=self.match_id).first()
+        if match is None:
+            return 0
+        return (match.messages.filter(read_at__isnull=True)
+                .exclude(sender_id=self.scope['user'].pk)
+                .update(read_at=timezone.now()))
+
+    async def _mark_read(self):
+        if await self._mark_read_db():
+            await self.channel_layer.group_send(
+                self.group, {'type': 'chat.read', 'reader_id': self.scope['user'].pk})
+
+    async def chat_read(self, event):
+        await self.send_json({'kind': 'read', 'reader_id': event['reader_id']})

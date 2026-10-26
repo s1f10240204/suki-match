@@ -421,3 +421,11 @@ def csrf_failure(request, reason=''):
     いる可能性があることを伝えてログインへ誘導する。
     """
     return render(request, 'core/csrf_failure.html', status=403)
+
+
+def too_many_requests(request, exception=None):
+    """429(短時間にリクエストが多すぎる)のときに表示する案内画面。
+
+    allauth のレート制限などが返すデフォルトの英語画面の代わりに使う。
+    """
+    return render(request, 'core/429.html', status=429)

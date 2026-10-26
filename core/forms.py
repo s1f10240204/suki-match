@@ -209,4 +209,4 @@ class ActivityBaseForm(forms.ModelForm):
 
 class MessageForm(forms.Form):
     body = forms.CharField(label='メッセージ', max_length=1000, widget=forms.TextInput(
-        attrs={'autocomplete': 'off', 'placeholder': 'メッセージを入力', 'aria-label': 'メッセージ'}))
+        attrs={'autocomplete': 'off', 'placeholder': 'メッセージを入力', 'aria-label': 'メッセージ', 'enterkeyhint': 'send'}))

@@ -372,12 +372,15 @@ details.more[open] > summary { margin-bottom: 8px; }
 .bubble-meta { font-size: .7rem; color: var(--muted); margin-top: 2px; }
 .bubble-meta a { text-decoration: underline; }
 .chat-form {
-    position: fixed; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--content-w);
+    position: fixed; left: 50%; transform: translateX(-50%) translateY(calc(-1 * var(--kb-inset, 0px))); width: 100%; max-width: var(--content-w);
     bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 30;
     display: flex; gap: 8px; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
 }
 @media (min-width: 600px) { .chat-form { bottom: calc(var(--tabbar-h) + 22px); border: none; background: transparent; } }
-.chat-form input { flex: 1; padding: 12px 16px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; background: #fff; }
+/* キーボード表示中は下部タブを隠し、入力バーをキーボードの真上に寄せる */
+body.kb-open .tabbar { visibility: hidden; }
+body.kb-open .chat-form { bottom: env(safe-area-inset-bottom); }
+.chat-form input { flex: 1; padding: 12px 16px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; font-size: 16px; background: #fff; }
 
 /* ---------- 統計 ---------- */
 .hour-chart { display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 3px; height: 180px; margin: 16px 0 8px; padding-bottom: 18px; }

@@ -585,6 +585,29 @@
                     bodyInput.value = '';
                 }
             });
+
+            /* スマホのソフトウェアキーボードで入力欄が隠れないようにする。
+               キーボードの高さ分だけ入力バーを上に逃がし、下部タブを隠す。 */
+            var vv = window.visualViewport;
+            var syncKb = function () {
+                var inset = 0;
+                if (vv) { inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); }
+                document.documentElement.style.setProperty('--kb-inset', inset + 'px');
+                if (inset > 60) { document.body.classList.add('kb-open'); scrollDown(); }
+            };
+            if (vv) {
+                vv.addEventListener('resize', syncKb);
+                vv.addEventListener('scroll', syncKb);
+            }
+            bodyInput.addEventListener('focus', function () {
+                document.body.classList.add('kb-open');
+                syncKb();
+                setTimeout(scrollDown, 350);
+            });
+            bodyInput.addEventListener('blur', function () {
+                document.body.classList.remove('kb-open');
+                document.documentElement.style.setProperty('--kb-inset', '0px');
+            });
         }
         scrollDown();
     }

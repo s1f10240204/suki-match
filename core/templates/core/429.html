@@ -1,0 +1,15 @@
+{% extends 'core/base.html' %}
+
+{% block title %}少しお待ちください - suki-match{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h1>少しお待ちください</h1>
+    <p>短い時間にたくさんの操作が行われたため、一時的に受け付けを制限しています。</p>
+    <p>しばらく時間をおいてから、もう一度お試しください。確認コードの再送など、一部の操作は1分に1回までに制限されています。</p>
+    <p>
+        <a href="{% url 'account_login' %}" class="btn btn-primary">ログインする</a>
+        <a href="{% url 'core:help_request_list' %}" class="btn btn-ghost">トップへ戻る</a>
+    </p>
+</section>
+{% endblock %}

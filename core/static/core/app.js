@@ -541,7 +541,30 @@
         var me = Number(log.dataset.userId);
         var form = document.getElementById('chat-form');
         var seen = {};
-        var scrollDown = function () { window.scrollTo(0, document.body.scrollHeight); };
+        var scrollDown = function () {
+            log.scrollTop = log.scrollHeight;
+            window.scrollTo(0, document.body.scrollHeight);
+        };
+
+        /* 有名チャットアプリと同じ「アプリ型シェル」のための高さ同期。
+           実際に見えている領域(visualViewport)の高さを画面の高さに使うことで、
+           キーボードが開いたら画面ごと縮み、入力欄が隠れなくなる。 */
+        var stick = true;  // 一番下を見ている間は新着・リサイズで自動的に下へ寄せる
+        log.addEventListener('scroll', function () {
+            stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+        });
+        var vv = window.visualViewport;
+        var syncHeight = function () {
+            if (vv) {
+                document.documentElement.style.setProperty('--app-height', Math.round(vv.height) + 'px');
+            }
+            if (stick) { scrollDown(); }
+        };
+        if (vv) {
+            vv.addEventListener('resize', syncHeight);
+            vv.addEventListener('scroll', syncHeight);
+            syncHeight();
+        }
 
         var appendMessage = function (m) {
             if (seen[m.id]) { return; }
@@ -566,7 +589,7 @@
             row.appendChild(bubble);
             row.appendChild(meta);
             log.appendChild(row);
-            scrollDown();
+            if (mine || stick) { scrollDown(); }
         };
 
         var chat = connect('/ws/chat/' + log.dataset.chatId + '/', {
@@ -586,27 +609,9 @@
                 }
             });
 
-            /* スマホのソフトウェアキーボードで入力欄が隠れないようにする。
-               キーボードの高さ分だけ入力バーを上に逃がし、下部タブを隠す。 */
-            var vv = window.visualViewport;
-            var syncKb = function () {
-                var inset = 0;
-                if (vv) { inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); }
-                document.documentElement.style.setProperty('--kb-inset', inset + 'px');
-                if (inset > 60) { document.body.classList.add('kb-open'); scrollDown(); }
-            };
-            if (vv) {
-                vv.addEventListener('resize', syncKb);
-                vv.addEventListener('scroll', syncKb);
-            }
+            /* キーボードが開ききった後に一番下へ寄せ直す(高さ同期の保険) */
             bodyInput.addEventListener('focus', function () {
-                document.body.classList.add('kb-open');
-                syncKb();
-                setTimeout(scrollDown, 350);
-            });
-            bodyInput.addEventListener('blur', function () {
-                document.body.classList.remove('kb-open');
-                document.documentElement.style.setProperty('--kb-inset', '0px');
+                setTimeout(function () { if (stick) { scrollDown(); } }, 350);
             });
         }
         scrollDown();

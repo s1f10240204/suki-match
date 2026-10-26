@@ -372,15 +372,40 @@ details.more[open] > summary { margin-bottom: 8px; }
 .bubble-meta { font-size: .7rem; color: var(--muted); margin-top: 2px; }
 .bubble-meta a { text-decoration: underline; }
 .chat-form {
-    position: fixed; left: 50%; transform: translateX(-50%) translateY(calc(-1 * var(--kb-inset, 0px))); width: 100%; max-width: var(--content-w);
+    position: fixed; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--content-w);
     bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 30;
     display: flex; gap: 8px; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
 }
 @media (min-width: 600px) { .chat-form { bottom: calc(var(--tabbar-h) + 22px); border: none; background: transparent; } }
-/* キーボード表示中は下部タブを隠し、入力バーをキーボードの真上に寄せる */
-body.kb-open .tabbar { visibility: hidden; }
-body.kb-open .chat-form { bottom: env(safe-area-inset-bottom); }
 .chat-form input { flex: 1; padding: 12px 16px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; font-size: 16px; background: #fff; }
+
+/* チャット画面はアプリ型シェルにする(Telegram等のチャットUIと同じ方式)。
+   画面全体を縦フレックスにして、ヘッダーと入力欄の間でログだけがスクロールする。
+   高さは JS が visualViewport から同期する --app-height を優先し、
+   無ければ 100dvh(ブラウザUIやキーボードに追従する動的ビューポート)を使う。 */
+body:has(.main.chat-page) {
+    height: 100vh; height: 100dvh; height: var(--app-height, 100dvh);
+    display: flex; flex-direction: column; overflow: hidden;
+    padding-bottom: 0; overscroll-behavior: none;
+}
+body:has(.main.chat-page) .tabbar { display: none; }
+body:has(.main.chat-page) .header, body:has(.main.chat-page) .active-bar { flex: none; }
+.main.chat-page {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; flex-direction: column; padding-bottom: 0;
+}
+.main.chat-page .chat-head { position: static; flex: none; }
+.main.chat-page .chat-log {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 4px 2px 14px;
+}
+.main.chat-page .chat-form {
+    position: static; transform: none; flex: none;
+    width: auto; max-width: none; margin: 0 -16px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--line);
+}
+.main.chat-page .notice { flex: none; }
 
 /* ---------- 統計 ---------- */
 .hour-chart { display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 3px; height: 180px; margin: 16px 0 8px; padding-bottom: 18px; }

@@ -589,3 +589,34 @@
         scrollDown();
     }
 })();
+
+/* フォームの二重送信防止(POSTフォーム共通)
+   送信後はボタンを無効化して「送信中…」にし、同じフォームの再送信を止める。
+   WebSocket チャットのように他のハンドラが送信を取り消した場合は何もしない。 */
+(function () {
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) { return; }
+        if ((form.method || 'get').toLowerCase() !== 'post') { return; }
+        if (form.dataset.submitting === '1') { e.preventDefault(); return; }
+        setTimeout(function () {
+            if (e.defaultPrevented) { return; }
+            form.dataset.submitting = '1';
+            var buttons = form.querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]');
+            buttons.forEach(function (btn) {
+                if (btn.tagName === 'BUTTON' && btn.children.length === 0 && btn.textContent.trim()) {
+                    btn.dataset.origText = btn.textContent;
+                    btn.textContent = '送信中…';
+                }
+                btn.disabled = true;
+            });
+            setTimeout(function () {
+                delete form.dataset.submitting;
+                buttons.forEach(function (btn) {
+                    btn.disabled = false;
+                    if (btn.dataset.origText) { btn.textContent = btn.dataset.origText; delete btn.dataset.origText; }
+                });
+            }, 15000);
+        }, 0);
+    });
+})();

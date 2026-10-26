@@ -1,0 +1,15 @@
+{% extends 'core/base.html' %}
+
+{% block title %}送信を確認できませんでした - suki-match{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h1>送信を確認できませんでした</h1>
+    <p>ページの有効期限が切れたか、送信が二重に行われたため、リクエストを受け付けられませんでした。</p>
+    <p>メール認証のコードを送信した直後にこの画面が表示された場合、<strong>認証自体は完了していることがあります</strong>。そのままログインできるかお試しください。</p>
+    <p>
+        <a href="{% url 'account_login' %}" class="btn btn-primary">ログインする</a>
+        <a href="{% url 'core:help_request_list' %}" class="btn btn-ghost">トップへ戻る</a>
+    </p>
+</section>
+{% endblock %}

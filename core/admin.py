@@ -156,3 +156,9 @@ admin.site.register(PresetTag)
 admin.site.register(Notification)
 admin.site.register(NotificationSetting)
 admin.site.register(ActivityBase)
+
+
+# ---------- 管理画面の表記 ----------
+admin.site.site_header = 'suki-match 管理'
+admin.site.site_title = 'suki-match 管理'
+admin.site.index_title = '管理メニュー（詳しい操作はここから）'

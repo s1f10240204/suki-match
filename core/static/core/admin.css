@@ -1,0 +1,104 @@
+/* suki-match 管理画面テーマ: アプリ本体と同じ色・フォント・丸みに寄せる */
+
+:root {
+    --primary: #4c8b6b;
+    --secondary: #376a51;
+    --accent: #e0855c;
+    --header-bg: #4c8b6b;
+    --header-color: #ffffff;
+    --header-link-color: #ffffff;
+    --breadcrumbs-bg: #376a51;
+    --breadcrumbs-fg: #d7e8dd;
+    --breadcrumbs-link-fg: #ffffff;
+    --link-fg: #376a51;
+    --link-hover-color: #4c8b6b;
+    --link-selected-fg: #376a51;
+    --button-bg: #4c8b6b;
+    --button-hover-bg: #376a51;
+    --default-button-bg: #376a51;
+    --default-button-hover-bg: #2c5741;
+    --object-tools-bg: #4c8b6b;
+    --object-tools-hover-bg: #376a51;
+    --selected-row: #e9f2ec;
+    --body-bg: #fbf8f3;
+    --darkened-bg: #f3eee4;
+    --font-family-primary: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+    font-family: var(--font-family-primary);
+}
+
+#header {
+    padding: 12px 40px;
+}
+
+#site-name {
+    font-weight: 900;
+    letter-spacing: 0.02em;
+}
+
+.manage-dashboard-link {
+    display: inline-block;
+    margin-left: 18px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff !important;
+    font-weight: 700;
+    font-size: 12.5px;
+    vertical-align: middle;
+}
+
+.manage-dashboard-link:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+.module,
+#changelist .actions,
+.paginator,
+.submit-row {
+    border-radius: 14px;
+}
+
+.module h2,
+.module caption,
+.inline-group h2 {
+    background: #4c8b6b;
+    border-radius: 14px 14px 0 0;
+    font-family: var(--font-family-primary);
+    font-weight: 700;
+}
+
+.button,
+input[type="submit"],
+input[type="button"],
+.submit-row input,
+.object-tools a {
+    border-radius: 999px !important;
+    font-family: var(--font-family-primary);
+    font-weight: 700;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+    border-radius: 10px;
+    font-family: var(--font-family-primary);
+}
+
+#result_list tbody tr:hover td {
+    background: #f2f7f3;
+}
+
+/* ダークモード時もブランド色だけは維持する */
+[data-theme="dark"] {
+    --primary: #79b894;
+    --link-fg: #a9d3ba;
+    --header-bg: #2c5741;
+    --breadcrumbs-bg: #244a36;
+}

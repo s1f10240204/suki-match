@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Q
 from django.conf import settings
@@ -16,7 +17,7 @@ from . import images, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
-from .models import Application, HelpRequest, Match, Message, PresetTag, Review, Sanction, Skill, User
+from .models import Application, HelpRequest, Match, Message, PresetTag, Report, Review, Sanction, Skill, User
 from .services import ServiceError
 
 
@@ -482,3 +483,57 @@ def service_worker(request):
     response['Service-Worker-Allowed'] = '/'
     response['Cache-Control'] = 'no-cache'
     return response
+
+
+# ---------- 管理ダッシュボード（スタッフ専用・アプリ風UI） ----------
+
+PHOTO_REJECT_REASON = '顔がはっきり写った本人の写真を登録してください'
+
+
+@staff_member_required
+def manage_dashboard(request):
+    pending_photos = (User.objects.filter(avatar_status=User.PhotoStatus.PENDING)
+                      .exclude(avatar='').order_by('pk'))
+    open_reports = (Report.objects.filter(status__in=[Report.Status.OPEN, Report.Status.REVIEWING])
+                    .select_related('target_user', 'reporter').order_by('-created_at'))
+    context = {
+        'pending_photos': pending_photos,
+        'open_reports': open_reports[:10],
+        'open_report_count': open_reports.count(),
+        'risky_message_count': Message.objects.filter(
+            risk_score__gte=settings.MODERATION_REVIEW_THRESHOLD, is_hidden=False).count(),
+        'user_count': User.objects.count(),
+        'open_request_count': HelpRequest.objects.filter(status=HelpRequest.Status.OPEN).count(),
+    }
+    return render(request, 'core/manage_dashboard.html', context)
+
+
+@staff_member_required
+@require_POST
+def manage_photo_review(request, pk, action):
+    user = get_object_or_404(User, pk=pk)
+    if action == 'approve':
+        services.review_photo(user, approve=True)
+        messages.success(request, f'{user.username}さんの顔写真を承認しました。')
+    elif action == 'reject':
+        services.review_photo(user, approve=False, reason=PHOTO_REJECT_REASON)
+        messages.success(request, f'{user.username}さんの顔写真を差し戻しました。')
+    else:
+        raise Http404
+    return redirect('core:manage_dashboard')
+
+
+@staff_member_required
+@require_POST
+def manage_report_status(request, pk, action):
+    report = get_object_or_404(Report, pk=pk)
+    if action == 'resolve':
+        report.status = Report.Status.RESOLVED
+    elif action == 'dismiss':
+        report.status = Report.Status.DISMISSED
+    else:
+        raise Http404
+    report.handled_by = request.user
+    report.save(update_fields=['status', 'handled_by'])
+    messages.success(request, '通報の対応状況を更新しました。')
+    return redirect('core:manage_dashboard')

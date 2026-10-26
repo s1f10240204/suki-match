@@ -412,3 +412,12 @@ def run_tasks(request):
     if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
         return HttpResponseForbidden('forbidden')
     return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests()})
+
+
+def csrf_failure(request, reason=''):
+    """CSRF検証に失敗したときに表示する案内画面(デフォルトの403画面の代わり)。
+
+    メール認証コード送信直後の二重送信などで発生しうるため、認証が完了して
+    いる可能性があることを伝えてログインへ誘導する。
+    """
+    return render(request, 'core/csrf_failure.html', status=403)

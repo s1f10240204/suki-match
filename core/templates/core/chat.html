@@ -32,7 +32,9 @@
         {{ form.body }}
         <button class="btn btn-primary">送信</button>
     </form>
+{% elif not history_visible %}
+    <p class="notice">保存期間が終了したため、チャット履歴は削除されました。</p>
 {% else %}
-    <p class="notice">このチャットは終了しました。</p>
+    <p class="notice">このチャットは終了したため、送信できません。{% if retention_deadline %}履歴は{{ retention_deadline|date:"n/j H:i" }}まで保存されます。{% endif %}</p>
 {% endif %}
 {% endblock %}

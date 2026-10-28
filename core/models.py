@@ -154,6 +154,12 @@ class HelpRequest(models.Model):
         CANCELED = 'canceled', '取り下げ'
         EXPIRED = 'expired', '期限切れ'
 
+    class ChatRetention(models.IntegerChoices):
+        IMMEDIATE = 0, '完了後すぐ削除'
+        ONE_DAY = 1, '完了後1日'
+        THREE_DAYS = 3, '完了後3日'
+        SEVEN_DAYS = 7, '完了後7日(最長)'
+
     requester = models.ForeignKey(User, on_delete=models.CASCADE, related_name='requests', verbose_name='依頼者')
     title = models.CharField('タイトル', max_length=200)
     description = models.TextField('詳細', blank=True)
@@ -162,6 +168,9 @@ class HelpRequest(models.Model):
                                              verbose_name='必要なスキル')
     mode = models.CharField('募集方式', max_length=20, choices=Mode.choices, default=Mode.FIRST_COME)
     duration_minutes = models.PositiveIntegerField('所要時間(分)', default=15)
+    chat_retention_days = models.PositiveSmallIntegerField(
+        'チャット履歴の保存期間', choices=ChatRetention.choices, default=ChatRetention.THREE_DAYS,
+        help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ閲覧でき、過ぎると自動で削除されます。')
     status = models.CharField('状況', max_length=20, choices=Status.choices, default=Status.OPEN, db_index=True)
 
     # 正確な位置はマッチ参加者にのみ開示する

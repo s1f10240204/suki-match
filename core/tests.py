@@ -16,8 +16,8 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from . import geocoding, images, moderation, services, skills
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, PresetTag, Report,
+from . import geocoding, images, line_chat, moderation, services, skills
+from .models import (ActivityBase, Application, HelpRequest, LineChatState, Match, Message, Notification, PresetTag, Report,
                      Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
 from .text import normalize_text
@@ -387,6 +387,37 @@ class ChatAndReportTests(BaseTestCase):
         self.assertEqual(Message.objects.get().body, '5分後に着きます')
         self.assertTrue(Notification.objects.filter(user=self.helper, kind='message').exists())
 
+    def test_no_posting_after_complete_and_history_kept_during_retention(self):
+        services.post_message(self.match, self.helper, 'よろしく')
+        services.complete(self.match.help_request, self.requester)
+        self.match.refresh_from_db()
+        self.assertFalse(services.chat_is_open(self.match))
+        with self.assertRaises(services.ServiceError):
+            services.post_message(self.match, self.helper, 'まだ送れる？')
+        # 既定の保存期間(3日)の間は履歴を見られる
+        self.assertTrue(services.chat_history_visible(self.match))
+        self.assertIn(self.match, services.open_chats(self.requester))
+        self.assertEqual(services.purge_expired_chat_messages(), 0)
+        self.assertEqual(Message.objects.count(), 1)
+
+    def test_purge_deletes_messages_after_retention(self):
+        hr = make_request(make_user('req2'), chat_retention_days=1)
+        match = services.accept_first_come(hr, make_user('helper2'))
+        services.post_message(match, match.helper, 'ありがとう')
+        services.complete(hr, hr.requester)
+        Match.objects.filter(pk=match.pk).update(completed_at=timezone.now() - timedelta(days=2))
+        match.refresh_from_db()
+        self.assertFalse(services.chat_history_visible(match))
+        self.assertEqual(services.purge_expired_chat_messages(), 1)
+        self.assertEqual(Message.objects.filter(match=match).count(), 0)
+
+    def test_immediate_retention_purges_right_after_complete(self):
+        hr = make_request(make_user('req3'), chat_retention_days=0)
+        match = services.accept_first_come(hr, make_user('helper3'))
+        services.post_message(match, match.helper, 'hi')
+        services.complete(hr, hr.requester)
+        self.assertEqual(services.purge_expired_chat_messages(), 1)
+
     def test_moderation_records_only_by_default(self):
         message = services.post_message(self.match, self.helper, 'LINE ID教えて。090-1234-5678')
         self.assertGreaterEqual(message.risk_score, 0.8)
@@ -409,6 +440,28 @@ class ChatAndReportTests(BaseTestCase):
         self.assertEqual(services.strongest_sanction(target).level, Sanction.Level.NO_ACCEPT)
         with self.assertRaises(services.ServiceError):
             services.file_report(target, target, Report.Category.OTHER)
+
+
+class LinePostRetentionTests(BaseTestCase):
+    def test_post_flow_asks_retention_and_applies_it(self):
+        user = make_user('lineuser')
+        with mock.patch.object(line_chat.line_api, 'reply_messages') as reply:
+            line_chat.handle_message(user, '依頼する', 't1')
+            line_chat.handle_message(user, '荷物の移動', 't2')
+            line_chat.handle_message(user, 'なし', 't3')
+            line_chat.handle_message(user, '先着順', 't4')
+            line_chat.handle_message(user, '15分', 't5')
+            line_chat.handle_message(user, '今すぐ', 't6')
+            # 保存期間ステップが出ていること
+            state = LineChatState.objects.get(user=user)
+            self.assertEqual(state.step, 'post_retention')
+            line_chat.handle_message(user, '完了後7日', 't7')
+            line_chat.handle_message(user, '登録エリアを使う', 't8')
+            self.assertEqual(LineChatState.objects.get(user=user).step, 'post_confirm')
+            line_chat.handle_postback(user, 'action=post_confirm', 't9')
+            self.assertTrue(reply.called)
+        hr = HelpRequest.objects.get()
+        self.assertEqual(hr.chat_retention_days, 7)
 
 
 class EmailDigestTests(BaseTestCase):

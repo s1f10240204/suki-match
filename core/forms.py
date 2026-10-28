@@ -100,11 +100,15 @@ class HelpRequestForm(forms.ModelForm):
                                              help_text='この時間を過ぎると自動で締め切ります(指定しなければ3時間)')
     skill_names = SkillNamesField(label='必要なスキル',
                                   help_text='指定すると、そのスキルを持つ近くの人にだけ通知します(空欄なら誰でも)')
+    chat_retention_days = forms.TypedChoiceField(
+        label='チャット履歴の保存期間', choices=HelpRequest.ChatRetention.choices, coerce=int,
+        initial=HelpRequest.ChatRetention.THREE_DAYS, required=False, widget=forms.RadioSelect,
+        help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ見られて、過ぎると自動で削除されます。')
 
     class Meta:
         model = HelpRequest
         fields = ('title', 'mode', 'preset_tags', 'description', 'duration_minutes',
-                  'scheduled_for', 'address_detail', 'latitude', 'longitude')
+                  'scheduled_for', 'address_detail', 'latitude', 'longitude', 'chat_retention_days')
         widgets = {
             'mode': forms.RadioSelect,
             'preset_tags': forms.CheckboxSelectMultiple,
@@ -153,6 +157,8 @@ class HelpRequestForm(forms.ModelForm):
     def save(self, commit=True):
         """依頼者・掲載期限・スキルを設定して保存する。"""
         help_request = super().save(commit=False)
+        if help_request.chat_retention_days is None:
+            help_request.chat_retention_days = HelpRequest.ChatRetention.THREE_DAYS
         help_request.requester = self.user
         listing = self.cleaned_data.get('listing_minutes') or DEFAULT_LISTING_MINUTES
         help_request.expires_at = help_request.scheduled_for or timezone.now() + timedelta(minutes=listing)

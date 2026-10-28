@@ -16,6 +16,7 @@ from .models import HelpRequest, LineChatState
 CANCEL_WORDS = {'やめる', 'キャンセル', '中止', 'やっぱりやめる'}
 COMMANDS = {'依頼する', '依頼を探す', '進行中', 'エリア設定'}
 DURATIONS = {'15分': 15, '30分': 30, '1時間': 60, '2時間': 120}
+RETENTIONS = {'完了後すぐ削除': 0, '完了後1日': 1, '完了後3日': 3, '完了後7日': 7}
 GREEN = '#4c8b6b'
 AREA_HOW_ITEMS = [('位置情報を送る', '位置情報を送る'), ('エリア名で指定', 'エリア名で指定')]
 
@@ -269,6 +270,17 @@ def _step_input(user, state, text, reply_token):
                 '下のボタンから選んでください。',
                 quick_reply_items=[('今すぐ', '今すぐ'), ('日時を指定する', '日時を指定')]))
             return
+        _save(state, 'post_retention')
+        _reply(reply_token, line_api.text_message(
+            'チャット履歴の保存期間を選んでください。完了後はチャットに送信できなくなり、保存期間を過ぎると履歴は自動で削除されます。',
+            quick_reply_items=[(label, label) for label in RETENTIONS]))
+    elif step == 'post_retention':
+        if text not in RETENTIONS:
+            _reply(reply_token, line_api.text_message(
+                '下のボタンから選んでください。',
+                quick_reply_items=[(label, label) for label in RETENTIONS]))
+            return
+        _save(state, retention=RETENTIONS[text])
         _ask_area_how(user, state, reply_token)
     else:
         _clear(state)
@@ -283,6 +295,7 @@ def _confirm_message(user, data):
         {'type': 'text', 'text': f"内容: {data.get('description') or '（なし）'}", 'wrap': True, 'size': 'sm', 'color': '#666666'},
         {'type': 'text', 'text': f"方式: {mode_label}", 'size': 'sm', 'color': '#666666'},
         {'type': 'text', 'text': f"時間の目安: 約{data.get('duration', 15)}分 / 今すぐ", 'size': 'sm', 'color': '#666666'},
+        {'type': 'text', 'text': f"チャット保存: {dict(HelpRequest.ChatRetention.choices).get(data.get('retention', 3), '完了後3日')}", 'size': 'sm', 'color': '#666666'},
         {'type': 'text', 'text': f"エリア: {user.area_label or '設定済みの場所'}", 'size': 'sm', 'color': '#666666'},
     ]
     bubble = {
@@ -311,6 +324,7 @@ def _post_confirm(user, state, reply_token):
     help_request = HelpRequest.objects.create(
         requester=user, title=data['title'], description=data.get('description', ''),
         mode=data.get('mode', 'first_come'), duration_minutes=data.get('duration', 15),
+        chat_retention_days=data.get('retention', 3),
         latitude=data.get('latitude', user.latitude), longitude=data.get('longitude', user.longitude))
     count = services.publish_request(help_request)
     _clear(state)

@@ -15,7 +15,8 @@ class Command(BaseCommand):
         while True:
             expired = services.expire_requests()
             mailed = services.send_email_digests()
-            self.stdout.write(f'締め切り: {expired}件 / メール送信: {mailed}人')
+            purged = services.purge_expired_chat_messages()
+            self.stdout.write(f'締め切り: {expired}件 / メール送信: {mailed}人 / チャット履歴削除: {purged}件')
             if not options['loop']:
                 break
             time.sleep(options['loop'])

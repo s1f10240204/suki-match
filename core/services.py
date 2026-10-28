@@ -45,7 +45,6 @@ REPORT_WINDOW_DAYS = 30
 REPORT_AUTO_SANCTION_REPORTERS = 3
 REPORT_SANCTION_DAYS = 7
 
-CHAT_OPEN_DAYS_AFTER_DONE = 3
 ONLINE_KEY = 'online:{}'
 
 
@@ -462,18 +461,49 @@ def expire_requests():
 # ---------- チャット ----------
 
 def chat_is_open(match):
-    if match.status == Match.Status.IN_PROGRESS:
-        return True
-    return (match.status == Match.Status.DONE and match.completed_at is not None
-            and match.completed_at > timezone.now() - timedelta(days=CHAT_OPEN_DAYS_AFTER_DONE))
+    """送信できるのは進行中だけ。完了・キャンセルした時点で送信は終了する。"""
+    return match.status == Match.Status.IN_PROGRESS
+
+
+def chat_retention_deadline(match):
+    """チャット履歴の保存期限。進行中(終了日時なし)は None。"""
+    ended_at = None
+    if match.status == Match.Status.DONE:
+        ended_at = match.completed_at
+    elif match.status == Match.Status.CANCELED:
+        ended_at = match.canceled_at
+    if ended_at is None:
+        return None
+    return ended_at + timedelta(days=match.help_request.chat_retention_days)
+
+
+def chat_history_visible(match):
+    deadline = chat_retention_deadline(match)
+    return deadline is None or timezone.now() < deadline
 
 
 def open_chats(user):
-    """メッセージできるマッチング(進行中、または完了から3日以内)。"""
-    since = timezone.now() - timedelta(days=CHAT_OPEN_DAYS_AFTER_DONE)
-    return list(Match.objects.filter(Q(helper=user) | Q(help_request__requester=user))
-                .filter(Q(status=Match.Status.IN_PROGRESS) | Q(status=Match.Status.DONE, completed_at__gt=since))
-                .select_related('help_request__requester', 'helper').order_by('-created_at'))
+    """チャットを開けるマッチング(進行中、または完了後で保存期間内)。"""
+    matches = (Match.objects.filter(Q(helper=user) | Q(help_request__requester=user))
+               .filter(Q(status=Match.Status.IN_PROGRESS) | Q(status=Match.Status.DONE))
+               .select_related('help_request__requester', 'helper').order_by('-created_at'))
+    return [m for m in matches if chat_history_visible(m)]
+
+
+def purge_expired_chat_messages():
+    """保存期間を過ぎた完了・キャンセル済みマッチのメッセージを削除する。定期処理から呼ぶ。"""
+    now = timezone.now()
+    ended = (Match.objects.filter(status__in=[Match.Status.DONE, Match.Status.CANCELED])
+             .select_related('help_request'))
+    targets = []
+    for match in ended:
+        deadline = chat_retention_deadline(match)
+        if deadline is not None and deadline <= now:
+            targets.append(match.pk)
+    if not targets:
+        return 0
+    deleted, _ = Message.objects.filter(match_id__in=targets).delete()
+    return deleted
 
 
 def message_payload(message):

@@ -138,6 +138,8 @@ def help_request_detail(request, pk):
                                    .select_related('applicant'))
     if match is not None and (is_requester or is_helper):
         context['chat_open'] = services.chat_is_open(match)
+        context['chat_history_visible'] = services.chat_history_visible(match)
+        context['retention_deadline'] = services.chat_retention_deadline(match)
         if match.status == Match.Status.IN_PROGRESS:
             context['grace_seconds'] = services.grace_remaining_seconds(match)
         if (help_request.status == HelpRequest.Status.DONE
@@ -237,11 +239,14 @@ def chat(request, pk):
 
     match.messages.filter(read_at__isnull=True).exclude(sender=request.user).update(read_at=timezone.now())
     request.user.notifications.filter(url=request.path, is_read=False).update(is_read=True)
+    history_visible = services.chat_history_visible(match)
     chat_messages = [m for m in match.messages.select_related('sender')
-                     if not m.is_hidden or m.sender_id == request.user.pk]
+                     if history_visible and (not m.is_hidden or m.sender_id == request.user.pk)]
     return render(request, 'core/chat.html', {
         'match': match, 'help_request': match.help_request, 'other': match.other_user(request.user),
         'chat_messages': chat_messages, 'chat_open': services.chat_is_open(match), 'form': form,
+        'history_visible': history_visible,
+        'retention_deadline': services.chat_retention_deadline(match),
     })
 
 
@@ -437,7 +442,8 @@ def run_tasks(request):
     token = request.headers.get('X-Tasks-Token', '')
     if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
         return HttpResponseForbidden('forbidden')
-    return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests()})
+    return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests(),
+                         'purged_messages': services.purge_expired_chat_messages()})
 
 
 def csrf_failure(request, reason=''):

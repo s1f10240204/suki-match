@@ -129,6 +129,10 @@
         <p class="meta">この依頼は「{{ help_request.get_status_display }}」です。</p>
     {% endif %}
 
+    {% if chat_history_visible and help_request.status == 'done' %}
+        <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャット履歴を見る{% if retention_deadline %}({{ retention_deadline|date:"n/j" }}まで保存){% endif %}</a>
+    {% endif %}
+
     {% if review_form %}
         <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form">
             {% csrf_token %}

@@ -742,7 +742,7 @@ class EmailCodeTests(TestCase):
     def test_signup_sends_six_digit_code_from_suki_match(self):
         import re
         response = self.client.post(reverse('account_signup'), {
-            'email': 'code@example.com', 'username': 'coder',
+            'email': 'code@example.com', 'username': 'coder', 'birth_date': '1995-05-05',
             'password1': 'complex-pass-99', 'password2': 'complex-pass-99'})
         self.assertRedirects(response, reverse('account_email_verification_sent'), fetch_redirect_response=False)
         self.assertEqual(len(mail.outbox), 1)

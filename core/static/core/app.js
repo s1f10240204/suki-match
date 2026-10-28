@@ -730,11 +730,11 @@
         btn.type = 'button';
         btn.className = 'pw-toggle';
         btn.setAttribute('aria-label', 'パスワードを表示');
-        btn.innerHTML = EYE;
+        btn.innerHTML = EYE_OFF;
         btn.addEventListener('click', function () {
             var show = input.type === 'password';
             input.type = show ? 'text' : 'password';
-            btn.innerHTML = show ? EYE_OFF : EYE;
+            btn.innerHTML = show ? EYE : EYE_OFF;
             btn.setAttribute('aria-label', show ? 'パスワードを隠す' : 'パスワードを表示');
             input.focus();
         });

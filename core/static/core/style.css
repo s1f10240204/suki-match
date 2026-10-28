@@ -418,7 +418,7 @@ details.more[open] > summary { margin-bottom: 8px; }
 .auth-page form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin: 12px 0; box-shadow: var(--shadow); }
 .auth-page form p, .auth-page form > div { margin-bottom: 12px; }
 .auth-page label { display: block; font-weight: 700; font-size: .88rem; margin-bottom: 4px; }
-.auth-page button[type=submit]:not(.btn):not(.btn-text), .auth-page form button:not(.btn-text):not(.btn) {
+.auth-page button[type=submit]:not(.btn):not(.btn-text):not(.pw-toggle), .auth-page form button:not(.btn-text):not(.btn):not(.pw-toggle) {
     width: 100%; padding: 12px 20px; border-radius: 999px; border: none; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer;
 }
 .auth-page a { color: var(--primary-dark); font-weight: 700; }
@@ -456,13 +456,13 @@ details.more[open] > summary { margin-bottom: 8px; }
 /* ---------- パスワード表示ボタン ---------- */
 .pw-wrap { position: relative; display: block; }
 .pw-wrap input { padding-right: 52px !important; }
-.pw-toggle {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+.pw-wrap .pw-toggle {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0; border: none; border-radius: 10px;
-    background: none; color: #9a8f7d; cursor: pointer;
+    background: transparent; color: #b3a892; cursor: pointer; z-index: 2;
 }
-.pw-toggle:active { background: var(--primary-soft); color: var(--primary-dark); }
+.pw-wrap .pw-toggle:active { background: var(--primary-soft); color: var(--primary-dark); }
 
 /* ---------- チャットの写真 ---------- */
 .bubble-img { display: block; max-width: min(240px, 62vw); max-height: 320px; border-radius: 10px; margin-bottom: 4px; }

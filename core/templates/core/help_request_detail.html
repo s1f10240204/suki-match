@@ -17,6 +17,7 @@
     <div class="chips">
         <span class="chip">{{ help_request.duration_minutes }}分</span>
         <span class="chip{% if help_request.mode == 'approval' %} chip-approval{% endif %}">{{ help_request.get_mode_display }}</span>
+        {% if help_request.headcount > 1 %}<span class="chip chip-headcount">{{ help_request.headcount }}人募集{% if accepting %}（あと{{ slots_left }}人）{% endif %}</span>{% endif %}
         {% for s in help_request.required_skills.all %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}
         {% if skill_ok and help_request.required_skills.all %}<span class="chip chip-ok">あなたの得意分野</span>{% endif %}
     </div>
@@ -48,7 +49,19 @@
             {% if help_request.requester.motivation %}<p class="person-quote">{{ help_request.requester.motivation }}</p>{% endif %}
         </div>
     </a>
-    {% if match %}
+    {% if help_request.is_group and participants %}
+        <h2 class="section-title">参加中のヘルパー（{{ participants|length }}人）</h2>
+        {% for pm in participants %}
+        <a href="{% url 'core:public_profile' pm.helper.username %}" class="person">
+            {% avatar pm.helper %}
+            <div>
+                <p class="person-name">{{ pm.helper.username }} <span class="rank-badge">{{ pm.helper.rank }} Lv.{{ pm.helper.level }}</span></p>
+                <p class="meta">ヘルパー</p>
+                {% if pm.helper.motivation %}<p class="person-quote">「{{ pm.helper.motivation }}」</p>{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    {% elif match %}
         <a href="{% url 'core:public_profile' match.helper.username %}" class="person">
             {% avatar match.helper %}
             <div>
@@ -90,6 +103,24 @@
                 <p class="meta">先着順で募集中です。引き受けた人がいると通知が届きます。</p>
             {% endif %}
         {% elif help_request.status == 'in_progress' %}
+            {% if help_request.mode == 'approval' and applications %}
+                <h2 class="section-title">応募者（あと{{ slots_left }}人）</h2>
+                {% for app in applications %}
+                    <div class="applicant">
+                        <a href="{% url 'core:public_profile' app.applicant.username %}" class="person person-compact">
+                            {% avatar app.applicant 'sm' %}
+                            <div>
+                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>
+                                {% if app.message %}<p class="person-quote">{{ app.message }}</p>{% endif %}
+                            </div>
+                        </a>
+                        <form method="post" action="{% url 'core:approve_application' app.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-primary btn-sm">この人にお願いする</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            {% endif %}
             <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>
             <form method="post" action="{% url 'core:complete_help_request' help_request.pk %}">
                 {% csrf_token %}
@@ -101,7 +132,7 @@
         <a href="{% url 'core:chat' match.pk %}" class="btn btn-primary btn-block">チャットを開く</a>
         <p class="meta">終わったら、依頼者が「完了」にするとポイントが付与されます。</p>
 
-    {% elif help_request.status == 'open' %}
+    {% elif accepting %}
         {% if help_block_reason %}
             <p class="notice">{{ help_block_reason }}</p>
         {% elif help_request.mode == 'first_come' %}

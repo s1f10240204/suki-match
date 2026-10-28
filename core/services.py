@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from . import images, line_api, moderation
 from .geocoding import area_label_for
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification,
+from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, Notification,
                      NotificationSetting, Report, Review, Sanction, User)
 
 RADIUS_METERS = 500
@@ -278,14 +278,21 @@ def publish_request(help_request):
 
 
 def _claim(help_request, helper):
-    """先着1名: 募集中のものだけを原子的に進行中へ更新する。"""
-    claimed = HelpRequest.objects.filter(
-        pk=help_request.pk, status=HelpRequest.Status.OPEN, expires_at__gt=timezone.now(),
-    ).update(status=HelpRequest.Status.IN_PROGRESS)
-    if not claimed:
+    """募集人数の枠が残っていれば参加させる。呼び出し側のトランザクション内で行をロックして数える。"""
+    locked = HelpRequest.objects.select_for_update().get(pk=help_request.pk)
+    if locked.status not in (HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS) \
+            or locked.expires_at <= timezone.now():
         raise ServiceError('この依頼はすでに締め切られました。')
-    help_request.status = HelpRequest.Status.IN_PROGRESS
-    return Match.objects.create(help_request=help_request, helper=helper)
+    if locked.matches.filter(status=Match.Status.IN_PROGRESS, helper=helper).exists():
+        raise ServiceError('すでに参加しています。')
+    if locked.matches.filter(status=Match.Status.IN_PROGRESS).count() >= locked.headcount:
+        raise ServiceError('募集人数に達しました。')
+    match = Match.objects.create(help_request=locked, helper=helper)
+    if locked.status == HelpRequest.Status.OPEN:
+        locked.status = HelpRequest.Status.IN_PROGRESS
+        locked.save(update_fields=['status'])
+    help_request.status = locked.status
+    return match
 
 
 def _check_can_help(help_request, user):
@@ -294,7 +301,7 @@ def _check_can_help(help_request, user):
     reason = accept_block_reason(user)
     if reason:
         raise ServiceError(reason)
-    if not help_request.is_open:
+    if not help_request.accepting:
         raise ServiceError('この依頼は募集を締め切りました。')
 
 
@@ -345,8 +352,10 @@ def approve(application, user):
         match = _claim(help_request, application.applicant)
         application.status = Application.Status.ACCEPTED
         application.save(update_fields=['status'])
-        others = list(help_request.applications.filter(status=Application.Status.APPLIED).select_related('applicant'))
-        help_request.applications.filter(status=Application.Status.APPLIED).update(status=Application.Status.REJECTED)
+        others = []
+        if help_request.slots_left <= 0:  # 満員になったときだけ、残りの応募を見送る
+            others = list(help_request.applications.filter(status=Application.Status.APPLIED).select_related('applicant'))
+            help_request.applications.filter(status=Application.Status.APPLIED).update(status=Application.Status.REJECTED)
     url = detail_url(help_request)
     notify(application.applicant, 'matched', f'「{help_request.title}」の応募が承認されました', url)
     for other in others:
@@ -355,21 +364,23 @@ def approve(application, user):
 
 
 def complete(help_request, user):
-    """依頼者が完了を確定。ヘルパーにポイントを付与する。"""
+    """依頼者が完了を確定。参加していた全ヘルパーにポイントを付与する。"""
     if help_request.requester_id != user.pk:
         raise ServiceError('完了にできるのは依頼者だけです。')
-    match = help_request.active_match
-    if match is None:
+    matches = list(help_request.active_matches)
+    if not matches:
         raise ServiceError('進行中のマッチングがありません。')
     with transaction.atomic():
-        match.status, match.completed_at = Match.Status.DONE, timezone.now()
-        match.save(update_fields=['status', 'completed_at'])
+        for match in matches:
+            match.status, match.completed_at = Match.Status.DONE, timezone.now()
+            match.save(update_fields=['status', 'completed_at'])
+            match.helper.add_points(HELPER_POINTS)
         help_request.status = HelpRequest.Status.DONE
         help_request.save(update_fields=['status'])
-        match.helper.add_points(HELPER_POINTS)
-    notify(match.helper, 'completed',
-           f'「{help_request.title}」が完了しました(+{HELPER_POINTS}pt)', detail_url(help_request))
-    return match
+    for match in matches:
+        notify(match.helper, 'completed',
+               f'「{help_request.title}」が完了しました(+{HELPER_POINTS}pt)', detail_url(help_request))
+    return matches[0]
 
 
 def grace_remaining_seconds(match):
@@ -378,41 +389,61 @@ def grace_remaining_seconds(match):
 
 
 def cancel(help_request, user, reason=''):
-    """ヘルパーのキャンセル=再募集 / 依頼者のキャンセル=依頼取り下げ。
+    """ヘルパーのキャンセル=自分の参加だけ取り消し(枠が空く) / 依頼者のキャンセル=依頼取り下げ(全員分)。
 
     マッチ成立から1分を過ぎたキャンセルはペナルティ対象。戻り値は付与されたペナルティ(なければNone)。
     """
-    match = help_request.active_match
     url = detail_url(help_request)
-    is_helper = match is not None and match.helper_id == user.pk
     is_requester = help_request.requester_id == user.pk
-    if not is_helper and not (is_requester and help_request.status in (
+    my_match = help_request.matches.filter(status=Match.Status.IN_PROGRESS, helper=user).first()
+    if my_match is None and not (is_requester and help_request.status in (
             HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS)):
         raise ServiceError('キャンセルできません。')
 
-    penalized = match is not None and grace_remaining_seconds(match) == 0
+    now = timezone.now()
+    penalized_match = None
+    canceled_helpers = []
+    reopen = False
     with transaction.atomic():
-        if match is not None:
-            match.status, match.canceled_at, match.canceled_by = Match.Status.CANCELED, timezone.now(), user
-            match.cancel_reason, match.penalized = reason[:200], penalized
-            match.save(update_fields=['status', 'canceled_at', 'canceled_by', 'cancel_reason', 'penalized'])
-        if is_helper:
-            reopen = help_request.expires_at > timezone.now()
-            help_request.status = HelpRequest.Status.OPEN if reopen else HelpRequest.Status.EXPIRED
-        else:
+        if is_requester:
+            for match in help_request.active_matches:
+                penalized = grace_remaining_seconds(match) == 0
+                match.status, match.canceled_at, match.canceled_by = Match.Status.CANCELED, now, user
+                match.cancel_reason, match.penalized = reason[:200], penalized
+                match.save(update_fields=['status', 'canceled_at', 'canceled_by', 'cancel_reason', 'penalized'])
+                canceled_helpers.append(match.helper)
+                if penalized and penalized_match is None:
+                    penalized_match = match
             help_request.status = HelpRequest.Status.CANCELED
             help_request.applications.filter(status=Application.Status.APPLIED).update(
                 status=Application.Status.REJECTED)
+        else:
+            match = my_match
+            penalized = grace_remaining_seconds(match) == 0
+            match.status, match.canceled_at, match.canceled_by = Match.Status.CANCELED, now, user
+            match.cancel_reason, match.penalized = reason[:200], penalized
+            match.save(update_fields=['status', 'canceled_at', 'canceled_by', 'cancel_reason', 'penalized'])
+            if penalized:
+                penalized_match = match
+            reopen = help_request.expires_at > now
+            if not reopen:
+                help_request.status = HelpRequest.Status.EXPIRED
+            elif help_request.active_matches.exists():
+                help_request.status = HelpRequest.Status.IN_PROGRESS  # 残りのメンバーで継続し、空いた枠は再募集
+            else:
+                help_request.status = HelpRequest.Status.OPEN
         help_request.save(update_fields=['status'])
 
-    if is_helper:
+    if is_requester:
+        for helper in canceled_helpers:
+            notify(helper, 'canceled', f'「{help_request.title}」は依頼者により取り下げられました', url)
+    else:
         notify(help_request.requester, 'canceled',
-               f'「{help_request.title}」のヘルパーがキャンセルしました' + ('。再募集します' if reopen else ''), url)
+               f'「{help_request.title}」のヘルパー({user.username}さん)がキャンセルしました'
+               + ('。空いた枠を再募集します' if reopen else ''), url)
         if reopen:
             notify_nearby_helpers(help_request)
-    elif match is not None:
-        notify(match.helper, 'canceled', f'「{help_request.title}」は依頼者により取り下げられました', url)
-    return apply_cancel_penalty(user, match) if penalized else None
+    return apply_cancel_penalty(user, penalized_match) if penalized_match is not None else None
 
 
 def apply_cancel_penalty(user, match):
@@ -460,21 +491,52 @@ def expire_requests():
 
 # ---------- チャット ----------
 
+def chat_group_name(help_request):
+    """グループチャットの配信グループ名(依頼単位)。"""
+    return f'chat_{help_request.pk}'
+
+
+def chat_participants(help_request):
+    """チャット参加者のID集合: 依頼者 + キャンセル以外のマッチのヘルパー。"""
+    ids = {help_request.requester_id}
+    ids.update(help_request.matches.exclude(status=Match.Status.CANCELED)
+               .values_list('helper_id', flat=True))
+    return ids
+
+
 def chat_is_open(match):
     """送信できるのは進行中だけ。完了・キャンセルした時点で送信は終了する。"""
     return match.status == Match.Status.IN_PROGRESS
 
 
+def sender_can_post(help_request, sender):
+    if help_request.status != HelpRequest.Status.IN_PROGRESS:
+        return False
+    if sender.pk == help_request.requester_id:
+        return help_request.active_matches.exists()
+    return help_request.matches.filter(status=Match.Status.IN_PROGRESS, helper=sender).exists()
+
+
+def request_ended_at(help_request):
+    """依頼の終了日時(全マッチの完了・キャンセルのうち最も遅いもの)。未終了なら None。"""
+    times = []
+    for completed_at, canceled_at in help_request.matches.filter(
+            status__in=[Match.Status.DONE, Match.Status.CANCELED]).values_list('completed_at', 'canceled_at'):
+        ended = completed_at or canceled_at
+        if ended is not None:
+            times.append(ended)
+    return max(times) if times else None
+
+
 def chat_retention_deadline(match):
-    """チャット履歴の保存期限。進行中(終了日時なし)は None。"""
-    ended_at = None
-    if match.status == Match.Status.DONE:
-        ended_at = match.completed_at
-    elif match.status == Match.Status.CANCELED:
-        ended_at = match.canceled_at
+    """チャット履歴の保存期限。進行中・募集中(終了日時なし)は None。"""
+    help_request = match.help_request
+    if help_request.status in (HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS):
+        return None
+    ended_at = request_ended_at(help_request)
     if ended_at is None:
         return None
-    return ended_at + timedelta(days=match.help_request.chat_retention_days)
+    return ended_at + timedelta(days=help_request.chat_retention_days)
 
 
 def chat_history_visible(match):
@@ -483,31 +545,51 @@ def chat_history_visible(match):
 
 
 def open_chats(user):
-    """チャットを開けるマッチング(進行中、または完了後で保存期間内)。"""
+    """チャットを開けるマッチング(進行中、または完了後で保存期間内)。グループは依頼ごとに1件にまとめる。"""
     matches = (Match.objects.filter(Q(helper=user) | Q(help_request__requester=user))
                .filter(Q(status=Match.Status.IN_PROGRESS) | Q(status=Match.Status.DONE))
                .select_related('help_request__requester', 'helper').order_by('-created_at'))
-    return [m for m in matches if chat_history_visible(m)]
+    result, seen_requests = [], set()
+    for match in matches:
+        if not chat_history_visible(match):
+            continue
+        if match.help_request.requester_id == user.pk:
+            if match.help_request_id in seen_requests:
+                continue
+            seen_requests.add(match.help_request_id)
+        result.append(match)
+    return result
 
 
 def purge_expired_chat_messages():
-    """保存期間を過ぎた完了・キャンセル済みマッチのメッセージを削除する。定期処理から呼ぶ。"""
+    """保存期間を過ぎた完了・キャンセル済み依頼のメッセージを削除する。定期処理から呼ぶ。"""
     now = timezone.now()
-    ended = (Match.objects.filter(status__in=[Match.Status.DONE, Match.Status.CANCELED])
-             .select_related('help_request'))
     targets = []
-    for match in ended:
-        deadline = chat_retention_deadline(match)
-        if deadline is not None and deadline <= now:
-            targets.append(match.pk)
+    for help_request in HelpRequest.objects.filter(
+            status__in=[HelpRequest.Status.DONE, HelpRequest.Status.CANCELED]):
+        ended_at = request_ended_at(help_request)
+        if ended_at is not None and ended_at + timedelta(days=help_request.chat_retention_days) <= now:
+            targets.append(help_request.pk)
     if not targets:
         return 0
-    messages_qs = Message.objects.filter(match_id__in=targets)
+    messages_qs = Message.objects.filter(help_request_id__in=targets)
     for message in messages_qs.only('image'):
         if message.image:
             message.image.delete(save=False)  # 保存ファイルも消す(本文と一緒に破棄)
     deleted, _ = messages_qs.delete()
     return deleted
+
+
+def mark_chat_read(help_request, user):
+    """依頼のチャットで、自分以外が送った表示可能なメッセージを既読にする。新しく既読になった件数を返す。"""
+    ids = list(Message.objects.filter(help_request=help_request, is_hidden=False)
+               .exclude(sender=user).exclude(reads__user=user).values_list('pk', flat=True))
+    if not ids:
+        return 0
+    MessageRead.objects.bulk_create(
+        [MessageRead(message_id=message_id, user=user) for message_id in ids], ignore_conflicts=True)
+    Message.objects.filter(pk__in=ids, read_at__isnull=True).update(read_at=timezone.now())
+    return len(ids)
 
 
 def message_payload(message):
@@ -517,6 +599,9 @@ def message_payload(message):
         'sender_id': message.sender_id,
         'body': '' if message.is_hidden else message.body,
         'image_url': '' if message.is_hidden or not message.image else reverse('core:chat_image', args=[message.pk]),
+        'avatar_url': reverse('core:user_photo', args=[message.sender_id]) if message.sender.avatar else '',
+        'report_url': reverse('core:report_user', args=[message.sender.username]),
+        'read_count': message.reads.exclude(user_id=message.sender_id).count(),
         'hidden': message.is_hidden,
         'created_at': timezone.localtime(message.created_at).strftime('%H:%M'),
     }
@@ -524,9 +609,10 @@ def message_payload(message):
 
 def post_message(match, sender, body, image_file=None):
     body = (body or '').strip()
-    if sender.pk not in match.participants():
+    help_request = match.help_request
+    if sender.pk not in chat_participants(help_request):
         raise ServiceError('このチャットには参加していません。')
-    if not chat_is_open(match):
+    if not sender_can_post(help_request, sender):
         raise ServiceError('このチャットは終了しています。')
     if len(body) > 1000:
         raise ServiceError('メッセージは1000文字以内で入力してください。')
@@ -541,7 +627,9 @@ def post_message(match, sender, body, image_file=None):
 
     score, labels = moderation.assess(match, sender, body)
     hidden = settings.MODERATION_AUTO_HIDE and score >= settings.MODERATION_HIDE_THRESHOLD
-    message = Message(match=match, sender=sender, body=body,
+    own_match = (match if sender.pk == match.helper_id else
+                 help_request.matches.filter(status=Match.Status.IN_PROGRESS, helper=sender).first() or match)
+    message = Message(match=own_match, help_request=help_request, sender=sender, body=body,
                       risk_score=score, risk_labels=labels, is_hidden=hidden)
     if image is not None:
         message.image = image
@@ -549,12 +637,13 @@ def post_message(match, sender, body, image_file=None):
     if hidden:
         push(f'user_{sender.pk}', {'type': 'notify', 'kind': 'warning', 'url': '',
                                     'message': '不適切な可能性がある内容のため、メッセージは相手に表示されませんでした。'})
-    push(f'chat_{match.pk}', {'type': 'chat.message', 'message': message_payload(message)})
+    push(chat_group_name(help_request), {'type': 'chat.message', 'message': message_payload(message)})
 
-    other = match.other_user(sender)
     url = reverse('core:chat', args=[match.pk])
-    if not hidden and not Notification.objects.filter(user=other, kind='message', url=url, is_read=False).exists():
-        notify(other, 'message', f'{sender.username}さんから新しいメッセージ', url)
+    if not hidden:
+        for other in User.objects.filter(pk__in=chat_participants(help_request) - {sender.pk}):
+            if not Notification.objects.filter(user=other, kind='message', url=url, is_read=False).exists():
+                notify(other, 'message', f'{sender.username}さんから新しいメッセージ', url)
     return message
 
 
@@ -580,12 +669,21 @@ def file_report(reporter, target, category, detail='', help_request=None, messag
 
 def active_items(user):
     """「進行中の依頼」バー用。"""
-    matches = Match.objects.filter(Q(help_request__requester=user) | Q(helper=user),
-                                   status=Match.Status.IN_PROGRESS)
-    pending = (HelpRequest.objects.filter(requester=user, status=HelpRequest.Status.OPEN,
+    qs = (Match.objects.filter(Q(help_request__requester=user) | Q(helper=user),
+                               status=Match.Status.IN_PROGRESS)
+          .select_related('help_request', 'helper', 'help_request__requester'))
+    matches, seen_requests = [], set()
+    for m in qs:
+        if m.help_request.requester_id == user.pk:
+            if m.help_request_id in seen_requests:
+                continue
+            seen_requests.add(m.help_request_id)
+        matches.append(m)
+    pending = (HelpRequest.objects.filter(requester=user, status__in=[
+                    HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS],
                                           applications__status=Application.Status.APPLIED)
                .annotate(applicants=Count('applications')).distinct())
-    return list(matches.select_related('help_request', 'helper', 'help_request__requester')), list(pending)
+    return matches, list(pending)
 
 
 def send_email_digests(now=None):

@@ -3,8 +3,6 @@ from collections import deque
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from django.utils import timezone
-
 from . import services
 from .models import Match
 
@@ -51,10 +49,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         user = self.scope['user']
         self.match_id = self.scope['url_route']['kwargs']['match_id']
-        if not user.is_authenticated or not await self._can_join(user):
+        if not user.is_authenticated:
             await self.close()
             return
-        self.group = f'chat_{self.match_id}'
+        info = await self._join_info()
+        if info is None or user.pk not in info[1]:
+            await self.close()
+            return
+        self.group = info[0]  # グループチャットは依頼単位で配信
         self.sent_at = deque(maxlen=self.RATE_LIMIT)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
@@ -65,9 +67,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.group, self.channel_name)
 
     @database_sync_to_async
-    def _can_join(self, user):
+    def _join_info(self):
         match = Match.objects.select_related('help_request').filter(pk=self.match_id).first()
-        return match is not None and user.pk in match.participants()
+        if match is None:
+            return None
+        return services.chat_group_name(match.help_request), services.chat_participants(match.help_request)
 
     async def receive_json(self, content, **kwargs):
         if content.get('type') == 'read':
@@ -93,12 +97,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _mark_read_db(self):
-        match = Match.objects.filter(pk=self.match_id).first()
+        match = Match.objects.filter(pk=self.match_id).select_related('help_request').first()
         if match is None:
             return 0
-        return (match.messages.filter(read_at__isnull=True)
-                .exclude(sender_id=self.scope['user'].pk)
-                .update(read_at=timezone.now()))
+        return services.mark_chat_read(match.help_request, self.scope['user'])
 
     async def _mark_read(self):
         if await self._mark_read_db():

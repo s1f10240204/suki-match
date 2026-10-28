@@ -1,0 +1,13 @@
+<div class="bubble-row {% if m.sender_id == user.pk %}mine{% endif %}">
+    {% if is_group and m.sender_id != user.pk %}
+    <div class="bubble-side">
+        <img class="chat-avatar" src="{% url 'core:user_photo' m.sender.pk %}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <div class="bubble-main">
+            <span class="bubble-name">{{ m.sender.username }}</span>
+            {% include 'core/_bubble_body.html' %}
+        </div>
+    </div>
+    {% else %}
+    {% include 'core/_bubble_body.html' %}
+    {% endif %}
+</div>

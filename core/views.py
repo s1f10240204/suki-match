@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles import finders
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg, Q
+from django.db.models import Avg, Count, F, Q
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -47,8 +47,11 @@ def help_request_list(request):
     services.expire_requests()
     tab = 'scheduled' if request.GET.get('tab') == 'scheduled' else 'now'
     show_all = request.GET.get('all') == '1'
-    qs = (HelpRequest.objects.filter(status=HelpRequest.Status.OPEN, expires_at__gt=timezone.now(),
+    qs = (HelpRequest.objects.filter(status__in=[HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS],
+                                     expires_at__gt=timezone.now(),
                                      scheduled_for__isnull=(tab == 'now'))
+          .annotate(joined_active=Count('matches', filter=Q(matches__status=Match.Status.IN_PROGRESS)))
+          .filter(headcount__gt=F('joined_active'))
           .select_related('requester').prefetch_related('required_skills', 'preset_tags'))
     q = request.GET.get('q', '').strip()
     tag_id = request.GET.get('tag', '')
@@ -62,6 +65,8 @@ def help_request_list(request):
     if tag_id.isdigit() or skill_id.isdigit():
         qs = qs.distinct()
     help_requests = list(qs.order_by('scheduled_for' if tab == 'scheduled' else 'expires_at'))
+    for hr in help_requests:
+        hr.remaining = hr.headcount - hr.joined_active
 
     user = request.user
     points = _viewpoints(user) if user.is_authenticated else []
@@ -114,13 +119,17 @@ def help_request_detail(request, pk):
     match = help_request.active_match or help_request.matches.filter(
         status=Match.Status.DONE).select_related('helper').first()
     is_requester = user.is_authenticated and user.pk == help_request.requester_id
-    is_helper = user.is_authenticated and match is not None and user.pk == match.helper_id
+    is_helper = user.is_authenticated and help_request.matches.filter(
+        helper=user, status=Match.Status.IN_PROGRESS).exists()
 
     context = {
         'help_request': help_request, 'match': match,
         'is_requester': is_requester, 'is_helper': is_helper,
         'show_exact': services.can_view_exact_location(user, help_request),
         'cancel_form': CancelForm(),
+        'participants': list(help_request.active_matches),
+        'slots_left': help_request.slots_left,
+        'accepting': help_request.accepting,
     }
     if user.is_authenticated and not is_requester:
         points = _viewpoints(user)
@@ -128,12 +137,13 @@ def help_request_detail(request, pk):
             context['distance_text'] = services.distance_label(min(
                 services.distance_m(lat, lng, help_request.public_latitude, help_request.public_longitude)
                 for lat, lng in points))
-        if help_request.is_open:
+        if help_request.accepting:
             context['help_block_reason'] = services.accept_block_reason(user)
             context['skill_ok'] = services.skill_matches(user, help_request)
             context['my_application'] = help_request.applications.filter(applicant=user).first()
             context['application_form'] = ApplicationForm()
-    if is_requester and help_request.is_open and help_request.mode == HelpRequest.Mode.APPROVAL:
+    if is_requester and help_request.mode == HelpRequest.Mode.APPROVAL and help_request.status in (
+            HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS):
         context['applications'] = (help_request.applications.filter(status=Application.Status.APPLIED)
                                    .select_related('applicant'))
     if match is not None and (is_requester or is_helper):
@@ -230,7 +240,7 @@ def submit_review(request, pk):
 @login_required
 def chat(request, pk):
     match = get_object_or_404(Match.objects.select_related('help_request__requester', 'helper'), pk=pk)
-    if request.user.pk not in match.participants():
+    if request.user.pk not in services.chat_participants(match.help_request):
         raise Http404
     form = MessageForm(request.POST or None, request.FILES or None)
     if request.method == 'POST' and form.is_valid():  # JavaScriptが使えない環境向け
@@ -238,18 +248,29 @@ def chat(request, pk):
                                                     form.cleaned_data.get('image')))
         return redirect('core:chat', pk=pk)
 
-    marked = match.messages.filter(read_at__isnull=True).exclude(sender=request.user).update(read_at=timezone.now())
+    help_request = match.help_request
+    marked = services.mark_chat_read(help_request, request.user)
     if marked:  # ページを開いて既読にした場合も、送信者へリアルタイムに知らせる
-        services.push(f'chat_{match.pk}', {'type': 'chat.read', 'reader_id': request.user.pk})
+        services.push(services.chat_group_name(help_request),
+                      {'type': 'chat.read', 'reader_id': request.user.pk})
     request.user.notifications.filter(url=request.path, is_read=False).update(is_read=True)
     history_visible = services.chat_history_visible(match)
-    chat_messages = [m for m in match.messages.select_related('sender')
-                     if history_visible and (not m.is_hidden or m.sender_id == request.user.pk)]
+    chat_messages = []
+    if history_visible:
+        for m in help_request.messages.select_related('sender').prefetch_related('reads'):
+            if m.is_hidden and m.sender_id != request.user.pk:
+                continue
+            m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
+            chat_messages.append(m)
+    members = [help_request.requester] + [m.helper for m in
+                                          help_request.matches.exclude(status=Match.Status.CANCELED)
+                                          .select_related('helper').order_by('created_at')]
     return render(request, 'core/chat.html', {
-        'match': match, 'help_request': match.help_request, 'other': match.other_user(request.user),
+        'match': match, 'help_request': help_request, 'other': match.other_user(request.user),
         'chat_messages': chat_messages, 'chat_open': services.chat_is_open(match), 'form': form,
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),
+        'is_group': help_request.is_group, 'members': members,
     })
 
 
@@ -263,9 +284,9 @@ def message_list(request):
         return redirect('core:chat', pk=chats[0].pk)
     for match in chats:
         match.other = match.other_user(request.user)
-        match.last_message = match.messages.exclude(is_hidden=True).order_by('-created_at').first()
-        match.unread_count = (match.messages.filter(read_at__isnull=True, is_hidden=False)
-                              .exclude(sender=request.user).count())
+        match.last_message = match.help_request.messages.exclude(is_hidden=True).order_by('-created_at').first()
+        match.unread_count = (match.help_request.messages.filter(is_hidden=False)
+                              .exclude(sender=request.user).exclude(reads__user=request.user).count())
     return render(request, 'core/message_list.html', {'chats': chats})
 
 

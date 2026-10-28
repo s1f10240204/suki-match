@@ -499,3 +499,32 @@ body.simple-ui .list-row { padding: 18px 2px; font-size: 1.05rem; }
 body.simple-ui .request-card, body.simple-ui .person-name { font-size: 1.08rem; }
 body.simple-ui h1 { font-size: 1.65rem; }
 body.simple-ui h2 { font-size: 1.35rem; }
+
+/* ---------- グループチャット ---------- */
+.bubble-side { display: flex; gap: 8px; align-items: flex-start; }
+.bubble-main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.chat-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: #e9e1d2; flex: none; }
+.bubble-name { display: block; font-size: .72rem; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
+.bubble-row:has(.bubble-side) { max-width: 88%; }
+.chip-headcount { background: #fdf0e4; color: #9a5a26; border-color: #f0d9bd; }
+
+/* ---------- シンプルUI: かんたんメニュー(大きなタイル) ---------- */
+.simple-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 20px; }
+.simple-tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    min-height: 118px; padding: 16px 10px; text-align: center;
+    background: var(--surface); border: 1.5px solid var(--line); border-radius: 20px;
+    box-shadow: 0 3px 10px rgba(80, 60, 40, .07); color: var(--text);
+}
+.simple-tile:active { background: var(--primary-soft); border-color: var(--primary); }
+.simple-tile-icon { font-size: 38px; line-height: 1; }
+.simple-tile-label { font-size: 1.18rem; font-weight: 700; line-height: 1.35; }
+.simple-badge {
+    display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px;
+    border-radius: 12px; background: var(--accent); color: #fff; font-size: .85rem; vertical-align: 2px;
+}
+body.simple-ui .search-form { display: none; }
+body.simple-ui .segmented a { font-size: 1.05rem; padding: 12px; }
+body.simple-ui .card-title { font-size: 1.25rem; }
+body.simple-ui .card-desc { font-size: 1.02rem; }
+body.simple-ui .chip { font-size: .9rem; padding: 4px 10px; }

@@ -458,6 +458,79 @@ class ChatAndReportTests(BaseTestCase):
             services.file_report(target, target, Report.Category.OTHER)
 
 
+class MultiHelperTests(BaseTestCase):
+    def test_first_come_fills_slots_then_closes(self):
+        requester, h1, h2, h3 = make_user('mreq'), make_user('mh1'), make_user('mh2'), make_user('mh3')
+        hr = make_request(requester, headcount=2)
+        services.accept_first_come(hr, h1)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)
+        self.assertTrue(hr.accepting)
+        self.assertEqual(hr.slots_left, 1)
+        with self.assertRaises(services.ServiceError):  # 同じ人は二重参加できない
+            services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        hr.refresh_from_db()
+        self.assertEqual(hr.slots_left, 0)
+        self.assertFalse(hr.accepting)
+        with self.assertRaises(services.ServiceError):  # 満員
+            services.accept_first_come(hr, h3)
+
+    def test_group_chat_shared_and_read_counts(self):
+        requester, h1, h2 = make_user('greq2'), make_user('gh12'), make_user('gh22')
+        hr = make_request(requester, headcount=2)
+        m1 = services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        message = services.post_message(m1, h1, '集合場所に着きました')
+        self.assertEqual(message.help_request_id, hr.pk)
+        self.assertEqual(list(hr.messages.all()), [message])  # 依頼単位で同じ会話
+        self.assertEqual(services.mark_chat_read(hr, requester), 1)
+        self.assertEqual(services.message_payload(message)['read_count'], 1)
+        services.mark_chat_read(hr, h2)
+        self.assertEqual(services.message_payload(message)['read_count'], 2)
+        outsider = make_user('goutsider')
+        with self.assertRaises(services.ServiceError):
+            services.post_message(m1, outsider, '部外者です')
+
+    def test_complete_gives_points_to_all_helpers(self):
+        requester, h1, h2 = make_user('creq'), make_user('ch1'), make_user('ch2')
+        hr = make_request(requester, headcount=2)
+        services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        services.complete(hr, requester)
+        h1.refresh_from_db()
+        h2.refresh_from_db()
+        self.assertEqual(h1.points, services.HELPER_POINTS)
+        self.assertEqual(h2.points, services.HELPER_POINTS)
+        self.assertEqual(hr.matches.filter(status=Match.Status.DONE).count(), 2)
+
+    def test_helper_cancel_frees_slot(self):
+        requester, h1, h2, h3 = make_user('xreq'), make_user('xh1'), make_user('xh2'), make_user('xh3')
+        hr = make_request(requester, headcount=2)
+        services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        self.assertFalse(hr.accepting)
+        services.cancel(hr, h1)
+        hr.refresh_from_db()
+        self.assertEqual(hr.slots_left, 1)
+        self.assertTrue(hr.accepting)
+        services.accept_first_come(hr, h3)  # 空いた枠に入れる
+        self.assertEqual(hr.slots_left, 0)
+
+    def test_form_headcount_choice_and_custom(self):
+        self.client.force_login(make_user('freq'))
+        payload = {'title': '荷物', 'mode': 'first_come', 'description': '重い荷物です', 'duration_minutes': 15,
+                   'listing_minutes': 30, 'latitude': LAT, 'longitude': LNG, 'skill_names': '',
+                   'headcount_choice': 'custom', 'headcount_custom': 6}
+        response = self.client.post(reverse('core:help_request_create'), payload)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(HelpRequest.objects.get().headcount, 6)
+        payload['headcount_choice'] = '3'
+        payload.pop('headcount_custom')
+        self.client.post(reverse('core:help_request_create'), payload)
+        self.assertEqual(HelpRequest.objects.order_by('pk').last().headcount, 3)
+
+
 class LinePostRetentionTests(BaseTestCase):
     def test_post_flow_asks_retention_and_applies_it(self):
         user = make_user('lineuser')
@@ -572,6 +645,28 @@ class WebSocketTests(TransactionTestCase):
         outsider = await sync_to_async(make_user)('outsider')
         self.assertFalse((await self._communicator(f'/ws/chat/{match.pk}/', outsider).connect())[0])
         self.assertFalse((await self._communicator('/ws/notifications/', AnonymousUser()).connect())[0])
+
+    async def test_group_chat_shared_across_matches(self):
+        requester = await sync_to_async(make_user)('greq')
+        h1 = await sync_to_async(make_user)('gh1')
+        h2 = await sync_to_async(make_user)('gh2')
+        hr = await sync_to_async(make_request)(requester, headcount=2)
+        m1 = await sync_to_async(services.accept_first_come)(hr, h1)
+        m2 = await sync_to_async(services.accept_first_come)(hr, h2)
+
+        a = self._communicator(f'/ws/chat/{m1.pk}/', requester)
+        b = self._communicator(f'/ws/chat/{m1.pk}/', h1)
+        c = self._communicator(f'/ws/chat/{m2.pk}/', h2)
+        for comm in (a, b, c):
+            self.assertTrue((await comm.connect())[0])
+        await b.send_json_to({'body': 'グループへの一斉連絡です'})
+        got_a = await a.receive_json_from()
+        got_c = await c.receive_json_from()
+        self.assertEqual(got_a['message']['body'], 'グループへの一斉連絡です')
+        self.assertEqual(got_c['message']['body'], 'グループへの一斉連絡です')
+        self.assertEqual(got_c['message']['sender'], h1.username)
+        for comm in (a, b, c):
+            await comm.disconnect()
 
     async def test_chat_read_event_realtime(self):
         requester = await sync_to_async(make_user)('rreq')

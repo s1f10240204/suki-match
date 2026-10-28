@@ -249,6 +249,19 @@
     }
     document.querySelectorAll('[data-location-picker]').forEach(setupLocationPicker);
 
+    // 募集人数: 「5人以上」を選んだときだけ人数入力欄を表示する
+    var headcountCustom = document.querySelector('[data-headcount-custom]');
+    if (headcountCustom) {
+        var syncHeadcount = function () {
+            var checked = document.querySelector('input[name="headcount_choice"]:checked');
+            headcountCustom.hidden = !(checked && checked.value === 'custom');
+        };
+        document.querySelectorAll('input[name="headcount_choice"]').forEach(function (radio) {
+            radio.addEventListener('change', syncHeadcount);
+        });
+        syncHeadcount();
+    }
+
     // 閲覧用の地図(マッチング成立後の正確な場所)
     document.querySelectorAll('[data-map-view]').forEach(function (el) {
         whenMapsReady(function () {
@@ -585,13 +598,37 @@
             meta.textContent = m.created_at;
             if (!mine) {
                 var report = document.createElement('a');
-                report.href = log.dataset.reportUrl + '?message=' + m.id;
+                report.href = (m.report_url || log.dataset.reportUrl) + '?message=' + m.id;
                 report.textContent = '通報';
                 meta.appendChild(document.createTextNode(' · '));
                 meta.appendChild(report);
             }
-            row.appendChild(bubble);
-            row.appendChild(meta);
+            if (log.dataset.group === '1' && !mine) {
+                // グループチャット: アイコンと名前を付ける
+                var side = document.createElement('div');
+                side.className = 'bubble-side';
+                var av = document.createElement('img');
+                av.className = 'chat-avatar';
+                av.src = m.avatar_url || '';
+                av.alt = '';
+                av.loading = 'lazy';
+                av.addEventListener('error', function () { av.style.visibility = 'hidden'; });
+                if (!m.avatar_url) { av.style.visibility = 'hidden'; }
+                var main = document.createElement('div');
+                main.className = 'bubble-main';
+                var nm = document.createElement('span');
+                nm.className = 'bubble-name';
+                nm.textContent = m.sender;
+                main.appendChild(nm);
+                main.appendChild(bubble);
+                main.appendChild(meta);
+                side.appendChild(av);
+                side.appendChild(main);
+                row.appendChild(side);
+            } else {
+                row.appendChild(bubble);
+                row.appendChild(meta);
+            }
             log.appendChild(row);
             scrollDown();
             if (!mine && document.visibilityState === 'visible') { chat.send({ type: 'read' }); }

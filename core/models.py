@@ -180,6 +180,7 @@ class HelpRequest(models.Model):
     required_skills = models.ManyToManyField(Skill, blank=True, related_name='help_requests',
                                              verbose_name='必要なスキル')
     mode = models.CharField('募集方式', max_length=20, choices=Mode.choices, default=Mode.FIRST_COME)
+    headcount = models.PositiveSmallIntegerField('募集人数', default=1, help_text='同時に手伝ってもらう人数。2人以上はグループチャットになります。')
     duration_minutes = models.PositiveIntegerField('所要時間(分)', default=15)
     chat_retention_days = models.PositiveSmallIntegerField(
         'チャット履歴の保存期間', choices=ChatRetention.choices, default=ChatRetention.THREE_DAYS,
@@ -218,6 +219,28 @@ class HelpRequest(models.Model):
     @property
     def active_match(self):
         return self.matches.filter(status=Match.Status.IN_PROGRESS).select_related('helper').first()
+
+    @property
+    def active_matches(self):
+        return self.matches.filter(status=Match.Status.IN_PROGRESS).select_related('helper')
+
+    @property
+    def joined_count(self):
+        return self.active_matches.count()
+
+    @property
+    def slots_left(self):
+        return max(0, self.headcount - self.joined_count)
+
+    @property
+    def accepting(self):
+        """まだ参加を受け付けているか(満員でなく、期限内)。"""
+        return (self.status in (self.Status.OPEN, self.Status.IN_PROGRESS)
+                and self.slots_left > 0 and self.expires_at > timezone.now())
+
+    @property
+    def is_group(self):
+        return self.headcount > 1
 
 
 class Application(models.Model):
@@ -259,8 +282,8 @@ class Match(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = 'マッチング'
         constraints = [
-            models.UniqueConstraint(fields=['help_request'], condition=Q(status='in_progress'),
-                                    name='one_active_match_per_request'),
+            models.UniqueConstraint(fields=['help_request', 'helper'], condition=Q(status='in_progress'),
+                                    name='one_active_match_per_helper'),
         ]
 
     def participants(self):
@@ -318,6 +341,8 @@ class Sanction(models.Model):
 
 class Message(models.Model):
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='messages')
+    help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE, related_name='messages',
+                                     null=True, blank=True, verbose_name='依頼')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
     body = models.TextField('本文', max_length=1000, blank=True)
     image = models.ImageField('写真', upload_to=chat_image_upload_to, blank=True)
@@ -330,6 +355,19 @@ class Message(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = 'メッセージ'
         ordering = ['created_at']
+
+
+class MessageRead(models.Model):
+    """グループチャット対応の既読記録(誰がどこまで読んだか)。"""
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='reads', verbose_name='メッセージ')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='message_reads', verbose_name='読んだ人')
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '既読'
+        constraints = [
+            models.UniqueConstraint(fields=['message', 'user'], name='one_read_per_user'),
+        ]
 
 
 class Report(models.Model):

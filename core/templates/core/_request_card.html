@@ -14,6 +14,7 @@
     <div class="chips">
         <span class="chip">{{ hr.duration_minutes }}分</span>
         <span class="chip{% if hr.mode == 'approval' %} chip-approval{% endif %}">{% if hr.mode == 'approval' %}承認制{% else %}先着順{% endif %}</span>
+        {% if hr.headcount > 1 %}<span class="chip chip-headcount">{{ hr.headcount }}人募集{% if hr.remaining is not None %}（あと{{ hr.remaining }}人）{% endif %}</span>{% endif %}
         {% for s in hr.required_skills.all %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}
         {% for t in hr.preset_tags.all %}<span class="chip chip-tag">{{ t.label }}</span>{% endfor %}
     </div>

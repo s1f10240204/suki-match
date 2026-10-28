@@ -20,9 +20,10 @@ def app_context(request):
         'active_matches': active_matches,
         'pending_requests': pending_requests,
         'unread_count': user.notifications.filter(is_read=False).count(),
-        'unread_message_count': (Message.objects.filter(read_at__isnull=True, is_hidden=False)
-                                 .exclude(sender=user)
-                                 .filter(Q(match__helper=user) | Q(match__help_request__requester=user)).count()),
+        'unread_message_count': (Message.objects.filter(is_hidden=False)
+                                 .exclude(sender=user).exclude(reads__user=user)
+                                 .filter(Q(help_request__requester=user) | Q(help_request__matches__helper=user))
+                                 .distinct().count()),
         'open_chat_count': len(services.open_chats(user)),
     })
     return context

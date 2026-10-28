@@ -123,6 +123,14 @@ class HelpRequestForm(forms.ModelForm):
         label='チャット履歴の保存期間', choices=HelpRequest.ChatRetention.choices, coerce=int,
         initial=HelpRequest.ChatRetention.THREE_DAYS, required=False, widget=forms.RadioSelect,
         help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ見られて、過ぎると自動で削除されます。')
+    headcount_choice = forms.TypedChoiceField(
+        label='募集人数', choices=[(1, '1人'), (2, '2人'), (3, '3人'), (4, '4人'), ('custom', '5人以上')],
+        coerce=lambda v: 'custom' if v == 'custom' else int(v), initial=1, required=False,
+        widget=forms.RadioSelect,
+        help_text='2人以上はグループチャットになります。「5人以上」を選んだら、下の欄に人数を入力してください(最大20人)。')
+    headcount_custom = forms.IntegerField(
+        label='人数(5人以上)', required=False, min_value=5, max_value=20,
+        widget=forms.NumberInput(attrs={'inputmode': 'numeric', 'placeholder': '例: 6'}))
 
     class Meta:
         model = HelpRequest
@@ -168,6 +176,14 @@ class HelpRequestForm(forms.ModelForm):
             self.errors.pop('scheduled_for', None)
         if not cleaned.get('description') and not cleaned.get('preset_tags'):
             self.add_error('description', '詳細を書くか、定型タグを1つ以上選んでください。')
+        choice = cleaned.get('headcount_choice')
+        if choice == 'custom':
+            custom = cleaned.get('headcount_custom')
+            if not custom:
+                self.add_error('headcount_custom', '人数を入力してください。')
+            cleaned['_headcount'] = custom or 1
+        else:
+            cleaned['_headcount'] = choice or 1
         return cleaned
 
     def clean_skill_names(self):
@@ -178,6 +194,7 @@ class HelpRequestForm(forms.ModelForm):
         help_request = super().save(commit=False)
         if help_request.chat_retention_days is None:
             help_request.chat_retention_days = HelpRequest.ChatRetention.THREE_DAYS
+        help_request.headcount = self.cleaned_data.get('_headcount') or 1
         help_request.requester = self.user
         listing = self.cleaned_data.get('listing_minutes') or DEFAULT_LISTING_MINUTES
         help_request.expires_at = help_request.scheduled_for or timezone.now() + timedelta(minutes=listing)

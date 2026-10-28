@@ -59,6 +59,10 @@
             <div><dt>場所</dt><dd data-summary-place>-</dd></div>
         </dl>
         {% include 'core/_field.html' with field=form.mode %}
+        {% include 'core/_field.html' with field=form.headcount_choice %}
+        <div data-headcount-custom hidden>
+            {% include 'core/_field.html' with field=form.headcount_custom %}
+        </div>
         {% include 'core/_field.html' with field=form.chat_retention_days %}
         <details class="more"{% if form.skill_names.value %} open{% endif %}>
             <summary>スキルで絞り込む(任意)</summary>

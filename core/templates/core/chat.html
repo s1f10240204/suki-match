@@ -13,16 +13,16 @@
     <p class="meta chat-place"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a>({{ match.get_status_display }})</p>
     <p class="meta chat-place">場所: {{ help_request.address_detail|default:help_request.area_label }}
         <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図</a></p>
+    {% if is_group %}
+    <p class="meta chat-members">グループチャット（{{ members|length }}人）: {% for member in members %}{{ member.username }}{% if not forloop.last %}、{% endif %}{% endfor %}</p>
+    {% endif %}
 </div>
 
-<div class="chat-log" id="chat-log" data-chat-id="{{ match.pk }}" data-user-id="{{ user.pk }}"
+<div class="chat-log" id="chat-log" data-chat-id="{{ match.pk }}" data-user-id="{{ user.pk }}"{% if is_group %} data-group="1"{% endif %}
      data-report-url="{% url 'core:report_user' other.username %}">
     <p class="chat-note">連絡先(LINE・電話番号など)の交換や、依頼と関係のない誘いはお控えください。やり取りは安全のため確認されることがあります。</p>
     {% for m in chat_messages %}
-        <div class="bubble-row {% if m.sender_id == user.pk %}mine{% endif %}">
-            <div class="bubble{% if m.is_hidden %} bubble-hidden{% endif %}">{% if m.is_hidden %}このメッセージは相手に表示されていません{% else %}{% if m.image %}<img class="bubble-img" src="{% url 'core:chat_image' m.pk %}" alt="送信された写真" loading="lazy">{% endif %}{{ m.body }}{% endif %}</div>
-            <span class="bubble-meta">{{ m.created_at|date:"H:i" }}{% if m.sender_id == user.pk and m.read_at %} · <span class="read-mark">既読</span>{% endif %}{% if m.sender_id != user.pk %} · <a href="{% url 'core:report_user' other.username %}?message={{ m.pk }}">通報</a>{% endif %}</span>
-        </div>
+        {% include 'core/_bubble.html' %}
     {% endfor %}
 </div>
 

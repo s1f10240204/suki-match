@@ -25,7 +25,18 @@
     </a>
 {% endif %}
 
-<div class="page-head">
+{% if user.is_authenticated and user.simple_ui %}
+<nav class="simple-menu" aria-label="かんたんメニュー">
+    <a class="simple-tile" href="{% url 'core:help_request_create' %}"><span class="simple-tile-icon" aria-hidden="true">📝</span><span class="simple-tile-label">お手伝いを頼む</span></a>
+    <a class="simple-tile" href="#simple-requests"><span class="simple-tile-icon" aria-hidden="true">🔍</span><span class="simple-tile-label">さがす・引き受ける</span></a>
+    <a class="simple-tile" href="{% url 'core:message_list' %}"><span class="simple-tile-icon" aria-hidden="true">💬</span><span class="simple-tile-label">メッセージ{% if unread_message_count %} <span class="simple-badge">{{ unread_message_count }}</span>{% endif %}</span></a>
+    <a class="simple-tile" href="{% url 'core:notifications' %}"><span class="simple-tile-icon" aria-hidden="true">🔔</span><span class="simple-tile-label">通知{% if unread_count %} <span class="simple-badge">{{ unread_count }}</span>{% endif %}</span></a>
+    <a class="simple-tile" href="{% url 'core:profile' %}"><span class="simple-tile-icon" aria-hidden="true">👤</span><span class="simple-tile-label">マイページ</span></a>
+    <a class="simple-tile" href="{% url 'core:account_settings' %}"><span class="simple-tile-icon" aria-hidden="true">⚙️</span><span class="simple-tile-label">設定</span></a>
+</nav>
+{% endif %}
+
+<div class="page-head" id="simple-requests">
     <h1>近くの依頼</h1>
     <a href="{% url 'core:help_request_create' %}" class="btn btn-primary btn-sm">＋ 依頼する</a>
 </div>

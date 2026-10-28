@@ -346,6 +346,7 @@ details.more[open] > summary { margin-bottom: 8px; }
 .geo-status.is-ok { color: var(--ok); }
 .map { height: 240px; border-radius: 16px; border: 1px solid var(--line); background: #ece6dc; overflow: hidden; }
 .map-view { height: 200px; margin: 10px 0; }
+.map-frame { width: 100%; display: block; border: 0; }
 .map-unavailable { display: grid; place-items: center; text-align: center; padding: 16px; color: var(--muted); font-size: .85rem; }
 
 /* ---------- メッセージ・トースト ---------- */

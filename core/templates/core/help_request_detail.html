@@ -2,7 +2,6 @@
 {% load suki %}
 
 {% block title %}{{ help_request.title }} - suki-match{% endblock %}
-{% block extra_head %}{% if show_exact %}{% include 'core/_maps.html' %}{% endif %}{% endblock %}
 
 {% block content %}
 <article class="card">
@@ -31,7 +30,8 @@
         {% if show_exact %}
             <p><strong>{{ help_request.address_detail|default:"詳しい場所の記載はありません" }}</strong></p>
             <p class="meta">{{ help_request.area_label }}</p>
-            <div class="map map-view" data-map-view data-lat="{{ help_request.latitude }}" data-lng="{{ help_request.longitude }}"></div>
+            <iframe class="map map-view map-frame" title="地図" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                    src="https://maps.google.com/maps?q={{ help_request.latitude }},{{ help_request.longitude }}&z=16&output=embed"></iframe>
             <a class="link" target="_blank" rel="noopener"
                href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">Googleマップアプリで開く</a>
         {% else %}

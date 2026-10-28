@@ -452,3 +452,50 @@ details.more[open] > summary { margin-bottom: 8px; }
 /* ---------- LINE連携 ---------- */
 .line-btn { background: #06c755; color: #fff; border: none; }
 .line-btn:hover { background: #05b34c; color: #fff; }
+
+/* ---------- パスワード表示ボタン ---------- */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { padding-right: 52px !important; }
+.pw-toggle {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0; border: none; border-radius: 10px;
+    background: none; color: #9a8f7d; cursor: pointer;
+}
+.pw-toggle:active { background: var(--primary-soft); color: var(--primary-dark); }
+
+/* ---------- チャットの写真 ---------- */
+.bubble-img { display: block; max-width: min(240px, 62vw); max-height: 320px; border-radius: 10px; margin-bottom: 4px; }
+.bubble .bubble-img:last-child { margin-bottom: 0; }
+.chat-photo-btn {
+    flex: none; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; line-height: 1; padding: 10px 6px; cursor: pointer;
+}
+.chat-form input.chat-photo-input {
+    position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; padding: 0; flex: none;
+}
+
+/* ---------- 生年月日入力 ---------- */
+.form input[type="date"] {
+    width: 100%; padding: 12px 14px; border: 1.5px solid #e2d9cd; border-radius: 14px;
+    font: inherit; background: #fffdfa; color: var(--text);
+}
+
+/* ---------- シンプルUI(らくらくホン風: 大きな文字とボタン) ---------- */
+body.simple-ui { font-size: 18px; --muted: #6f6455; }
+body.simple-ui .btn { font-size: 1.12rem; padding: 16px 22px; border-radius: 16px; }
+body.simple-ui .form input, body.simple-ui .form select, body.simple-ui .form textarea,
+body.simple-ui .auth-page input { font-size: 1.12rem; padding: 15px 16px; }
+body.simple-ui .field-label { font-size: 1.05rem; }
+body.simple-ui .help { font-size: .98rem; line-height: 1.7; }
+body.simple-ui .card { padding: 22px; }
+body.simple-ui .section-title { font-size: 1.3rem; }
+body.simple-ui .tabbar a, body.simple-ui .tabbar button { font-size: 13px; }
+body.simple-ui .tabbar svg { width: 28px; height: 28px; }
+body.simple-ui .bubble { font-size: 1.08rem; line-height: 1.65; }
+body.simple-ui .chat-form input { font-size: 17px; padding: 15px 18px; }
+body.simple-ui .list-row { padding: 18px 2px; font-size: 1.05rem; }
+body.simple-ui .request-card, body.simple-ui .person-name { font-size: 1.08rem; }
+body.simple-ui h1 { font-size: 1.65rem; }
+body.simple-ui h2 { font-size: 1.35rem; }

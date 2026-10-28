@@ -502,7 +502,11 @@ def purge_expired_chat_messages():
             targets.append(match.pk)
     if not targets:
         return 0
-    deleted, _ = Message.objects.filter(match_id__in=targets).delete()
+    messages_qs = Message.objects.filter(match_id__in=targets)
+    for message in messages_qs.only('image'):
+        if message.image:
+            message.image.delete(save=False)  # 保存ファイルも消す(本文と一緒に破棄)
+    deleted, _ = messages_qs.delete()
     return deleted
 
 
@@ -512,26 +516,36 @@ def message_payload(message):
         'sender': message.sender.username,
         'sender_id': message.sender_id,
         'body': '' if message.is_hidden else message.body,
+        'image_url': '' if message.is_hidden or not message.image else reverse('core:chat_image', args=[message.pk]),
         'hidden': message.is_hidden,
         'created_at': timezone.localtime(message.created_at).strftime('%H:%M'),
     }
 
 
-def post_message(match, sender, body):
+def post_message(match, sender, body, image_file=None):
     body = (body or '').strip()
     if sender.pk not in match.participants():
         raise ServiceError('このチャットには参加していません。')
     if not chat_is_open(match):
         raise ServiceError('このチャットは終了しています。')
-    if not body:
-        raise ServiceError('メッセージを入力してください。')
     if len(body) > 1000:
         raise ServiceError('メッセージは1000文字以内で入力してください。')
+    image = None
+    if image_file is not None:
+        try:
+            image = images.normalize_photo(image_file)
+        except images.InvalidImage as error:
+            raise ServiceError(str(error))
+    if not body and image is None:
+        raise ServiceError('メッセージを入力してください。')
 
     score, labels = moderation.assess(match, sender, body)
     hidden = settings.MODERATION_AUTO_HIDE and score >= settings.MODERATION_HIDE_THRESHOLD
-    message = Message.objects.create(match=match, sender=sender, body=body,
-                                     risk_score=score, risk_labels=labels, is_hidden=hidden)
+    message = Message(match=match, sender=sender, body=body,
+                      risk_score=score, risk_labels=labels, is_hidden=hidden)
+    if image is not None:
+        message.image = image
+    message.save()
     if hidden:
         push(f'user_{sender.pk}', {'type': 'notify', 'kind': 'warning', 'url': '',
                                     'message': '不適切な可能性がある内容のため、メッセージは相手に表示されませんでした。'})
@@ -584,8 +598,6 @@ def send_email_digests(now=None):
     sent = 0
     for user, notes in grouped.items():
         setting = notification_setting(user)
-        if setting.is_quiet(now):
-            continue  # 静かな時間帯が明けてから送る
         to_send = [] if is_online(user.pk) or not user.email else [
             n for n in notes if not n.is_read
             and (setting.email_nearby if n.kind == 'nearby_request' else setting.email_activity)]

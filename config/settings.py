@@ -207,6 +207,7 @@ ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http' if DEBUG else 'https'
 ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
 ACCOUNT_SIGNUP_REDIRECT_URL = 'core:profile_edit'
 ACCOUNT_ADAPTER = 'core.adapters.AccountAdapter'
+ACCOUNT_FORMS = {'signup': 'core.forms.CustomSignupForm'}
 # Googleログイン: 確認画面を挟まずにGoogleへ移動し、Googleで確認済みのメールはそのまま信用する
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_AUTO_SIGNUP = True

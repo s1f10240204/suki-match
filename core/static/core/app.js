@@ -111,9 +111,10 @@
         }
         if (window.L) {
             var lmap = window.L.map(el, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-            window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 20, subdomains: 'abcd',
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            // 地理院タイル(国土地理院・標準地図): APIキー不要、透かしなしで使える公式タイル
+            window.L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '出典：<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
             }).addTo(lmap);
             var lmarker = null, handlers = [];
             var place = function (pos) {
@@ -215,6 +216,19 @@
             setStatus('現在地を取得しています…');
             navigator.geolocation.getCurrentPosition(function (pos) {
                 setPoint(pos.coords.latitude, pos.coords.longitude, '現在地にピンを置きました。', true, '現在地');
+                // 上の住所入力欄にも現在地の地名を入れる(取得できなければ「現在地」のまま)
+                if (addressInput) {
+                    addressInput.value = '現在地';
+                    fetch('/api/area-label/?lat=' + pos.coords.latitude + '&lng=' + pos.coords.longitude)
+                        .then(function (r) { return r.json(); })
+                        .then(function (d) {
+                            if (d && d.label) {
+                                addressInput.value = d.label;
+                                setPoint(pos.coords.latitude, pos.coords.longitude,
+                                         d.label + '(現在地)にピンを置きました。', false, d.label);
+                            }
+                        }).catch(function () {});
+                }
             }, function (err) {
                 setStatus(GEO_ERRORS[err.code] || '現在地を取得できませんでした。', 'is-error');
             }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
@@ -553,7 +567,19 @@
             row.className = 'bubble-row' + (mine ? ' mine' : '');
             var bubble = document.createElement('div');
             bubble.className = 'bubble' + (m.hidden ? ' bubble-hidden' : '');
-            bubble.textContent = m.hidden ? 'このメッセージは相手に表示されていません' : m.body;
+            if (m.hidden) {
+                bubble.textContent = 'このメッセージは相手に表示されていません';
+            } else {
+                if (m.image_url) {
+                    var img = document.createElement('img');
+                    img.className = 'bubble-img';
+                    img.src = m.image_url;
+                    img.alt = '送信された写真';
+                    img.loading = 'lazy';
+                    bubble.appendChild(img);
+                }
+                if (m.body) { bubble.appendChild(document.createTextNode(m.body)); }
+            }
             var meta = document.createElement('span');
             meta.className = 'bubble-meta';
             meta.textContent = m.created_at;
@@ -591,8 +617,31 @@
                 appendMessage(data.message);
             }
         });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') { chat.send({ type: 'read' }); }
+        });
         if (form) {
             var bodyInput = form.querySelector('input[name=body]');
+            var photoInput = form.querySelector('input[name=image]');
+            if (photoInput) {
+                photoInput.addEventListener('change', function () {
+                    var file = photoInput.files && photoInput.files[0];
+                    if (!file) { return; }
+                    if (file.size > 8 * 1024 * 1024) {
+                        toast('写真は8MB以下にしてください。', '', 'warning');
+                        photoInput.value = '';
+                        return;
+                    }
+                    var fd = new FormData();
+                    fd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+                    fd.append('body', '');
+                    fd.append('image', file);
+                    fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
+                        .then(function (r) { if (!r.ok) { throw new Error('send failed'); } })
+                        .catch(function () { toast('写真を送信できませんでした。もう一度お試しください。', '', 'warning'); });
+                    photoInput.value = '';
+                });
+            }
             form.addEventListener('submit', function (e) {
                 var body = bodyInput.value.trim();
                 if (!body) { e.preventDefault(); return; }
@@ -665,5 +714,30 @@
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') { return; }
     window.addEventListener('load', function () {
         navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+})();
+
+/* パスワード欄の表示/非表示ボタン(目のマーク)。ログイン・新規登録・変更など全画面共通。 */
+(function () {
+    var EYE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var EYE_OFF = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c6.5 0 10 7 10 7a17.5 17.5 0 0 1-2.9 3.6M6.6 6.9A16.9 16.9 0 0 0 2 12s3.5 7 10 7c1.5 0 2.9-.3 4.1-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+    document.querySelectorAll('input[type="password"]').forEach(function (input) {
+        var wrap = document.createElement('span');
+        wrap.className = 'pw-wrap';
+        input.parentNode.insertBefore(wrap, input);
+        wrap.appendChild(input);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pw-toggle';
+        btn.setAttribute('aria-label', 'パスワードを表示');
+        btn.innerHTML = EYE;
+        btn.addEventListener('click', function () {
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.innerHTML = show ? EYE_OFF : EYE;
+            btn.setAttribute('aria-label', show ? 'パスワードを隠す' : 'パスワードを表示');
+            input.focus();
+        });
+        wrap.appendChild(btn);
     });
 })();

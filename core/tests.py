@@ -387,6 +387,22 @@ class ChatAndReportTests(BaseTestCase):
         self.assertEqual(Message.objects.get().body, '5分後に着きます')
         self.assertTrue(Notification.objects.filter(user=self.helper, kind='message').exists())
 
+    def test_chat_photo_post_and_view_permissions(self):
+        self.client.force_login(self.requester)
+        response = self.client.post(reverse('core:chat', args=[self.match.pk]),
+                                    {'body': '', 'image': jpeg_upload('chat.jpg')})
+        self.assertEqual(response.status_code, 302)
+        message = Message.objects.get()
+        self.assertTrue(message.image)
+        self.assertIn('/image/', services.message_payload(message)['image_url'])
+        # 参加者には見える
+        self.client.force_login(self.helper)
+        self.assertEqual(self.client.get(reverse('core:chat_image', args=[message.pk])).status_code, 200)
+        # 第三者には見えない
+        outsider = make_user('outsider-photo')
+        self.client.force_login(outsider)
+        self.assertEqual(self.client.get(reverse('core:chat_image', args=[message.pk])).status_code, 404)
+
     def test_no_posting_after_complete_and_history_kept_during_retention(self):
         services.post_message(self.match, self.helper, 'よろしく')
         services.complete(self.match.help_request, self.requester)
@@ -475,17 +491,14 @@ class EmailDigestTests(BaseTestCase):
         self.assertIn('2件', mail.outbox[0].subject)
         self.assertEqual(services.send_email_digests(), 0)  # 処理済みは再送しない
 
-    def test_skips_online_users_and_quiet_hours(self):
-        online, quiet = make_user('online'), make_user('quiet')
+    def test_skips_online_users(self):
+        online, target = make_user('online'), make_user('target')
         services.set_online(online.pk, 1)
-        setting = services.notification_setting(quiet)
-        setting.quiet_start, setting.quiet_end = dtime(0, 0), dtime(23, 59)
-        setting.save()
         services.notify(online, 'matched', 'x')
-        services.notify(quiet, 'matched', 'y')
+        services.notify(target, 'matched', 'y')
         services.send_email_digests()
-        self.assertEqual(len(mail.outbox), 0)
-        self.assertTrue(Notification.objects.filter(user=quiet, email_processed_at__isnull=True).exists())
+        self.assertEqual(len(mail.outbox), 1)  # オンライン中のユーザーには送らない
+        self.assertEqual(mail.outbox[0].to, [target.email])
 
     def test_periodic_command(self):
         make_request(make_user('req'), expires_at=timezone.now() - timedelta(minutes=1))
@@ -497,10 +510,24 @@ class EmailDigestTests(BaseTestCase):
 class SignupTests(TestCase):
     def test_signup_with_email(self):
         response = self.client.post(reverse('account_signup'), {
-            'email': 'new@example.com', 'username': 'newbie',
+            'email': 'new@example.com', 'username': 'newbie', 'birth_date': '2000-04-01',
             'password1': 'complex-pass-99', 'password2': 'complex-pass-99'})
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(User.objects.filter(username='newbie', email='new@example.com').exists())
+        user = User.objects.get(username='newbie', email='new@example.com')
+        self.assertEqual(str(user.birth_date), '2000-04-01')
+        self.assertFalse(user.simple_ui)  # 50歳未満は通常UI
+
+    def test_signup_requires_birth_date_and_senior_gets_simple_ui(self):
+        response = self.client.post(reverse('account_signup'), {
+            'email': 'nobd@example.com', 'username': 'nobd',
+            'password1': 'complex-pass-99', 'password2': 'complex-pass-99'})
+        self.assertEqual(response.status_code, 200)  # 生年月日が必須なので作られない
+        self.assertFalse(User.objects.filter(username='nobd').exists())
+        response = self.client.post(reverse('account_signup'), {
+            'email': 'senior@example.com', 'username': 'senior', 'birth_date': '1960-04-01',
+            'password1': 'complex-pass-99', 'password2': 'complex-pass-99'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(User.objects.get(username='senior').simple_ui)  # 50歳以上はシンプルUI
 
 
 @override_settings(GEOCODER_ENABLED=False)
@@ -545,6 +572,29 @@ class WebSocketTests(TransactionTestCase):
         outsider = await sync_to_async(make_user)('outsider')
         self.assertFalse((await self._communicator(f'/ws/chat/{match.pk}/', outsider).connect())[0])
         self.assertFalse((await self._communicator('/ws/notifications/', AnonymousUser()).connect())[0])
+
+    async def test_chat_read_event_realtime(self):
+        requester = await sync_to_async(make_user)('rreq')
+        helper = await sync_to_async(make_user)('hhelper')
+        hr = await sync_to_async(make_request)(requester)
+        match = await sync_to_async(services.accept_first_come)(hr, helper)
+
+        a = self._communicator(f'/ws/chat/{match.pk}/', requester)
+        b = self._communicator(f'/ws/chat/{match.pk}/', helper)
+        self.assertTrue((await a.connect())[0])
+        self.assertTrue((await b.connect())[0])
+        await a.send_json_to({'body': '写真を送ります'})
+        received = await b.receive_json_from()
+        self.assertEqual(received['message']['body'], '写真を送ります')
+        await a.receive_json_from()  # 自分の送信エコーを読み捨てる
+        await b.send_json_to({'type': 'read'})
+        event = await a.receive_json_from()
+        self.assertEqual(event['kind'], 'read')
+        self.assertEqual(event['reader_id'], helper.pk)
+        message = await Message.objects.aget()
+        self.assertIsNotNone(message.read_at)
+        await a.disconnect()
+        await b.disconnect()
 
 
 def jpeg_upload(name='face.jpg', color=(200, 150, 120), size=(1200, 900), exif=None):

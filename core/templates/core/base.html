@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="{% static 'core/style.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
-<body data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
+<body{% if user.is_authenticated and user.simple_ui %} class="simple-ui"{% endif %} data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
     <header class="header">
         <div class="header-inner">
             <a href="{% url 'core:help_request_list' %}" class="logo" aria-label="suki-match ホーム">

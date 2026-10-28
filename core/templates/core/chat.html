@@ -20,16 +20,18 @@
     <p class="chat-note">連絡先(LINE・電話番号など)の交換や、依頼と関係のない誘いはお控えください。やり取りは安全のため確認されることがあります。</p>
     {% for m in chat_messages %}
         <div class="bubble-row {% if m.sender_id == user.pk %}mine{% endif %}">
-            <div class="bubble{% if m.is_hidden %} bubble-hidden{% endif %}">{% if m.is_hidden %}このメッセージは相手に表示されていません{% else %}{{ m.body }}{% endif %}</div>
+            <div class="bubble{% if m.is_hidden %} bubble-hidden{% endif %}">{% if m.is_hidden %}このメッセージは相手に表示されていません{% else %}{% if m.image %}<img class="bubble-img" src="{% url 'core:chat_image' m.pk %}" alt="送信された写真" loading="lazy">{% endif %}{{ m.body }}{% endif %}</div>
             <span class="bubble-meta">{{ m.created_at|date:"H:i" }}{% if m.sender_id == user.pk and m.read_at %} · <span class="read-mark">既読</span>{% endif %}{% if m.sender_id != user.pk %} · <a href="{% url 'core:report_user' other.username %}?message={{ m.pk }}">通報</a>{% endif %}</span>
         </div>
     {% endfor %}
 </div>
 
 {% if chat_open %}
-    <form method="post" class="chat-form" id="chat-form">
+    <form method="post" enctype="multipart/form-data" class="chat-form" id="chat-form">
         {% csrf_token %}
         {{ form.body }}
+        <label class="chat-photo-btn" for="{{ form.image.id_for_label }}" title="写真を送る" aria-label="写真を送る">📷</label>
+        {{ form.image }}
         <button class="btn btn-primary">送信</button>
     </form>
 {% elif not history_visible %}

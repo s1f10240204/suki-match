@@ -1,6 +1,8 @@
 import re
 from datetime import timedelta
 
+from allauth.account.forms import SignupForm as _AllauthSignupForm
+
 from django import forms
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -88,8 +90,25 @@ class ProfileForm(forms.ModelForm):
 class AccountForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ('username',)
-        labels = {'username': 'ユーザー名'}
+        fields = ('username', 'birth_date', 'simple_ui')
+        labels = {'username': 'ユーザー名', 'simple_ui': 'シンプルUI（大きな文字・ボタン）'}
+        widgets = {'birth_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')}
+
+
+class CustomSignupForm(_AllauthSignupForm):
+    """allauth のサインアップに追加する項目。生年月日は必須で、50歳以上はシンプルUIを初期値にする。"""
+
+    birth_date = forms.DateField(
+        label='生年月日', required=True,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        help_text='50歳以上の方には、文字やボタンが大きい「シンプルUI」が最初から有効になります（あとから変更できます）。')
+
+    def signup(self, request, user):
+        user.birth_date = self.cleaned_data.get('birth_date')
+        age = user.age()
+        user.simple_ui = bool(age is not None and age >= 50)
+        user.save(update_fields=['birth_date', 'simple_ui'])
+        return user
 
 
 class HelpRequestForm(forms.ModelForm):
@@ -195,11 +214,7 @@ class ReportForm(forms.ModelForm):
 class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
-        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby', 'quiet_start', 'quiet_end')
-        widgets = {
-            'quiet_start': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
-            'quiet_end': forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
-        }
+        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby')
 
 
 class ActivityBaseForm(forms.ModelForm):
@@ -214,5 +229,13 @@ class ActivityBaseForm(forms.ModelForm):
 
 
 class MessageForm(forms.Form):
-    body = forms.CharField(label='メッセージ', max_length=1000, widget=forms.TextInput(
+    body = forms.CharField(label='メッセージ', max_length=1000, required=False, widget=forms.TextInput(
         attrs={'autocomplete': 'off', 'placeholder': 'メッセージを入力', 'aria-label': 'メッセージ', 'enterkeyhint': 'send'}))
+    image = forms.ImageField(label='写真', required=False, widget=forms.FileInput(
+        attrs={'accept': 'image/*', 'class': 'chat-photo-input', 'aria-label': '写真を送る'}))
+
+    def clean(self):
+        cleaned = super().clean()
+        if not (cleaned.get('body') or '').strip() and not cleaned.get('image'):
+            raise forms.ValidationError('メッセージを入力するか、写真を選んでください。')
+        return cleaned

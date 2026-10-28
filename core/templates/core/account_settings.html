@@ -8,9 +8,11 @@
 
 <form method="post" class="card form">
     {% csrf_token %}
-    <h2 class="section-title">ユーザー名</h2>
+    <h2 class="section-title">プロフィール・表示</h2>
     {% include 'core/_field.html' with field=account_form.username %}
-    <button name="save_account" class="btn btn-primary btn-block">ユーザー名を変更</button>
+    {% include 'core/_field.html' with field=account_form.birth_date %}
+    {% include 'core/_field.html' with field=account_form.simple_ui %}
+    <button name="save_account" class="btn btn-primary btn-block">変更を保存</button>
 </form>
 
 <section class="card">
@@ -43,10 +45,6 @@
     {% include 'core/_field.html' with field=notify_form.email_nearby %}
     {% include 'core/_field.html' with field=notify_form.line_activity %}
     {% include 'core/_field.html' with field=notify_form.line_nearby %}
-    <div class="grid-2">
-        {% include 'core/_field.html' with field=notify_form.quiet_start %}
-        {% include 'core/_field.html' with field=notify_form.quiet_end %}
-    </div>
     <button name="save_notify" class="btn btn-primary btn-block">通知設定を保存</button>
 </form>
 {% endblock %}

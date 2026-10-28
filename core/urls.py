@@ -32,6 +32,8 @@ urlpatterns = [
     path('manifest.webmanifest', views.pwa_manifest, name='pwa_manifest'),
     path('sw.js', views.service_worker, name='service_worker'),
     path('api/skills/', views.skill_search, name='skill_search'),
+    path('api/area-label/', views.area_label_api, name='area_label_api'),
+    path('messages/<int:pk>/image/', views.chat_image, name='chat_image'),
     path('healthz/', views.healthz, name='healthz'),
     path('tasks/run/', views.run_tasks, name='run_tasks'),
 ]

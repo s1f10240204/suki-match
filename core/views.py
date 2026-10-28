@@ -232,12 +232,15 @@ def chat(request, pk):
     match = get_object_or_404(Match.objects.select_related('help_request__requester', 'helper'), pk=pk)
     if request.user.pk not in match.participants():
         raise Http404
-    form = MessageForm(request.POST or None)
+    form = MessageForm(request.POST or None, request.FILES or None)
     if request.method == 'POST' and form.is_valid():  # JavaScriptが使えない環境向け
-        _run(request, lambda: services.post_message(match, request.user, form.cleaned_data['body']))
+        _run(request, lambda: services.post_message(match, request.user, form.cleaned_data['body'],
+                                                    form.cleaned_data.get('image')))
         return redirect('core:chat', pk=pk)
 
-    match.messages.filter(read_at__isnull=True).exclude(sender=request.user).update(read_at=timezone.now())
+    marked = match.messages.filter(read_at__isnull=True).exclude(sender=request.user).update(read_at=timezone.now())
+    if marked:  # ページを開いて既読にした場合も、送信者へリアルタイムに知らせる
+        services.push(f'chat_{match.pk}', {'type': 'chat.read', 'reader_id': request.user.pk})
     request.user.notifications.filter(url=request.path, is_read=False).update(is_read=True)
     history_visible = services.chat_history_visible(match)
     chat_messages = [m for m in match.messages.select_related('sender')
@@ -422,6 +425,29 @@ def stats(request):
 
 
 @login_required
+@login_required
+def chat_image(request, pk):
+    """チャットの写真。参加者(と運営)にだけ配信する。"""
+    message = get_object_or_404(Message, pk=pk)
+    if not message.image:
+        raise Http404
+    if not request.user.is_staff and request.user.pk not in message.match.participants():
+        raise Http404
+    response = FileResponse(message.image.storage.open(message.image.name, 'rb'), content_type='image/jpeg')
+    response['Cache-Control'] = 'private, max-age=300'
+    return response
+
+
+@login_required
+def area_label_api(request):
+    """座標 → 大まかな地名(現在地ボタンの入力欄表示用)。"""
+    try:
+        lat, lng = float(request.GET['lat']), float(request.GET['lng'])
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({'label': ''})
+    return JsonResponse({'label': area_label_for(lat, lng)})
+
+
 def skill_search(request):
     results = skills.search(request.GET.get('q', ''))
     return JsonResponse({'results': [{'name': s.name, 'official': s.is_official, 'similar': s.is_similar}

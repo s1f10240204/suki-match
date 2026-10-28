@@ -71,6 +71,10 @@ class Skill(models.Model):
         return self.canonical or self
 
 
+def chat_image_upload_to(instance, filename):
+    return f'chat/{instance.match_id or "misc"}/{filename}'
+
+
 def avatar_upload_to(instance, filename):
     # 推測されにくいファイル名にする(写真はモザイク判定つきのビュー経由でのみ配信)
     return f'avatars/{uuid.uuid4().hex}.jpg'
@@ -90,6 +94,8 @@ class User(AbstractUser):
     avatar_reject_reason = models.CharField('差し戻し理由', max_length=200, blank=True)
     avatar_reviewed_at = models.DateTimeField('審査日時', null=True, blank=True)
     line_user_id = models.CharField('LINEユーザーID', max_length=64, blank=True, default='', db_index=True)
+    birth_date = models.DateField('生年月日', null=True, blank=True)
+    simple_ui = models.BooleanField('シンプルUI', default=False)
     motivation = models.CharField('お手伝いする理由', max_length=200, blank=True,
                                   help_text='例: 子育てがひと段落したので、地域の役に立ちたい')
     bio = models.TextField('自己紹介', blank=True)
@@ -108,6 +114,13 @@ class User(AbstractUser):
         if not self.email:
             self.email = None  # 空文字の重複で一意制約に引っかからないように
         super().save(*args, **kwargs)
+
+    def age(self, on=None):
+        """生年月日から満年齢を返す(未登録なら None)。"""
+        if not self.birth_date:
+            return None
+        on = on or timezone.localdate()
+        return on.year - self.birth_date.year - ((on.month, on.day) < (self.birth_date.month, self.birth_date.day))
 
     @property
     def rank(self):
@@ -306,7 +319,8 @@ class Sanction(models.Model):
 class Message(models.Model):
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
-    body = models.TextField('本文', max_length=1000)
+    body = models.TextField('本文', max_length=1000, blank=True)
+    image = models.ImageField('写真', upload_to=chat_image_upload_to, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     read_at = models.DateTimeField(null=True, blank=True)
     risk_score = models.FloatField('リスクスコア', default=0)
@@ -368,20 +382,9 @@ class NotificationSetting(models.Model):
     email_activity = models.BooleanField('マッチング・メッセージをメールで受け取る', default=True)
     line_activity = models.BooleanField('マッチング・メッセージをLINEで受け取る', default=True)
     line_nearby = models.BooleanField('近くの新しい依頼をLINEで受け取る', default=False)
-    quiet_start = models.TimeField('メールを止める時間(開始)', null=True, blank=True)
-    quiet_end = models.TimeField('メールを止める時間(終了)', null=True, blank=True)
 
     class Meta:
         verbose_name = verbose_name_plural = '通知設定'
-
-    def is_quiet(self, at=None):
-        if not (self.quiet_start and self.quiet_end):
-            return False
-        t = timezone.localtime(at).time()
-        if self.quiet_start <= self.quiet_end:
-            return self.quiet_start <= t < self.quiet_end
-        return t >= self.quiet_start or t < self.quiet_end  # 日をまたぐ(例 22:00〜7:00)
-
 
 class ActivityBase(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bases')

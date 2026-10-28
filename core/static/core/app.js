@@ -111,10 +111,10 @@
         }
         if (window.L) {
             var lmap = window.L.map(el, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-            // 地理院タイル(国土地理院・標準地図): APIキー不要、透かしなしで使える公式タイル
-            window.L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
-                maxZoom: 18,
-                attribution: '出典：<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+            // Esri World Street Map: APIキー不要、透かしなしの通常の道路地図タイル
+            window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom'
             }).addTo(lmap);
             var lmarker = null, handlers = [];
             var place = function (pos) {

@@ -43,6 +43,10 @@ def _viewpoints(user):
 
 # ---------- 依頼 ----------
 
+def privacy_policy(request):
+    return render(request, 'core/privacy.html')
+
+
 def help_request_list(request):
     services.expire_requests()
     tab = 'scheduled' if request.GET.get('tab') == 'scheduled' else 'now'

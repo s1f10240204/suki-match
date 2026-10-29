@@ -1,4 +1,5 @@
 """マッチングのドメインロジック。ビューとWebSocketの両方から使う。"""
+import json
 from collections import defaultdict
 from datetime import timedelta
 from math import asin, cos, radians, sin, sqrt
@@ -16,8 +17,8 @@ from django.utils import timezone
 
 from . import images, line_api, moderation
 from .geocoding import area_label_for
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, Notification,
-                     NotificationSetting, Report, Review, Sanction, User)
+from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, MessageReaction,
+                     Notification, NotificationSetting, PushSubscription, Report, Review, Sanction, User)
 
 RADIUS_METERS = 500
 HELPER_POINTS = 10
@@ -127,8 +128,16 @@ def is_suspicious(user):
     return matches.filter(status=Match.Status.CANCELED).count() / total > ANOMALY_CANCEL_RATE
 
 
+def photo_exempt(user):
+    """@iniad.org のメール認証が済んだアカウントは、大学で本人確認済みとして顔写真なしでも使える。"""
+    from allauth.account.models import EmailAddress
+    return EmailAddress.objects.filter(user=user, verified=True, email__iendswith='@iniad.org').exists()
+
+
 def photo_block_reason(user):
     """顔写真の審査が済んでいないと、依頼も応募もできない。"""
+    if photo_exempt(user):
+        return ''
     status = user.avatar_status if user.avatar else User.PhotoStatus.NONE
     if status == User.PhotoStatus.APPROVED:
         return ''
@@ -212,8 +221,34 @@ def notify(user, kind, text, url=''):
     """通知履歴に残し、接続中ならWebSocketでも届ける。メールは定期処理でまとめて送る。"""
     notification = Notification.objects.create(user=user, kind=kind, text=text[:200], url=url)
     push(f'user_{user.pk}', {'type': 'notify', 'kind': kind, 'message': notification.text, 'url': url})
+    setting = notification_setting(user)
+    if setting.forced_off:
+        return notification  # 管理者が通知を止めている場合は外部通知を送らない
     line_api.maybe_notify(user, kind, notification.text, url)
+    if kind != 'nearby_request' and setting.push_activity:
+        send_web_push(user, 'suki-match', notification.text, url)
     return notification
+
+
+def send_web_push(user, title, body, url=''):
+    """ホーム画面に追加した PWA 等へポップアップ通知を送る。失敗しても呼び出し元に影響させない。"""
+    if not settings.VAPID_PRIVATE_KEY:
+        return
+    try:
+        from pywebpush import webpush
+    except ImportError:
+        return
+    data = json.dumps({'title': title, 'body': body[:120], 'url': url or '/'})
+    for sub in list(user.push_subscriptions.all()):
+        try:
+            webpush(subscription_info={'endpoint': sub.endpoint,
+                                       'keys': {'p256dh': sub.p256dh, 'auth': sub.auth}},
+                    data=data, vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                    vapid_claims={'sub': settings.VAPID_SUBJECT}, ttl=3600)
+        except Exception as exc:  # 失効した購読(404/410)は掃除する
+            response = getattr(exc, 'response', None)
+            if response is not None and getattr(response, 'status_code', 0) in (404, 410):
+                sub.delete()
 
 
 def set_online(user_id, delta):
@@ -580,6 +615,33 @@ def purge_expired_chat_messages():
     return deleted
 
 
+REACTION_EMOJIS = ['❤️', '👍', '😊', '😮', '🙏', '🎉']
+
+
+def reaction_summary(message):
+    """リアクションの集計 [{emoji, count, user_ids}] を固定の絵文字順で返す。"""
+    grouped = {}
+    for reaction in message.reactions.all():
+        entry = grouped.setdefault(reaction.emoji, {'emoji': reaction.emoji, 'count': 0, 'user_ids': []})
+        entry['count'] += 1
+        entry['user_ids'].append(reaction.user_id)
+    return [grouped[e] for e in REACTION_EMOJIS if e in grouped]
+
+
+def toggle_reaction(message, user, emoji):
+    """リアクションの付け外し。付けたら True。参加者以外・対象外の絵文字はエラー。"""
+    if emoji not in REACTION_EMOJIS:
+        raise ServiceError('そのリアクションは使えません')
+    if message.help_request_id is None or user.pk not in chat_participants(message.help_request):
+        raise ServiceError('この会話の参加者だけがリアクションできます')
+    reaction, created = MessageReaction.objects.get_or_create(message=message, user=user, emoji=emoji)
+    if not created:
+        reaction.delete()
+    push(chat_group_name(message.help_request),
+         {'type': 'chat.reaction', 'message_id': message.pk, 'reactions': reaction_summary(message)})
+    return created
+
+
 def mark_chat_read(help_request, user):
     """依頼のチャットで、自分以外が送った表示可能なメッセージを既読にする。新しく既読になった件数を返す。"""
     ids = list(Message.objects.filter(help_request=help_request, is_hidden=False)
@@ -602,6 +664,7 @@ def message_payload(message):
         'avatar_url': reverse('core:user_photo', args=[message.sender_id]) if message.sender.avatar else '',
         'report_url': reverse('core:report_user', args=[message.sender.username]),
         'read_count': message.reads.exclude(user_id=message.sender_id).count(),
+        'reactions': reaction_summary(message) if message.pk else [],
         'hidden': message.is_hidden,
         'created_at': timezone.localtime(message.created_at).strftime('%H:%M'),
     }
@@ -696,7 +759,7 @@ def send_email_digests(now=None):
     sent = 0
     for user, notes in grouped.items():
         setting = notification_setting(user)
-        to_send = [] if is_online(user.pk) or not user.email else [
+        to_send = [] if is_online(user.pk) or not user.email or setting.forced_off else [
             n for n in notes if not n.is_read
             and (setting.email_nearby if n.kind == 'nearby_request' else setting.email_activity)]
         if to_send:

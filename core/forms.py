@@ -231,7 +231,7 @@ class ReportForm(forms.ModelForm):
 class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
-        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby')
+        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby', 'push_activity')
 
 
 class ActivityBaseForm(forms.ModelForm):

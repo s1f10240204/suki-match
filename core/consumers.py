@@ -74,6 +74,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         return services.chat_group_name(match.help_request), services.chat_participants(match.help_request)
 
     async def receive_json(self, content, **kwargs):
+        if content.get('type') == 'reaction':
+            await self._react(int(content.get('message_id') or 0), str(content.get('emoji') or ''))
+            return
         if content.get('type') == 'read':
             await self._mark_read()
             return
@@ -109,3 +112,18 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_read(self, event):
         await self.send_json({'kind': 'read', 'reader_id': event['reader_id']})
+
+    async def chat_reaction(self, event):
+        await self.send_json({'kind': 'reaction_update', 'message_id': event['message_id'],
+                              'reactions': event['reactions']})
+
+    @database_sync_to_async
+    def _react(self, message_id, emoji):
+        from .models import Message
+        message = Message.objects.select_related('help_request').filter(pk=message_id).first()
+        if message is None:
+            return
+        try:
+            services.toggle_reaction(message, self.scope['user'], emoji)
+        except services.ServiceError:
+            pass

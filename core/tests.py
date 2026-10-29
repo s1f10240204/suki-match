@@ -1,3 +1,4 @@
+import json
 import tempfile
 from datetime import time as dtime
 from datetime import timedelta
@@ -8,6 +9,7 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core import mail
 from django.core.cache import cache
@@ -17,8 +19,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import geocoding, images, line_chat, moderation, services, skills
-from .models import (ActivityBase, Application, HelpRequest, LineChatState, Match, Message, Notification, PresetTag, Report,
-                     Review, Sanction, Skill, User, level_for_points, rank_for_level)
+from .models import (ActivityBase, Application, HelpRequest, LineChatState, Match, Message, Notification, PresetTag,
+                     PushSubscription, Report, Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
 from .text import normalize_text
 
@@ -531,6 +533,92 @@ class MultiHelperTests(BaseTestCase):
         self.assertEqual(HelpRequest.objects.order_by('pk').last().headcount, 3)
 
 
+class ImprovementBatchTests(BaseTestCase):
+    def test_iniad_verified_email_exempts_photo_gate(self):
+        from allauth.account.models import EmailAddress
+        user = make_user('iniadok', avatar='', avatar_status=User.PhotoStatus.NONE)
+        self.assertNotEqual(services.photo_block_reason(user), '')  # 未認証ならブロック
+        EmailAddress.objects.create(user=user, email='iniadok@iniad.org', verified=False, primary=True)
+        self.assertNotEqual(services.photo_block_reason(user), '')
+        EmailAddress.objects.filter(user=user).update(verified=True)
+        self.assertEqual(services.photo_block_reason(user), '')  # 認証済みなら写真なしで使える
+
+    def test_other_domain_verified_still_blocked(self):
+        from allauth.account.models import EmailAddress
+        user = make_user('gmailok', avatar='', avatar_status=User.PhotoStatus.NONE)
+        EmailAddress.objects.create(user=user, email='gmailok@gmail.com', verified=True, primary=True)
+        self.assertNotEqual(services.photo_block_reason(user), '')
+
+    def test_reaction_toggle_and_summary(self):
+        requester, h1 = make_user('rreq'), make_user('rh1')
+        hr = make_request(requester, headcount=2)
+        m1 = services.accept_first_come(hr, h1)
+        message = services.post_message(m1, requester, 'ありがとう')
+        self.assertTrue(services.toggle_reaction(message, h1, '❤️'))
+        summary = services.reaction_summary(message)
+        self.assertEqual(summary, [{'emoji': '❤️', 'count': 1, 'user_ids': [h1.pk]}])
+        self.assertFalse(services.toggle_reaction(message, h1, '❤️'))  # もう一度押すと外れる
+        self.assertEqual(services.reaction_summary(message), [])
+        outsider = make_user('rout')
+        with self.assertRaises(services.ServiceError):
+            services.toggle_reaction(message, outsider, '👍')
+        with self.assertRaises(services.ServiceError):
+            services.toggle_reaction(message, h1, '🔥')
+
+    def test_message_react_endpoint(self):
+        requester, h1 = make_user('ereq'), make_user('eh1')
+        hr = make_request(requester)
+        m1 = services.accept_first_come(hr, h1)
+        message = services.post_message(m1, requester, 'hi')
+        self.client.force_login(h1)
+        response = self.client.post(reverse('core:message_react', args=[message.pk]),
+                                    data=json.dumps({'emoji': '👍'}), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['reactions'][0]['emoji'], '👍')
+        self.assertTrue(response.json()['reactions'][0]['mine'])
+
+    def test_forced_off_blocks_external_notifications(self):
+        user = make_user('foff')
+        setting = services.notification_setting(user)
+        setting.forced_off = True
+        setting.save()
+        with mock.patch.object(services.line_api, 'maybe_notify') as line_mock,                 mock.patch.object(services, 'send_web_push') as push_mock:
+            services.notify(user, 'message', 'テスト通知', '/')
+        line_mock.assert_not_called()
+        push_mock.assert_not_called()
+        self.assertEqual(user.notifications.count(), 1)  # アプリ内履歴は残る
+
+    def test_push_subscribe_endpoints(self):
+        user = make_user('pushy')
+        self.client.force_login(user)
+        payload = {'endpoint': 'https://push.example.com/abc', 'keys': {'p256dh': 'key1', 'auth': 'auth1'}}
+        response = self.client.post(reverse('core:push_subscribe'), data=json.dumps(payload),
+                                    content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        sub = PushSubscription.objects.get(user=user)
+        self.assertEqual(sub.p256dh, 'key1')
+        response = self.client.post(reverse('core:push_unsubscribe'),
+                                    data=json.dumps({'endpoint': payload['endpoint']}),
+                                    content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(PushSubscription.objects.filter(user=user).count(), 0)
+
+    def test_admin_force_notifications_off_action(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username='boss', email='boss@example.com', password='pw')
+        target = make_user('target1')
+        self.client.force_login(admin_user)
+        url = reverse('admin:core_user_changelist')
+        response = self.client.post(url, {'action': 'force_notifications_off',
+                                          '_selected_action': [str(target.pk)]})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(services.notification_setting(target).forced_off)
+        response = self.client.post(url, {'action': 'force_notifications_on',
+                                          '_selected_action': [str(target.pk)]})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(services.notification_setting(target).forced_off)
+
+
 class LinePostRetentionTests(BaseTestCase):
     def test_post_flow_asks_retention_and_applies_it(self):
         user = make_user('lineuser')
@@ -666,6 +754,29 @@ class WebSocketTests(TransactionTestCase):
         self.assertEqual(got_c['message']['body'], 'グループへの一斉連絡です')
         self.assertEqual(got_c['message']['sender'], h1.username)
         for comm in (a, b, c):
+            await comm.disconnect()
+
+    async def test_reaction_broadcast(self):
+        requester = await sync_to_async(make_user)('wreq')
+        h1 = await sync_to_async(make_user)('wh1')
+        hr = await sync_to_async(make_request)(requester)
+        m1 = await sync_to_async(services.accept_first_come)(hr, h1)
+        message = await sync_to_async(services.post_message)(m1, requester, 'hello')
+
+        a = self._communicator(f'/ws/chat/{m1.pk}/', requester)
+        b = self._communicator(f'/ws/chat/{m1.pk}/', h1)
+        for comm in (a, b):
+            self.assertTrue((await comm.connect())[0])
+        await b.send_json_to({'type': 'reaction', 'message_id': message.pk, 'emoji': '👍'})
+        got = {}
+        for _ in range(3):  # 接続時の既読イベントが先に届くことがある
+            got = await a.receive_json_from()
+            if got.get('kind') == 'reaction_update':
+                break
+        self.assertEqual(got['kind'], 'reaction_update')
+        self.assertEqual(got['reactions'][0]['emoji'], '👍')
+        self.assertEqual(got['reactions'][0]['user_ids'], [h1.pk])
+        for comm in (a, b):
             await comm.disconnect()
 
     async def test_chat_read_event_realtime(self):

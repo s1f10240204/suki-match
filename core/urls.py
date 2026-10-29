@@ -35,6 +35,9 @@ urlpatterns = [
     path('api/skills/', views.skill_search, name='skill_search'),
     path('api/area-label/', views.area_label_api, name='area_label_api'),
     path('messages/<int:pk>/image/', views.chat_image, name='chat_image'),
+    path('messages/<int:pk>/react/', views.message_react, name='message_react'),
+    path('push/subscribe/', views.push_subscribe, name='push_subscribe'),
+    path('push/unsubscribe/', views.push_unsubscribe, name='push_unsubscribe'),
     path('healthz/', views.healthz, name='healthz'),
     path('tasks/run/', views.run_tasks, name='run_tasks'),
 ]

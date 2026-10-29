@@ -45,6 +45,13 @@
     {% include 'core/_field.html' with field=notify_form.email_nearby %}
     {% include 'core/_field.html' with field=notify_form.line_activity %}
     {% include 'core/_field.html' with field=notify_form.line_nearby %}
+    {% include 'core/_field.html' with field=notify_form.push_activity %}
+    {% if vapid_public_key %}
+    <div class="push-setup">
+        <p class="help">プッシュ通知は、この端末での許可も必要です。iPhoneではホーム画面に追加したアプリから開いて設定してください。</p>
+        <button type="button" class="btn btn-ghost btn-block" id="push-toggle" data-public-key="{{ vapid_public_key }}">この端末でプッシュ通知を有効にする</button>
+    </div>
+    {% endif %}
     <button name="save_notify" class="btn btn-primary btn-block">通知設定を保存</button>
 </form>
 {% endblock %}

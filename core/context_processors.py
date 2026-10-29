@@ -8,6 +8,7 @@ from .models import Message
 def app_context(request):
     """全画面共通: 地図の設定、「進行中の依頼」バー、未読通知数、メッセージできる相手の数。"""
     context = {
+        'vapid_public_key': settings.VAPID_PUBLIC_KEY if settings.VAPID_PRIVATE_KEY else '',
         'GOOGLE_MAPS_API_KEY': settings.GOOGLE_MAPS_API_KEY,
         'GOOGLE_MAPS_MAP_ID': settings.GOOGLE_MAPS_MAP_ID,
         'EMAIL_CODE_RESEND_SECONDS': settings.EMAIL_CODE_RESEND_SECONDS,

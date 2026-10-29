@@ -370,6 +370,33 @@ class MessageRead(models.Model):
         ]
 
 
+class MessageReaction(models.Model):
+    """チャットメッセージへのリアクション(長押しで付ける)。"""
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='reactions', verbose_name='メッセージ')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='message_reactions', verbose_name='付けた人')
+    emoji = models.CharField('絵文字', max_length=8)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'リアクション'
+        constraints = [
+            models.UniqueConstraint(fields=['message', 'user', 'emoji'], name='one_reaction_per_user_emoji'),
+        ]
+
+
+class PushSubscription(models.Model):
+    """Web Push の購読情報(ホーム画面に追加した PWA 等へのポップアップ通知用)。"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions', verbose_name='ユーザー')
+    endpoint = models.URLField('エンドポイント', max_length=500, unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    user_agent = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'プッシュ通知の購読'
+
+
 class Report(models.Model):
     class Category(models.TextChoices):
         DATING = 'dating', '出会い目的'
@@ -420,6 +447,9 @@ class NotificationSetting(models.Model):
     email_activity = models.BooleanField('マッチング・メッセージをメールで受け取る', default=True)
     line_activity = models.BooleanField('マッチング・メッセージをLINEで受け取る', default=True)
     line_nearby = models.BooleanField('近くの新しい依頼をLINEで受け取る', default=False)
+    push_activity = models.BooleanField('マッチング・メッセージをプッシュ通知で受け取る', default=True)
+    forced_off = models.BooleanField('管理者による通知停止', default=False,
+                                     help_text='オンにすると、このユーザーへのメール・LINE・プッシュ通知をすべて止めます(管理者のみ変更可)')
 
     class Meta:
         verbose_name = verbose_name_plural = '通知設定'

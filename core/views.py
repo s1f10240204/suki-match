@@ -19,7 +19,8 @@ from . import images, line_api, line_chat, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from .geocoding import area_label_for
-from .models import Application, HelpRequest, Match, Message, PresetTag, Review, Sanction, Skill, User
+from .models import (Application, HelpRequest, Match, Message, PresetTag, PushSubscription, Review, Sanction,
+                     Skill, User)
 from .services import ServiceError
 
 
@@ -261,10 +262,14 @@ def chat(request, pk):
     history_visible = services.chat_history_visible(match)
     chat_messages = []
     if history_visible:
-        for m in help_request.messages.select_related('sender').prefetch_related('reads'):
+        for m in help_request.messages.select_related('sender').prefetch_related('reads', 'reactions'):
             if m.is_hidden and m.sender_id != request.user.pk:
                 continue
             m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
+            summary = services.reaction_summary(m)
+            for entry in summary:
+                entry['mine'] = request.user.pk in entry['user_ids']
+            m.reaction_list = summary
             chat_messages.append(m)
     members = [help_request.requester] + [m.helper for m in
                                           help_request.matches.exclude(status=Match.Status.CANCELED)
@@ -539,6 +544,22 @@ def service_worker(request):
     """最小の Service Worker(ホーム画面への追加に必要)。ページは常にネットワークから取得する。"""
     js = ("self.addEventListener('install', function () { self.skipWaiting(); });\n"
           "self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });\n"
+          "self.addEventListener('push', function (e) {\n"
+          "    var d = {}; try { d = e.data.json(); } catch (err) {}\n"
+          "    e.waitUntil(self.registration.showNotification(d.title || 'suki-match', {\n"
+          "        body: d.body || '', icon: '/static/core/icons/icon-192.png',\n"
+          "        data: { url: d.url || '/' } }));\n"
+          "});\n"
+          "self.addEventListener('notificationclick', function (e) {\n"
+          "    e.notification.close();\n"
+          "    var url = (e.notification.data && e.notification.data.url) || '/';\n"
+          "    e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {\n"
+          "        for (var i = 0; i < list.length; i++) {\n"
+          "            if ('focus' in list[i]) { list[i].navigate(url); return list[i].focus(); }\n"
+          "        }\n"
+          "        return clients.openWindow(url);\n"
+          "    }));\n"
+          "});\n"
           "self.addEventListener('fetch', function (e) {\n"
           "    if (e.request.method !== 'GET') { return; }\n"
           "    e.respondWith(fetch(e.request));\n"
@@ -548,6 +569,56 @@ def service_worker(request):
     response['Cache-Control'] = 'no-cache'
     return response
 
+
+
+@login_required
+@require_POST
+def message_react(request, pk):
+    """チャットメッセージへのリアクション付け外し(WebSocketが使えない環境向け)。"""
+    message = get_object_or_404(Message, pk=pk)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        payload = {}
+    try:
+        services.toggle_reaction(message, request.user, str(payload.get('emoji') or ''))
+        error = None
+    except services.ServiceError as exc:
+        error = str(exc)
+    summary = services.reaction_summary(message)
+    for entry in summary:
+        entry['mine'] = request.user.pk in entry['user_ids']
+    return JsonResponse({'ok': error is None, 'reactions': summary})
+
+
+@login_required
+@require_POST
+def push_subscribe(request):
+    """Web Push の購読情報を保存する。"""
+    try:
+        payload = json.loads(request.body or b'{}')
+        endpoint = str(payload['endpoint'])[:500]
+        keys = payload['keys']
+        p256dh, auth = str(keys['p256dh'])[:200], str(keys['auth'])[:100]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return JsonResponse({'ok': False}, status=400)
+    PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={'user': request.user, 'p256dh': p256dh, 'auth': auth,
+                  'user_agent': request.META.get('HTTP_USER_AGENT', '')[:200]})
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def push_unsubscribe(request):
+    try:
+        payload = json.loads(request.body or b'{}')
+        endpoint = str(payload['endpoint'])[:500]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return JsonResponse({'ok': False}, status=400)
+    PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
+    return JsonResponse({'ok': True})
 
 
 # ---------- LINE Webhook ----------

@@ -528,3 +528,49 @@ body.simple-ui .segmented a { font-size: 1.05rem; padding: 12px; }
 body.simple-ui .card-title { font-size: 1.25rem; }
 body.simple-ui .card-desc { font-size: 1.02rem; }
 body.simple-ui .chip { font-size: .9rem; padding: 4px 10px; }
+
+/* ---------- 外部アカウントのボタン ---------- */
+.social-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 12px 16px; margin: 8px 0; border-radius: 10px;
+    border: 1px solid #dadce0; background: #fff; color: #3c4043;
+    font-weight: 700; font-size: 1rem; text-decoration: none; box-sizing: border-box;
+}
+.social-btn:active { filter: brightness(.96); }
+.social-btn-icon { display: inline-flex; flex: none; }
+.social-btn-icon svg { width: 22px; height: 22px; display: block; }
+.social-btn-line { background: #06c755; border-color: #06c755; color: #fff; }
+
+/* ---------- リアクション ---------- */
+.reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.reactions:empty { display: none; }
+.reaction-chip {
+    display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+    font-size: .82rem; line-height: 1.5; cursor: pointer;
+}
+.reaction-chip.mine { background: var(--primary-soft); border-color: var(--primary); font-weight: 700; }
+.reaction-bar {
+    position: fixed; z-index: 200; display: flex; gap: 2px; padding: 6px 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(60, 45, 30, .22);
+}
+.reaction-bar[hidden] { display: none; }
+.reaction-bar button { border: 0; background: none; font-size: 24px; padding: 2px 5px; cursor: pointer; }
+.reaction-bar button:active { transform: scale(1.25); }
+
+/* ---------- 写真トリミング ---------- */
+.crop-modal {
+    position: fixed; inset: 0; z-index: 300; background: rgba(30, 25, 20, .55);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.crop-modal[hidden] { display: none; }
+.crop-dialog { background: var(--surface); border-radius: 18px; padding: 18px; width: min(92vw, 380px); }
+.crop-viewport {
+    position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 12px;
+    background: #222; touch-action: none; cursor: grab; margin: 10px 0;
+}
+.crop-viewport img { position: absolute; left: 0; top: 0; max-width: none; user-select: none; -webkit-user-drag: none; }
+.crop-dialog input[type="range"] { width: 100%; }
+.crop-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+.push-setup { margin: 6px 0 12px; }

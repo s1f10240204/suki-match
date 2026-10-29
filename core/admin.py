@@ -39,6 +39,14 @@ class PasswordConfirmMixin:
         return TemplateResponse(request, 'admin/confirm_with_password.html', context)
 
 
+@admin.register(NotificationSetting)
+class NotificationSettingAdmin(admin.ModelAdmin):
+    list_display = ('user', 'email_activity', 'line_activity', 'push_activity', 'forced_off')
+    list_filter = ('forced_off',)
+    list_editable = ('forced_off',)
+    search_fields = ('user__username', 'user__email')
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'photo_thumb', 'avatar_status', 'email', 'area_label', 'level', 'is_active')
@@ -50,7 +58,23 @@ class UserAdmin(BaseUserAdmin):
                                    'latitude', 'longitude', 'location_updated_at', 'points', 'level')}),
     )
     filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)
-    actions = ['approve_photos', 'reject_photos']
+    actions = ['approve_photos', 'reject_photos', 'force_notifications_off', 'force_notifications_on']
+
+    @admin.action(description='選択したユーザーの通知を強制的にオフにする(メール・LINE・プッシュ)')
+    def force_notifications_off(self, request, queryset):
+        for user in queryset:
+            setting = services.notification_setting(user)
+            setting.forced_off = True
+            setting.save(update_fields=['forced_off'])
+        self.message_user(request, f'{queryset.count()}人の通知を強制オフにしました。')
+
+    @admin.action(description='選択したユーザーの通知の強制オフを解除する')
+    def force_notifications_on(self, request, queryset):
+        for user in queryset:
+            setting = services.notification_setting(user)
+            setting.forced_off = False
+            setting.save(update_fields=['forced_off'])
+        self.message_user(request, f'{queryset.count()}人の通知の強制オフを解除しました。')
 
     def _img(self, obj, size):
         if not obj.avatar:
@@ -190,7 +214,6 @@ admin.site.register(Review)
 admin.site.register(Application)
 admin.site.register(PresetTag)
 admin.site.register(Notification)
-admin.site.register(NotificationSetting)
 admin.site.register(ActivityBase)
 
 

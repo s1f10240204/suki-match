@@ -571,6 +571,92 @@
         var seen = {};
         var scrollDown = function () { window.scrollTo(0, document.body.scrollHeight); };
 
+        var REACTION_EMOJIS = ['❤️', '👍', '😊', '😮', '🙏', '🎉'];
+        var renderReactions = function (el, reactions) {
+            el.innerHTML = '';
+            (reactions || []).forEach(function (r) {
+                var chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'reaction-chip' + (r.user_ids.indexOf(me) !== -1 ? ' mine' : '');
+                chip.dataset.emoji = r.emoji;
+                chip.textContent = r.emoji;
+                var count = document.createElement('span');
+                count.textContent = r.count;
+                chip.appendChild(count);
+                el.appendChild(chip);
+            });
+        };
+        var updateReactions = function (messageId, reactions) {
+            var el = log.querySelector('[data-reactions-for="' + messageId + '"]');
+            if (el) { renderReactions(el, reactions); }
+        };
+        var reactionBar = document.createElement('div');
+        reactionBar.className = 'reaction-bar';
+        reactionBar.hidden = true;
+        REACTION_EMOJIS.forEach(function (emoji) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = emoji;
+            b.setAttribute('aria-label', 'リアクション ' + emoji);
+            b.addEventListener('click', function () {
+                sendReaction(Number(reactionBar.dataset.messageId), emoji);
+                reactionBar.hidden = true;
+            });
+            reactionBar.appendChild(b);
+        });
+        document.body.appendChild(reactionBar);
+        document.addEventListener('click', function (e) {
+            if (!reactionBar.hidden && !reactionBar.contains(e.target)) { reactionBar.hidden = true; }
+        });
+        var sendReaction = function (messageId, emoji) {
+            if (window.__chatSendReaction) { window.__chatSendReaction(messageId, emoji); return; }
+            fetch('/messages/' + messageId + '/react/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+                body: JSON.stringify({ emoji: emoji })
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d && d.reactions) {
+                    var mine = d.reactions.map(function (r) {
+                        return { emoji: r.emoji, count: r.count, user_ids: r.mine ? [me] : [] };
+                    });
+                    updateReactions(messageId, mine);
+                }
+            }).catch(function () {});
+        };
+        var csrfToken = function () {
+            var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        };
+        // 長押し(または右クリック)でリアクションバーを開く
+        var pressTimer = null;
+        var openBarFor = function (bubble, x, y) {
+            reactionBar.dataset.messageId = bubble.dataset.messageId;
+            reactionBar.hidden = false;
+            var w = reactionBar.offsetWidth || 300;
+            reactionBar.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - w - 8)) + 'px';
+            reactionBar.style.top = Math.max(8, y - 64) + 'px';
+        };
+        log.addEventListener('pointerdown', function (e) {
+            var bubble = e.target.closest('[data-message-id]');
+            if (!bubble) { return; }
+            var x = e.clientX, y = e.clientY;
+            pressTimer = setTimeout(function () { openBarFor(bubble, x, y); }, 500);
+        });
+        ['pointerup', 'pointermove', 'pointercancel'].forEach(function (ev) {
+            log.addEventListener(ev, function () { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+        });
+        log.addEventListener('contextmenu', function (e) {
+            var bubble = e.target.closest('[data-message-id]');
+            if (bubble) { e.preventDefault(); openBarFor(bubble, e.clientX, e.clientY); }
+        });
+        log.addEventListener('click', function (e) {
+            var chip = e.target.closest('.reaction-chip');
+            if (chip) {
+                var holder = chip.closest('[data-reactions-for]');
+                if (holder) { sendReaction(Number(holder.dataset.reactionsFor), chip.dataset.emoji); }
+            }
+        });
+
         var appendMessage = function (m) {
             if (seen[m.id]) { return; }
             seen[m.id] = true;
@@ -580,6 +666,11 @@
             row.className = 'bubble-row' + (mine ? ' mine' : '');
             var bubble = document.createElement('div');
             bubble.className = 'bubble' + (m.hidden ? ' bubble-hidden' : '');
+            bubble.dataset.messageId = m.id;
+            var reactionsEl = document.createElement('div');
+            reactionsEl.className = 'reactions';
+            reactionsEl.dataset.reactionsFor = m.id;
+            renderReactions(reactionsEl, m.reactions || []);
             if (m.hidden) {
                 bubble.textContent = 'このメッセージは相手に表示されていません';
             } else {
@@ -621,12 +712,14 @@
                 nm.textContent = m.sender;
                 main.appendChild(nm);
                 main.appendChild(bubble);
+                main.appendChild(reactionsEl);
                 main.appendChild(meta);
                 side.appendChild(av);
                 side.appendChild(main);
                 row.appendChild(side);
             } else {
                 row.appendChild(bubble);
+                row.appendChild(reactionsEl);
                 row.appendChild(meta);
             }
             log.appendChild(row);
@@ -651,12 +744,16 @@
             message: function (data) {
                 if (data.error) { toast(data.error, '', 'warning'); return; }
                 if (data.kind === 'read') { if (data.reader_id !== me) { markAllMineRead(); } return; }
+                if (data.kind === 'reaction_update') { updateReactions(data.message_id, data.reactions); return; }
                 appendMessage(data.message);
             }
         });
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') { chat.send({ type: 'read' }); }
         });
+        window.__chatSendReaction = function (messageId, emoji) {
+            chat.send({ type: 'reaction', message_id: messageId, emoji: emoji });
+        };
         if (form) {
             var bodyInput = form.querySelector('input[name=body]');
             var photoInput = form.querySelector('input[name=image]');
@@ -777,4 +874,191 @@
         });
         wrap.appendChild(btn);
     });
+})();
+
+/* 外部アカウントのボタンを統一デザインにする(Google 公式風: 白ボタン+Gアイコン / LINE: 緑ボタン) */
+(function () {
+    var GOOGLE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.3h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2.1 3.7-5.2 3.7-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.8-5l-3.9 3C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4l-3.9-3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l3.9-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l3.9 3c.9-2.8 3.6-4.9 6.8-4.9z"/></svg>';
+    var LINE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 3C6.4 3 2 6.7 2 11.2c0 4 3.6 7.4 8.4 8 .3 0 .7.2.8.6l.4 1.5c.1.5.6.3.8 0l1.7-2.1c.2-.3.5-.4.9-.5 3.9-.5 7-3.5 7-6.5C22 6.7 17.6 3 12 3z"/><text x="12" y="13.6" text-anchor="middle" font-size="5" font-weight="bold" fill="#06C755" font-family="Arial, sans-serif">LINE</text></svg>';
+    var defs = [
+        { needle: '/accounts/google/login/', cls: 'social-btn-google', icon: GOOGLE_ICON, name: 'Googleアカウント' },
+        { needle: '/accounts/line/login/', cls: 'social-btn-line', icon: LINE_ICON, name: 'LINEアカウント' }
+    ];
+    var mode = location.pathname.indexOf('signup') !== -1 ? 'で登録' : 'でログイン';
+    document.querySelectorAll('a[href*="/accounts/google/login/"], a[href*="/accounts/line/login/"]').forEach(function (a) {
+        var def = defs.filter(function (d) { return a.getAttribute('href').indexOf(d.needle) !== -1; })[0];
+        if (!def) { return; }
+        var suffix = a.getAttribute('href').indexOf('process=connect') !== -1 ? 'と連携' : mode;
+        a.classList.add('social-btn', def.cls);
+        a.innerHTML = '';
+        var icon = document.createElement('span');
+        icon.className = 'social-btn-icon';
+        icon.innerHTML = def.icon;
+        var label = document.createElement('span');
+        label.textContent = def.name + suffix;
+        a.appendChild(icon);
+        a.appendChild(label);
+    });
+})();
+
+/* 顔写真のトリミング(位置・拡大を自由に調整して正方形に切り取る) */
+(function () {
+    var input = document.querySelector('form input[type="file"][name="photo"]');
+    var modal = document.getElementById('crop-modal');
+    if (!input || !modal) { return; }
+    var viewport = document.getElementById('crop-viewport');
+    var img = document.getElementById('crop-img');
+    var zoom = document.getElementById('crop-zoom');
+    var state = { base: 1, scale: 1, x: 0, y: 0, url: null };
+    var clampPos = function () {
+        var vw = viewport.clientWidth;
+        var w = img.naturalWidth * state.base * state.scale;
+        var h = img.naturalHeight * state.base * state.scale;
+        state.x = Math.min(0, Math.max(vw - w, state.x));
+        state.y = Math.min(0, Math.max(vw - h, state.y));
+    };
+    var draw = function () {
+        var w = img.naturalWidth * state.base * state.scale;
+        var h = img.naturalHeight * state.base * state.scale;
+        img.style.width = w + 'px';
+        img.style.height = h + 'px';
+        img.style.transform = 'translate(' + state.x + 'px,' + state.y + 'px)';
+    };
+    var open = function (file) {
+        if (state.url) { URL.revokeObjectURL(state.url); }
+        state.url = URL.createObjectURL(file);
+        img.onload = function () {
+            var vw = viewport.clientWidth || 300;
+            state.base = Math.max(vw / img.naturalWidth, vw / img.naturalHeight);
+            state.scale = 1;
+            zoom.value = '1';
+            state.x = (vw - img.naturalWidth * state.base) / 2;
+            state.y = (vw - img.naturalHeight * state.base) / 2;
+            draw();
+        };
+        img.src = state.url;
+        modal.hidden = false;
+    };
+    input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (file && /^image\//.test(file.type)) { open(file); }
+    });
+    var drag = null;
+    viewport.addEventListener('pointerdown', function (e) {
+        drag = { x: e.clientX, y: e.clientY, ox: state.x, oy: state.y };
+        viewport.setPointerCapture(e.pointerId);
+    });
+    viewport.addEventListener('pointermove', function (e) {
+        if (!drag) { return; }
+        state.x = drag.ox + (e.clientX - drag.x);
+        state.y = drag.oy + (e.clientY - drag.y);
+        clampPos(); draw();
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+        viewport.addEventListener(ev, function () { drag = null; });
+    });
+    var pinch = null;
+    viewport.addEventListener('touchmove', function (e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (pinch) {
+                state.scale = Math.min(3, Math.max(1, state.scale * d / pinch));
+                zoom.value = String(state.scale);
+                clampPos(); draw();
+            }
+            pinch = d;
+        }
+    }, { passive: false });
+    viewport.addEventListener('touchend', function () { pinch = null; });
+    zoom.addEventListener('input', function () {
+        var vw = viewport.clientWidth;
+        var cx = (vw / 2 - state.x) / state.scale, cy = (vw / 2 - state.y) / state.scale;
+        state.scale = Number(zoom.value);
+        state.x = vw / 2 - cx * state.scale;
+        state.y = vw / 2 - cy * state.scale;
+        clampPos(); draw();
+    });
+    document.getElementById('crop-cancel').addEventListener('click', function () {
+        modal.hidden = true;
+        input.value = '';
+    });
+    document.getElementById('crop-apply').addEventListener('click', function () {
+        var vw = viewport.clientWidth;
+        var k = state.base * state.scale;
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 640;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, 640, 640);
+        ctx.drawImage(img, state.x / vw * 640, state.y / vw * 640,
+                      img.naturalWidth * k / vw * 640, img.naturalHeight * k / vw * 640);
+        canvas.toBlob(function (blob) {
+            if (!blob) { modal.hidden = true; return; }
+            var file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+            var dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            modal.hidden = true;
+            var preview = document.querySelector('.photo-edit .avatar-img, .photo-edit img');
+            if (preview) { preview.src = canvas.toDataURL('image/jpeg', 0.85); }
+        }, 'image/jpeg', 0.9);
+    });
+})();
+
+/* Web Push: 購読の登録(許可済みなら自動で最新化、設定画面ではボタンで切り替え) */
+(function () {
+    var meta = document.querySelector('meta[name="vapid-public-key"]');
+    var key = meta ? meta.getAttribute('content') : '';
+    if (!key || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { return; }
+    var csrf = function () {
+        var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    };
+    var toKey = function (base64) {
+        var pad = '='.repeat((4 - base64.length % 4) % 4);
+        var raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        var arr = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) { arr[i] = raw.charCodeAt(i); }
+        return arr;
+    };
+    var post = function (path, sub) {
+        return fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+            body: JSON.stringify(sub ? sub.toJSON() : {})
+        });
+    };
+    var subscribe = function () {
+        return navigator.serviceWorker.ready.then(function (reg) {
+            return reg.pushManager.getSubscription().then(function (existing) {
+                if (existing) { return existing; }
+                return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key) });
+            });
+        }).then(function (sub) { return post('/push/subscribe/', sub); });
+    };
+    if (Notification.permission === 'granted') { subscribe().catch(function () {}); }
+    var btn = document.getElementById('push-toggle');
+    if (btn) {
+        var refreshLabel = function () {
+            navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); })
+                .then(function (sub) {
+                    btn.textContent = sub ? 'この端末でプッシュ通知をオフにする' : 'この端末でプッシュ通知を有効にする';
+                }).catch(function () {});
+        };
+        refreshLabel();
+        btn.addEventListener('click', function () {
+            navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); })
+                .then(function (sub) {
+                    if (sub) {
+                        return post('/push/unsubscribe/', sub).then(function () { return sub.unsubscribe(); })
+                            .then(function () { toast('プッシュ通知をオフにしました。', '', 'info'); refreshLabel(); });
+                    }
+                    return Notification.requestPermission().then(function (perm) {
+                        if (perm !== 'granted') { toast('通知が許可されませんでした。ブラウザの設定を確認してください。', '', 'warning'); return; }
+                        return subscribe().then(function () { toast('プッシュ通知を有効にしました。', '', 'info'); refreshLabel(); });
+                    });
+                }).catch(function () { toast('プッシュ通知の設定に失敗しました。', '', 'warning'); });
+        });
+    }
 })();

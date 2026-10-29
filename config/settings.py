@@ -225,6 +225,13 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
+# --- Web Push (VAPID) ---
+VAPID_PUBLIC_KEY = os.environ.get(
+    'VAPID_PUBLIC_KEY',
+    'BNuoYAE1ofjs_JBEbUCPvi3NobSjeKpZw1HEB_M6fBKlyBv1wPh4ogVTiwjpkD4HHt0xkLV_yWcm1qW-jeCHLQw')
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', 'mailto:noreply.skimatch@gmail.com')
+
 # --- メール ---
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 # Render 無料プランは SMTP(587番など)が使えないため、Brevo の HTTPS API で送る

@@ -16,6 +16,18 @@
             {% include 'core/_field.html' with field=form.photo %}
         </div>
     </div>
+    <div class="crop-modal" id="crop-modal" hidden>
+        <div class="crop-dialog">
+            <h2>写真の位置を調整</h2>
+            <p class="help">ドラッグで位置、スライダーやピンチで大きさを変えられます。</p>
+            <div class="crop-viewport" id="crop-viewport"><img id="crop-img" alt="切り取り対象の写真" draggable="false"></div>
+            <input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1" aria-label="拡大縮小">
+            <div class="crop-actions">
+                <button type="button" class="btn btn-ghost" id="crop-cancel">キャンセル</button>
+                <button type="button" class="btn btn-primary" id="crop-apply">この範囲で決定</button>
+            </div>
+        </div>
+    </div>
     {% include 'core/_field.html' with field=form.motivation %}
     {% include 'core/_field.html' with field=form.bio %}
     {% include 'core/_field.html' with field=form.skill_names %}

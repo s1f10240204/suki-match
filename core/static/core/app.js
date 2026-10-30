@@ -111,10 +111,11 @@
         }
         if (window.L) {
             var lmap = window.L.map(el, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-            // Esri World Street Map: APIキー不要、透かしなしの通常の道路地図タイル
-            window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 19,
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom'
+            // CARTO Voyager: Google マップに近い配色の道路地図タイル(APIキー不要)
+            window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20,
+                subdomains: 'abcd',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             }).addTo(lmap);
             var lmarker = null, handlers = [];
             var place = function (pos) {
@@ -308,7 +309,29 @@
             var place = [picker && picker.dataset.placeLabel, val('[name=address_detail]')].filter(Boolean).join(' ')
                 || (val('[name=latitude]') ? '登録済みの現在地' : '-');
             stepper.querySelector('[data-summary-place]').textContent = place;
+            var balance = parseInt(stepper.dataset.pointsBalance || '0', 10);
+            var cost = dur ? parseInt(dur.value, 10) : 0;
+            var summaryPoints = stepper.querySelector('[data-summary-points]');
+            if (summaryPoints) {
+                summaryPoints.textContent = cost
+                    ? cost + 'pt(残高 ' + balance + 'pt → 投稿後 ' + (balance - cost) + 'pt)'
+                    : '-';
+            }
+            var costBox = stepper.querySelector('[data-points-cost]');
+            if (costBox) {
+                if (!cost) {
+                    costBox.textContent = '';
+                } else if (balance < cost) {
+                    costBox.innerHTML = 'この依頼では <strong>' + cost + 'pt</strong> を使います。'
+                        + '<span class="points-short">ポイントが不足しています(保有 ' + balance + 'pt)。お手伝いをするとポイントが貯まります。</span>';
+                } else {
+                    costBox.innerHTML = 'この依頼では <strong>' + cost + 'pt</strong> を使います(現在の残高 ' + balance + 'pt)';
+                }
+            }
         };
+        stepper.querySelectorAll('[name=duration_minutes]').forEach(function (r) {
+            r.addEventListener('change', fillSummary);
+        });
 
         var validate = function (step) {
             var ok = true;

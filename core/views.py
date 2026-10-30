@@ -119,7 +119,7 @@ def help_request_create(request):
             return redirect('core:help_request_create')
         messages.success(request, f'依頼を投稿しました({help_request.points_cost}pt使用)。近くの{count}人に通知しました。')
         return redirect('core:help_request_detail', pk=help_request.pk)
-    return render(request, 'core/help_request_form.html', {'form': form})
+    return render(request, 'core/help_request_form.html', {'form': form, 'points_balance': request.user.points})
 
 
 def help_request_detail(request, pk):
@@ -329,8 +329,8 @@ def profile(request):
         'bases': user.bases.all(),
         'base_form': ActivityBaseForm(),
         'radius': services.RADIUS_METERS,
-        'points_to_next': max(next_level_points - user.points, 0),
-        'level_progress': 100 if user.level >= 100 else int((user.points - prev_level_points) * 100 / span),
+        'points_to_next': max(next_level_points - user.total_earned, 0),
+        'level_progress': 100 if user.level >= 100 else int((user.total_earned - prev_level_points) * 100 / span),
     })
 
 

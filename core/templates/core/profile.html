@@ -18,9 +18,16 @@
         <div class="level-row">
             <span class="rank-badge rank-lg">{{ user.rank }}</span>
             <span class="level">Lv.{{ user.level }}</span>
-            <span class="meta">{{ user.points }}pt{% if user.level < 100 %} · 次のレベルまであと{{ points_to_next }}pt{% endif %}</span>
+            <span class="meta">累計{{ user.total_earned }}pt{% if user.level < 100 %} · 次のレベルまであと{{ points_to_next }}pt{% endif %}</span>
         </div>
         <div class="progress"><span style="width: {{ level_progress }}%"></span></div>
+    </div>
+    <div class="points-box">
+        <div class="points-main">
+            <span class="points-value">{{ user.points }}<small>pt</small></span>
+            <span class="meta">現在のポイント</span>
+        </div>
+        <p class="points-desc">依頼するときに使えます(お手伝い1分あたり1pt)。お手伝いを完了するとポイントが貯まります。</p>
     </div>
     <div class="stats-row">
         <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">平均評価</p></div>

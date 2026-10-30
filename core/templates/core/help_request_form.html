@@ -4,7 +4,7 @@
 {% block extra_head %}{% include 'core/_maps.html' %}{% endblock %}
 
 {% block content %}
-<form method="post" class="stepper form" data-stepper novalidate>
+<form method="post" class="stepper form" data-stepper data-points-balance="{{ points_balance }}" novalidate>
     {% csrf_token %}
     <div class="stepper-head">
         <h1>お手伝いを依頼する</h1>
@@ -36,6 +36,7 @@
         </div>
         <div data-when-later>{% include 'core/_field.html' with field=form.scheduled_for %}</div>
         {% include 'core/_field.html' with field=form.duration_minutes %}
+        <p class="points-cost" data-points-cost></p>
         <details class="more" data-when-now{% if form.listing_minutes.errors %} open{% endif %}>
             <summary>募集する期間を変える(任意・おまかせなら3時間)</summary>
             {% include 'core/_field.html' with field=form.listing_minutes %}
@@ -57,7 +58,9 @@
             <div><dt>内容</dt><dd data-summary-title>-</dd></div>
             <div><dt>日時</dt><dd data-summary-when>-</dd></div>
             <div><dt>場所</dt><dd data-summary-place>-</dd></div>
+            <div><dt>使うポイント</dt><dd data-summary-points>-</dd></div>
         </dl>
+        <p class="points-note-box">この依頼では上のポイントを使います。お手伝いが完了すると、使ったポイントは手伝ってくれた人に渡ります。キャンセル・掲載期限切れのときは全額戻ります。</p>
         {% include 'core/_field.html' with field=form.mode %}
         {% include 'core/_field.html' with field=form.headcount_choice %}
         <div data-headcount-custom hidden>

@@ -55,6 +55,7 @@ def help_request_list(request):
     qs = (HelpRequest.objects.filter(status__in=[HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS],
                                      expires_at__gt=timezone.now(),
                                      scheduled_for__isnull=(tab == 'now'))
+          .exclude(requester__is_shadow_banned=True)
           .annotate(joined_active=Count('matches', filter=Q(matches__status=Match.Status.IN_PROGRESS)))
           .filter(headcount__gt=F('joined_active'))
           .select_related('requester').prefetch_related('required_skills', 'preset_tags'))
@@ -121,6 +122,10 @@ def help_request_detail(request, pk):
     help_request = get_object_or_404(
         HelpRequest.objects.select_related('requester').prefetch_related('required_skills', 'preset_tags'), pk=pk)
     user = request.user
+    if help_request.requester.is_shadow_banned and not (
+            user.is_authenticated and (user.is_staff or user.pk == help_request.requester_id
+                                       or help_request.matches.filter(helper=user).exists())):
+        raise Http404  # ゴーストBan中の依頼は、関係者以外には存在しないものとして扱う
     match = help_request.active_match or help_request.matches.filter(
         status=Match.Status.DONE).select_related('helper').first()
     is_requester = user.is_authenticated and user.pk == help_request.requester_id
@@ -150,6 +155,7 @@ def help_request_detail(request, pk):
     if is_requester and help_request.mode == HelpRequest.Mode.APPROVAL and help_request.status in (
             HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS):
         context['applications'] = (help_request.applications.filter(status=Application.Status.APPLIED)
+                                   .exclude(applicant__is_shadow_banned=True)
                                    .select_related('applicant'))
     if match is not None and (is_requester or is_helper):
         context['chat_open'] = services.chat_is_open(match)

@@ -295,6 +295,8 @@ def nearby_helpers(help_request):
 
 
 def notify_nearby_helpers(help_request):
+    if help_request.requester.is_shadow_banned:
+        return 0  # ゴーストBan中は誰にも通知しない(本人には通常どおり見える)
     when = (f'{timezone.localtime(help_request.scheduled_for):%m/%d %H:%M}〜'
             if help_request.scheduled_for else '今すぐ')
     text = f'近くで依頼「{help_request.title}」({when}・{help_request.duration_minutes}分)'
@@ -333,6 +335,9 @@ def _claim(help_request, helper):
 def _check_can_help(help_request, user):
     if help_request.requester_id == user.pk:
         raise ServiceError('自分の依頼は受けられません。')
+    if user.is_shadow_banned:
+        # ゴーストBan中は締め切られたように見せて静かに止める(マッチングさせない)
+        raise ServiceError('この依頼はすでに締め切られました。')
     reason = accept_block_reason(user)
     if reason:
         raise ServiceError(reason)
@@ -379,6 +384,8 @@ def approve(application, user):
     if help_request.requester_id != user.pk:
         raise ServiceError('承認できるのは依頼者だけです。')
     if application.status != Application.Status.APPLIED:
+        raise ServiceError('この応募は承認できません。')
+    if application.applicant.is_shadow_banned:
         raise ServiceError('この応募は承認できません。')
     reason = accept_block_reason(application.applicant)
     if reason:

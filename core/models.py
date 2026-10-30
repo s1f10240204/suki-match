@@ -96,6 +96,8 @@ class User(AbstractUser):
     line_user_id = models.CharField('LINEユーザーID', max_length=64, blank=True, default='', db_index=True)
     birth_date = models.DateField('生年月日', null=True, blank=True)
     simple_ui = models.BooleanField('シンプルUI', default=False)
+    is_shadow_banned = models.BooleanField('ゴーストBan', default=False,
+                                           help_text='有効な間、本人の画面は通常どおりだが、他のユーザーからは存在しないように見える')
     motivation = models.CharField('お手伝いする理由', max_length=200, blank=True,
                                   help_text='例: 子育てがひと段落したので、地域の役に立ちたい')
     bio = models.TextField('自己紹介', blank=True)

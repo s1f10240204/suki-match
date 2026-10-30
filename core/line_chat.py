@@ -367,7 +367,8 @@ def _request_bubble(user, help_request):
 def _browse(user, reply_token):
     services.expire_requests()
     qs = (HelpRequest.objects.filter(status=HelpRequest.Status.OPEN, expires_at__gt=timezone.now())
-          .exclude(requester=user).select_related('requester'))
+          .exclude(requester=user).exclude(requester__is_shadow_banned=True)
+          .select_related('requester'))
     items = list(qs)
     if user.latitude is not None and user.longitude is not None:
         items.sort(key=lambda r: services.public_distance(user, r))

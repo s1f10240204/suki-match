@@ -48,17 +48,37 @@ class NotificationSettingAdmin(admin.ModelAdmin):
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    list_display = ('username', 'photo_thumb', 'avatar_status', 'email', 'area_label', 'level', 'is_active')
-    list_filter = ('avatar_status',) + BaseUserAdmin.list_filter
+class UserAdmin(PasswordConfirmMixin, BaseUserAdmin):
+    list_display = ('username', 'photo_thumb', 'avatar_status', 'email', 'area_label', 'level', 'is_shadow_banned', 'is_active')
+    list_filter = ('avatar_status', 'is_shadow_banned') + BaseUserAdmin.list_filter
     readonly_fields = ('photo_preview',)
     fieldsets = BaseUserAdmin.fieldsets + (
         ('顔写真の審査', {'fields': ('photo_preview', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at')}),
         ('suki-match', {'fields': ('line_user_id', 'motivation', 'bio', 'skills', 'area_label',
-                                   'latitude', 'longitude', 'location_updated_at', 'points', 'level')}),
+                                   'latitude', 'longitude', 'location_updated_at', 'points', 'level',
+                                   'is_shadow_banned')}),
     )
     filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)
-    actions = ['approve_photos', 'reject_photos', 'force_notifications_off', 'force_notifications_on']
+    actions = ['approve_photos', 'reject_photos', 'force_notifications_off', 'force_notifications_on',
+               'ghost_ban', 'ghost_unban']
+
+    @admin.action(description='選択したユーザーをゴーストBanにする(本人には気づかれない)')
+    def ghost_ban(self, request, queryset):
+        return self.password_confirmed_action(
+            request, queryset, action_name='ghost_ban',
+            title='選択したユーザーをゴーストBanにしますか？',
+            warning='対象ユーザーはログインも依頼の投稿も通常どおりできますが、他のユーザーからは存在しないように見えます'
+                    '（依頼は一覧・検索・LINEに表示されず、通知も送信されず、引き受け・応募は締め切り扱いでマッチングしません）。'
+                    '本人には一切通知されません。',
+            execute=lambda: queryset.update(is_shadow_banned=True))
+
+    @admin.action(description='選択したユーザーのゴーストBanを解除する')
+    def ghost_unban(self, request, queryset):
+        return self.password_confirmed_action(
+            request, queryset, action_name='ghost_unban',
+            title='選択したユーザーのゴーストBanを解除しますか？',
+            warning='対象ユーザーの依頼や応募が、再び他のユーザーから見えるようになります。',
+            execute=lambda: queryset.update(is_shadow_banned=False))
 
     @admin.action(description='選択したユーザーの通知を強制的にオフにする(メール・LINE・プッシュ)')
     def force_notifications_off(self, request, queryset):

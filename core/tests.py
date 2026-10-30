@@ -1008,3 +1008,48 @@ class OperationsTests(BaseTestCase):
 
     def test_run_tasks_disabled_without_token(self):
         self.assertEqual(self.client.post(reverse('core:run_tasks'), HTTP_X_TASKS_TOKEN='').status_code, 403)
+class ShadowBanTests(BaseTestCase):
+    """ゴーストBan: 本人には通常どおり、他のユーザーからは存在しないように見える。"""
+
+    def test_banned_requester_hidden_from_list_and_detail(self):
+        banned = make_user('ghost', is_shadow_banned=True)
+        hr = make_request(banned)
+        helper = make_user('helper')
+        self.client.force_login(helper)
+        listed = self.client.get(reverse('core:help_request_list'), {'all': '1'}).context['help_requests']
+        self.assertNotIn(hr, listed)
+        self.assertEqual(self.client.get(reverse('core:help_request_detail', args=[hr.pk])).status_code, 404)
+        self.client.force_login(banned)
+        self.assertEqual(self.client.get(reverse('core:help_request_detail', args=[hr.pk])).status_code, 200)
+
+    def test_banned_requester_sends_no_nearby_notifications(self):
+        banned = make_user('ghost', is_shadow_banned=True)
+        make_user('near', NEAR, ['見守り'])
+        hr = make_request(banned, skill_names=['見守り'])
+        self.assertEqual(services.notify_nearby_helpers(hr), 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_banned_helper_cannot_match(self):
+        requester = make_user('req')
+        hr = make_request(requester)
+        ghost = make_user('ghost', is_shadow_banned=True)
+        with self.assertRaises(services.ServiceError):
+            services.accept_first_come(hr, ghost)
+        approval = make_request(requester, mode=HelpRequest.Mode.APPROVAL)
+        with self.assertRaises(services.ServiceError):
+            services.apply(approval, ghost)
+        self.assertEqual(Match.objects.count(), 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_banned_applicant_hidden_and_cannot_be_approved(self):
+        requester = make_user('req')
+        hr = make_request(requester, mode=HelpRequest.Mode.APPROVAL)
+        applicant = make_user('applicant')
+        application = services.apply(hr, applicant)
+        User.objects.filter(pk=applicant.pk).update(is_shadow_banned=True)
+        applicant.refresh_from_db()
+        with self.assertRaises(services.ServiceError):
+            services.approve(application, requester)
+        self.client.force_login(requester)
+        context = self.client.get(reverse('core:help_request_detail', args=[hr.pk])).context
+        self.assertEqual(list(context['applications']), [])

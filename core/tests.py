@@ -305,6 +305,7 @@ class FormAndPageTests(BaseTestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user('me')
+        User.objects.filter(pk=self.user.pk).update(points=1000)
         self.client.force_login(self.user)
 
     def _post_request(self, **data):
@@ -520,7 +521,9 @@ class MultiHelperTests(BaseTestCase):
         self.assertEqual(hr.slots_left, 0)
 
     def test_form_headcount_choice_and_custom(self):
-        self.client.force_login(make_user('freq'))
+        freq = make_user('freq')
+        User.objects.filter(pk=freq.pk).update(points=1000)
+        self.client.force_login(freq)
         payload = {'title': '荷物', 'mode': 'first_come', 'description': '重い荷物です', 'duration_minutes': 15,
                    'listing_minutes': 30, 'latitude': LAT, 'longitude': LNG, 'skill_names': '',
                    'headcount_choice': 'custom', 'headcount_custom': 6}
@@ -622,6 +625,8 @@ class ImprovementBatchTests(BaseTestCase):
 class LinePostRetentionTests(BaseTestCase):
     def test_post_flow_asks_retention_and_applies_it(self):
         user = make_user('lineuser')
+        User.objects.filter(pk=user.pk).update(points=1000)
+        user.refresh_from_db()
         with mock.patch.object(line_chat.line_api, 'reply_messages') as reply:
             line_chat.handle_message(user, '依頼する', 't1')
             line_chat.handle_message(user, '荷物の移動', 't2')
@@ -899,6 +904,7 @@ class ListingAndMessageTests(BaseTestCase):
 
     def test_listing_time_is_optional_and_long(self):
         user = make_user('me')
+        User.objects.filter(pk=user.pk).update(points=1000)
         self.client.force_login(user)
         base = {'title': '荷物', 'mode': 'first_come', 'description': '重い', 'duration_minutes': 15,
                 'latitude': LAT, 'longitude': LNG, 'skill_names': ''}
@@ -909,7 +915,9 @@ class ListingAndMessageTests(BaseTestCase):
         self.assertAlmostEqual((second.expires_at - second.created_at).total_seconds(), 3 * 24 * 3600, delta=10)
 
     def test_now_ignores_scheduled_time(self):
-        self.client.force_login(make_user('me'))
+        me = make_user('me')
+        User.objects.filter(pk=me.pk).update(points=1000)
+        self.client.force_login(me)
         later = (timezone.localtime() + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M')
         self.client.post(reverse('core:help_request_create'), {
             'title': '荷物', 'mode': 'first_come', 'description': '重い', 'duration_minutes': 15, 'when': 'now',
@@ -1053,3 +1061,92 @@ class ShadowBanTests(BaseTestCase):
         self.client.force_login(requester)
         context = self.client.get(reverse('core:help_request_detail', args=[hr.pk])).context
         self.assertEqual(list(context['applications']), [])
+class PointsEconomyTests(BaseTestCase):
+    """ポイント制(振替モデル): 投稿で預かり、完了でヘルパーへ、キャンセル・期限切れで返金。"""
+
+    def _funded(self, name, points):
+        user = make_user(name)
+        User.objects.filter(pk=user.pk).update(points=points)
+        user.refresh_from_db()
+        return user
+
+    def test_starter_points_on_signup(self):
+        from unittest import mock as _mock
+        from .adapters import AccountAdapter, STARTER_POINTS
+        adapter = AccountAdapter()
+        form = _mock.Mock()
+        form.cleaned_data = {'username': 'newbie', 'email': 'newbie@example.com'}
+        user = adapter.save_user(None, User(), form, commit=True)
+        self.assertEqual(user.points, STARTER_POINTS)
+
+    def test_charge_and_payout_single_helper(self):
+        requester = self._funded('preq', 100)
+        hr = make_request(requester, duration_minutes=30)
+        services.publish_request(hr)
+        requester.refresh_from_db()
+        self.assertEqual((requester.points, hr.points_cost), (70, 30))
+        helper = make_user('phelp')
+        services.accept_first_come(hr, helper)
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        self.assertEqual((helper.points, helper.total_earned), (30, 30))
+        self.assertEqual(helper.level, level_for_points(30))
+
+    def test_payout_split_with_remainder(self):
+        requester = self._funded('sreq', 100)
+        hr = make_request(requester, duration_minutes=31, headcount=2)
+        services.publish_request(hr)
+        h1, h2 = make_user('sh1'), make_user('sh2')
+        services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        services.complete(hr, requester)
+        h1.refresh_from_db()
+        h2.refresh_from_db()
+        self.assertEqual((h1.points, h2.points), (16, 15))
+
+    def test_insufficient_points_blocks_publish(self):
+        requester = self._funded('breq', 10)
+        hr = make_request(requester, duration_minutes=30)
+        with self.assertRaises(services.ServiceError):
+            services.publish_request(hr)
+        requester.refresh_from_db()
+        hr.refresh_from_db()
+        self.assertEqual((requester.points, hr.points_cost), (10, 0))
+
+    def test_refund_on_requester_cancel(self):
+        requester = self._funded('creq', 100)
+        hr = make_request(requester, duration_minutes=30)
+        services.publish_request(hr)
+        services.cancel(hr, requester)
+        requester.refresh_from_db()
+        hr.refresh_from_db()
+        self.assertEqual(requester.points, 100)
+        self.assertTrue(hr.points_settled)
+
+    def test_refund_on_expire(self):
+        requester = self._funded('ereq', 100)
+        hr = make_request(requester, duration_minutes=30)
+        services.publish_request(hr)
+        HelpRequest.objects.filter(pk=hr.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        services.expire_requests()
+        requester.refresh_from_db()
+        self.assertEqual(requester.points, 100)
+
+    def test_spending_does_not_lower_level(self):
+        user = make_user('lvl')
+        user.add_points(100)
+        self.assertEqual(user.level, level_for_points(100))
+        hr = make_request(user, duration_minutes=60)
+        services.publish_request(hr)
+        user.refresh_from_db()
+        self.assertEqual((user.points, user.total_earned), (40, 100))
+        self.assertEqual(user.level, level_for_points(100))
+
+    def test_form_rejects_insufficient_balance(self):
+        user = self._funded('freq2', 5)
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:help_request_create'), {
+            'title': '荷物', 'mode': 'first_come', 'description': '重い', 'duration_minutes': 30,
+            'latitude': LAT, 'longitude': LNG, 'skill_names': ''})
+        self.assertContains(response, 'ポイントが不足しています')
+        self.assertEqual(HelpRequest.objects.count(), 0)

@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.db.models.functions import ExtractHour
 from django.urls import reverse
 from django.utils import timezone
@@ -22,6 +22,7 @@ from .models import (ActivityBase, Application, HelpRequest, Match, Message, Mes
 
 RADIUS_METERS = 500
 HELPER_POINTS = 10
+POINTS_PER_MINUTE = 1  # 依頼ポイントは所要時間1分あたり1pt(依頼者→ヘルパーへ渡る)
 REVIEW_BONUS_POINTS = 2
 LOCATION_FRESH_HOURS = 24      # これより古い現在地は通知対象にしない
 RELABEL_DISTANCE_M = 200       # これ以上移動したらエリア名を取り直す
@@ -308,7 +309,36 @@ def notify_nearby_helpers(help_request):
 
 # ---------- 依頼のライフサイクル ----------
 
+def cost_for_duration(duration_minutes):
+    return int(duration_minutes) * POINTS_PER_MINUTE
+
+
+def charge_for_request(help_request):
+    """投稿時に依頼ポイントを残高から預かる。残高不足なら ServiceError。"""
+    cost = cost_for_duration(help_request.duration_minutes)
+    with transaction.atomic():
+        requester = User.objects.select_for_update().get(pk=help_request.requester_id)
+        if requester.points < cost:
+            raise ServiceError(
+                f'ポイントが不足しています(必要 {cost}pt / 保有 {requester.points}pt)。'
+                'お手伝いをするとポイントが貯まります。')
+        requester.points -= cost
+        requester.save(update_fields=['points'])
+        help_request.points_cost = cost
+        help_request.save(update_fields=['points_cost'])
+    return cost
+
+
+def _refund_escrow(help_request):
+    """預かったポイントを依頼者へ返す(キャンセル・期限切れ用)。精算は一度だけ。"""
+    if help_request.points_cost and not help_request.points_settled:
+        User.objects.filter(pk=help_request.requester_id).update(
+            points=F('points') + help_request.points_cost)
+        help_request.points_settled = True
+
+
 def publish_request(help_request):
+    charge_for_request(help_request)
     help_request.area_label = area_label_for(help_request.latitude, help_request.longitude)
     help_request.save(update_fields=['area_label'])
     return notify_nearby_helpers(help_request)
@@ -412,16 +442,26 @@ def complete(help_request, user):
     matches = list(help_request.active_matches)
     if not matches:
         raise ServiceError('進行中のマッチングがありません。')
+    awarded = {}
     with transaction.atomic():
+        if help_request.points_cost and not help_request.points_settled:
+            # 振替モデル: 依頼者が預けたポイントを参加ヘルパー全員で分ける(端数は先頭のヘルパーへ)
+            share, remainder = divmod(help_request.points_cost, len(matches))
+            for i, match in enumerate(matches):
+                awarded[match.pk] = share + (remainder if i == 0 else 0)
+            help_request.points_settled = True
+        else:
+            for match in matches:
+                awarded[match.pk] = HELPER_POINTS  # ポイント制より前の依頼は従来どおり
         for match in matches:
             match.status, match.completed_at = Match.Status.DONE, timezone.now()
             match.save(update_fields=['status', 'completed_at'])
-            match.helper.add_points(HELPER_POINTS)
+            match.helper.add_points(awarded[match.pk])
         help_request.status = HelpRequest.Status.DONE
-        help_request.save(update_fields=['status'])
+        help_request.save(update_fields=['status', 'points_settled'])
     for match in matches:
         notify(match.helper, 'completed',
-               f'「{help_request.title}」が完了しました(+{HELPER_POINTS}pt)', detail_url(help_request))
+               f'「{help_request.title}」が完了しました(+{awarded[match.pk]}pt)', detail_url(help_request))
     return matches[0]
 
 
@@ -448,6 +488,7 @@ def cancel(help_request, user, reason=''):
     reopen = False
     with transaction.atomic():
         if is_requester:
+            _refund_escrow(help_request)
             for match in help_request.active_matches:
                 penalized = grace_remaining_seconds(match) == 0
                 match.status, match.canceled_at, match.canceled_by = Match.Status.CANCELED, now, user
@@ -469,12 +510,13 @@ def cancel(help_request, user, reason=''):
                 penalized_match = match
             reopen = help_request.expires_at > now
             if not reopen:
+                _refund_escrow(help_request)
                 help_request.status = HelpRequest.Status.EXPIRED
             elif help_request.active_matches.exists():
                 help_request.status = HelpRequest.Status.IN_PROGRESS  # 残りのメンバーで継続し、空いた枠は再募集
             else:
                 help_request.status = HelpRequest.Status.OPEN
-        help_request.save(update_fields=['status'])
+        help_request.save(update_fields=['status', 'points_settled'])
 
     if is_requester:
         for helper in canceled_helpers:
@@ -522,8 +564,9 @@ def expire_requests():
     expired = list(HelpRequest.objects.filter(status=HelpRequest.Status.OPEN, expires_at__lte=timezone.now())
                    .select_related('requester'))
     for help_request in expired:
+        _refund_escrow(help_request)
         help_request.status = HelpRequest.Status.EXPIRED
-        help_request.save(update_fields=['status'])
+        help_request.save(update_fields=['status', 'points_settled'])
         help_request.applications.filter(status=Application.Status.APPLIED).update(
             status=Application.Status.REJECTED)
         notify(help_request.requester, 'expired',

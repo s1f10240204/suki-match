@@ -321,6 +321,13 @@ def _post_confirm(user, state, reply_token):
         _clear(state)
         _reply(reply_token, line_api.text_message(reason))
         return
+    cost = services.cost_for_duration(data.get('duration', 15))
+    if user.points < cost:
+        _clear(state)
+        _reply(reply_token, line_api.text_message(
+            f'ポイントが不足しています(必要 {cost}pt / 保有 {user.points}pt)。\n'
+            'お手伝いをするとポイントが貯まります。まず近くの依頼を探してみてください。'))
+        return
     help_request = HelpRequest.objects.create(
         requester=user, title=data['title'], description=data.get('description', ''),
         mode=data.get('mode', 'first_come'), duration_minutes=data.get('duration', 15),
@@ -329,7 +336,7 @@ def _post_confirm(user, state, reply_token):
     count = services.publish_request(help_request)
     _clear(state)
     _reply(reply_token, line_api.text_message(
-        f'依頼を投稿しました！近くの{count}人に通知しました。\n'
+        f'依頼を投稿しました！({cost}pt使用)近くの{count}人に通知しました。\n'
         f'詳細: {_abs(services.detail_url(help_request))}'))
 
 

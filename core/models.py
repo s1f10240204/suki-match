@@ -108,7 +108,8 @@ class User(AbstractUser):
     location_updated_at = models.DateTimeField(null=True, blank=True)
     area_label = models.CharField('活動エリア', max_length=50, blank=True)
 
-    points = models.IntegerField('ポイント', default=0)
+    points = models.IntegerField('ポイント', default=0)  # 使える残高
+    total_earned = models.IntegerField('累計獲得ポイント', default=0)  # レベルはこちらで決まる(使っても減らない)
     level = models.PositiveSmallIntegerField('レベル', default=1)
     skills = models.ManyToManyField(Skill, blank=True, related_name='users', verbose_name='できること')
 
@@ -138,8 +139,10 @@ class User(AbstractUser):
 
     def add_points(self, amount):
         self.points += amount
-        self.level = level_for_points(self.points)
-        self.save(update_fields=['points', 'level'])
+        if amount > 0:
+            self.total_earned += amount
+        self.level = level_for_points(self.total_earned)
+        self.save(update_fields=['points', 'total_earned', 'level'])
 
     def resolved_skill_ids(self):
         return {s.resolved.pk for s in self.skills.select_related('canonical')}
@@ -184,6 +187,9 @@ class HelpRequest(models.Model):
     mode = models.CharField('募集方式', max_length=20, choices=Mode.choices, default=Mode.FIRST_COME)
     headcount = models.PositiveSmallIntegerField('募集人数', default=1, help_text='同時に手伝ってもらう人数。2人以上はグループチャットになります。')
     duration_minutes = models.PositiveIntegerField('所要時間(分)', default=15)
+    points_cost = models.PositiveIntegerField('依頼ポイント', default=0,
+                                              help_text='投稿時に依頼者から預かったポイント。完了時にヘルパーへ渡る')
+    points_settled = models.BooleanField('ポイント精算済み', default=False)
     chat_retention_days = models.PositiveSmallIntegerField(
         'チャット履歴の保存期間', choices=ChatRetention.choices, default=ChatRetention.THREE_DAYS,
         help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ閲覧でき、過ぎると自動で削除されます。')

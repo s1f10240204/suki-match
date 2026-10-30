@@ -111,8 +111,13 @@ def help_request_create(request):
     form = HelpRequestForm(request.POST or None, initial=initial, user=request.user)
     if request.method == 'POST' and form.is_valid():
         help_request = form.save()
-        count = services.publish_request(help_request)
-        messages.success(request, f'依頼を投稿しました。近くの{count}人に通知しました。')
+        try:
+            count = services.publish_request(help_request)
+        except ServiceError as exc:
+            help_request.delete()
+            messages.error(request, str(exc))
+            return redirect('core:help_request_create')
+        messages.success(request, f'依頼を投稿しました({help_request.points_cost}pt使用)。近くの{count}人に通知しました。')
         return redirect('core:help_request_detail', pk=help_request.pk)
     return render(request, 'core/help_request_form.html', {'form': form})
 

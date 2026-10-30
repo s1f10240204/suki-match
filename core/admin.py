@@ -55,7 +55,7 @@ class UserAdmin(PasswordConfirmMixin, BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
         ('顔写真の審査', {'fields': ('photo_preview', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at')}),
         ('suki-match', {'fields': ('line_user_id', 'motivation', 'bio', 'skills', 'area_label',
-                                   'latitude', 'longitude', 'location_updated_at', 'points', 'level',
+                                   'latitude', 'longitude', 'location_updated_at', 'points', 'total_earned', 'level',
                                    'is_shadow_banned')}),
     )
     filter_horizontal = BaseUserAdmin.filter_horizontal + ('skills',)

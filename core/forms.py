@@ -113,7 +113,8 @@ class CustomSignupForm(_AllauthSignupForm):
 
 class HelpRequestForm(forms.ModelForm):
     duration_minutes = forms.TypedChoiceField(label='かかる時間', choices=DURATION_CHOICES, coerce=int, initial=15,
-                                              widget=forms.RadioSelect)
+                                              widget=forms.RadioSelect,
+                                              help_text='依頼にはポイントを使います(1分あたり1pt)。完了すると、使ったポイントがお手伝いしてくれた人に渡ります')
     listing_minutes = forms.TypedChoiceField(label='募集する期間', choices=LISTING_CHOICES, coerce=int, required=False,
                                              empty_value=None,
                                              help_text='この時間を過ぎると自動で締め切ります(指定しなければ3時間)')
@@ -176,6 +177,14 @@ class HelpRequestForm(forms.ModelForm):
             self.errors.pop('scheduled_for', None)
         if not cleaned.get('description') and not cleaned.get('preset_tags'):
             self.add_error('description', '詳細を書くか、定型タグを1つ以上選んでください。')
+        duration = cleaned.get('duration_minutes')
+        if duration:
+            from .services import cost_for_duration
+            cost = cost_for_duration(duration)
+            if self.user.points < cost:
+                self.add_error('duration_minutes',
+                               f'ポイントが不足しています(必要 {cost}pt / 保有 {self.user.points}pt)。'
+                               'お手伝いをするとポイントが貯まります。')
         choice = cleaned.get('headcount_choice')
         if choice == 'custom':
             custom = cleaned.get('headcount_custom')

@@ -111,11 +111,10 @@
         }
         if (window.L) {
             var lmap = window.L.map(el, { zoomControl: true }).setView([center.lat, center.lng], zoom);
-            // CARTO Voyager: Google マップに近い配色の道路地図タイル(APIキー不要)
-            window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                maxZoom: 20,
-                subdomains: 'abcd',
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            // OpenStreetMap 標準タイル: 白基調で読みやすい、Google マップに近い見た目(APIキー不要)
+            window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(lmap);
             var lmarker = null, handlers = [];
             var place = function (pos) {

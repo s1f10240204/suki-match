@@ -279,7 +279,9 @@ def notify(user, kind, text, url=''):
         return notification  # 管理者が通知を止めている場合は外部通知を送らない
     line_api.maybe_notify(user, kind, notification.text, url)
     if kind != 'nearby_request' and setting.push_activity:
-        send_web_push(user, 'suki-match', notification.text, url)
+        # タイトルは空にする(iOSはヘッダーにアプリ名 suki-match を出すため、
+        # タイトルにも suki-match を入れると「from suki-match」と重複表示される)
+        send_web_push(user, '', notification.text, url)
     return notification
 
 

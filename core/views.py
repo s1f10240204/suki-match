@@ -1173,7 +1173,7 @@ def service_worker(request):
           "self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });\n"
           "self.addEventListener('push', function (e) {\n"
           "    var d = {}; try { d = e.data.json(); } catch (err) {}\n"
-          "    e.waitUntil(self.registration.showNotification(d.title || 'suki-match', {\n"
+          "    e.waitUntil(self.registration.showNotification(d.title || '', {\n"
           "        body: d.body || '', icon: '/static/core/icons/icon-192.png',\n"
           "        data: { url: d.url || '/' } }));\n"
           "});\n"

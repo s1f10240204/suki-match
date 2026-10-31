@@ -29,6 +29,11 @@
 {% if chat_open %}
     <form method="post" enctype="multipart/form-data" class="chat-form" id="chat-form">
         {% csrf_token %}
+        <div class="reply-bar" id="reply-bar" hidden>
+            <span class="reply-bar-label"><strong data-reply-name></strong> への返信: <span data-reply-text></span></span>
+            <button type="button" class="reply-bar-close" id="reply-cancel" aria-label="返信を取り消す">×</button>
+        </div>
+        <input type="hidden" name="reply_to" id="reply-to-input" value="">
         {{ form.body }}
         <label class="chat-photo-btn" for="{{ form.image.id_for_label }}" title="写真を送る" aria-label="写真を送る">📷</label>
         {{ form.image }}

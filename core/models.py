@@ -352,6 +352,8 @@ class Message(models.Model):
     help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE, related_name='messages',
                                      null=True, blank=True, verbose_name='依頼')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='replies', verbose_name='返信先')
     body = models.TextField('本文', max_length=1000, blank=True)
     image = models.ImageField('写真', upload_to=chat_image_upload_to, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

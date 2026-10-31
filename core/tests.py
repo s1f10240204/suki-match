@@ -1256,3 +1256,43 @@ class PushPromptTests(BaseTestCase):
     def test_prompt_hidden_from_anonymous(self):
         response = self.client.get(reverse('core:privacy'))
         self.assertNotContains(response, 'id="push-prompt"')
+
+
+class ReplyTests(BaseTestCase):
+    """メッセージへの返信: 保存・payload・他チャットのメッセージは返信先にできないこと。"""
+
+    def setUp(self):
+        super().setUp()
+        self.requester, self.helper = make_user('rreq'), make_user('rhelper')
+        self.match = services.accept_first_come(make_request(self.requester), self.helper)
+
+    def test_reply_saved_and_in_payload(self):
+        first = services.post_message(self.match, self.helper, '集合は駅前で')
+        reply = services.post_message(self.match, self.requester, '了解です', reply_to_id=first.pk)
+        self.assertEqual(reply.reply_to, first)
+        payload = services.message_payload(reply)
+        self.assertEqual(payload['reply_to']['id'], first.pk)
+        self.assertEqual(payload['reply_to']['sender'], self.helper.username)
+        self.assertEqual(payload['reply_to']['excerpt'], '集合は駅前で')
+        plain = services.post_message(self.match, self.helper, '通常メッセージ')
+        self.assertIsNone(services.message_payload(plain)['reply_to'])
+
+    def test_reply_to_other_chat_or_missing_is_ignored(self):
+        other_requester, other_helper = make_user('oreq'), make_user('ohelper')
+        other_match = services.accept_first_come(make_request(other_requester), other_helper)
+        foreign = services.post_message(other_match, other_helper, '別のチャット')
+        reply = services.post_message(self.match, self.requester, '返信のつもり', reply_to_id=foreign.pk)
+        self.assertIsNone(reply.reply_to)
+        reply2 = services.post_message(self.match, self.requester, '存在しないID', reply_to_id=999999)
+        self.assertIsNone(reply2.reply_to)
+
+    def test_reply_via_chat_page_post_and_quote_rendered(self):
+        first = services.post_message(self.match, self.helper, '先に着いてます')
+        self.client.force_login(self.requester)
+        self.client.post(reverse('core:chat', args=[self.match.pk]),
+                         {'body': '今向かってます', 'reply_to': str(first.pk)})
+        reply = Message.objects.exclude(pk=first.pk).get()
+        self.assertEqual(reply.reply_to, first)
+        response = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertContains(response, 'bubble-quote')
+        self.assertContains(response, '先に着いてます')

@@ -86,14 +86,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             return
         self.sent_at.append(now)
         try:
-            await self._post(content.get('body', ''))
+            await self._post(content.get('body', ''), content.get('reply_to'))
         except services.ServiceError as e:
             await self.send_json({'error': str(e)})
 
     @database_sync_to_async
-    def _post(self, body):
+    def _post(self, body, reply_to_id=None):
         match = Match.objects.select_related('help_request__requester', 'helper').get(pk=self.match_id)
-        services.post_message(match, self.scope['user'], body)
+        services.post_message(match, self.scope['user'], body, reply_to_id=reply_to_id)
 
     async def chat_message(self, event):
         await self.send_json({'message': event['message']})

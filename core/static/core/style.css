@@ -375,16 +375,25 @@ details.more[open] > summary { margin-bottom: 8px; }
 .chat-note { font-size: .76rem; color: var(--muted); text-align: center; background: var(--surface); border-radius: 14px; padding: 9px 14px; border: 1px solid var(--line); }
 .bubble-row { display: flex; flex-direction: column; align-items: flex-start; max-width: 80%; }
 .bubble-row.mine { align-self: flex-end; align-items: flex-end; }
-.bubble { background: var(--surface); border: 1px solid var(--line); padding: 10px 14px; border-radius: 20px 20px 20px 6px; white-space: pre-wrap; word-break: break-word; }
+.bubble { background: var(--surface); border: 1px solid var(--line); padding: 10px 14px; border-radius: 20px 20px 20px 6px; white-space: pre-wrap; word-break: break-word; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .mine .bubble { background: var(--primary); color: #fff; border-color: var(--primary); border-radius: 20px 20px 6px 20px; }
 .bubble-hidden, .mine .bubble-hidden { background: var(--surface-soft); color: var(--muted); border-style: dashed; border-color: var(--line); font-size: .82rem; }
 .bubble-meta { font-size: .7rem; color: var(--muted); margin-top: 2px; }
 .bubble-meta a { text-decoration: underline; }
+.bubble-quote { display: block; background: rgba(60, 50, 30, .06); border-left: 3px solid var(--primary); border-radius: 8px; padding: 6px 9px; margin-bottom: 6px; font-size: .78rem; line-height: 1.45; cursor: pointer; }
+.mine .bubble-quote { background: rgba(255, 255, 255, .18); border-left-color: rgba(255, 255, 255, .75); }
+.bubble-quote-name { display: block; font-weight: 700; }
+.bubble-quote-text { display: block; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+.bubble-highlight { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow .3s; }
 .chat-form {
     position: fixed; left: 50%; transform: translateX(-50%) translateY(calc(-1 * var(--kb-inset, 0px))); width: 100%; max-width: var(--content-w);
     bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 30;
-    display: flex; gap: 8px; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
 }
+.reply-bar { flex-basis: 100%; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; font-size: .82rem; }
+.reply-bar[hidden] { display: none; }
+.reply-bar-label { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reply-bar-close { flex: none; background: none; border: none; font-size: 1.05rem; line-height: 1; padding: 4px 6px; cursor: pointer; color: var(--muted); }
 @media (min-width: 600px) { .chat-form { bottom: calc(var(--tabbar-h) + 22px); border: none; background: transparent; } }
 .chat-form input { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 999px; border: 1.5px solid #e2d9cd; font: inherit; font-size: 16px; background: #fff; }
 .chat-form .btn { flex: none; white-space: nowrap; }
@@ -583,13 +592,17 @@ ul.socialaccount_providers li { list-style: none; }
 }
 .reaction-chip.mine { background: var(--primary-soft); border-color: var(--primary); font-weight: 700; }
 .reaction-bar {
-    position: fixed; z-index: 200; display: flex; gap: 2px; padding: 6px 8px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    position: fixed; z-index: 200; display: flex; flex-direction: column; padding: 6px 8px 2px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
     box-shadow: 0 8px 24px rgba(60, 45, 30, .22);
 }
 .reaction-bar[hidden] { display: none; }
-.reaction-bar button { border: 0; background: none; font-size: 24px; padding: 2px 5px; cursor: pointer; }
-.reaction-bar button:active { transform: scale(1.25); }
+.reaction-emojis { display: flex; gap: 2px; }
+.reaction-emojis button { border: 0; background: none; font-size: 24px; padding: 2px 5px; cursor: pointer; }
+.reaction-emojis button:active { transform: scale(1.25); }
+.bar-actions { display: flex; border-top: 1px solid var(--line); margin-top: 4px; }
+.bar-actions button { flex: 1; border: 0; background: none; font-size: .88rem; padding: 9px 10px; cursor: pointer; color: var(--text); white-space: nowrap; }
+.bar-actions button:active { background: var(--bg); }
 
 /* ---------- 写真トリミング ---------- */
 .crop-modal {

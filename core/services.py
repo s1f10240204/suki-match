@@ -704,9 +704,26 @@ def mark_chat_read(help_request, user):
     return len(ids)
 
 
+def reply_excerpt(message):
+    """返信先メッセージの引用表示用テキスト。"""
+    if message.is_hidden:
+        return 'このメッセージは表示されていません'
+    if message.body:
+        return message.body[:60]
+    if message.image:
+        return '📷 写真'
+    return ''
+
+
 def message_payload(message):
+    reply = None
+    if message.reply_to_id:
+        target = message.reply_to
+        reply = {'id': target.pk, 'sender': target.sender.username,
+                 'excerpt': reply_excerpt(target)}
     return {
         'id': message.pk,
+        'reply_to': reply,
         'sender': message.sender.username,
         'sender_id': message.sender_id,
         'body': '' if message.is_hidden else message.body,
@@ -720,7 +737,7 @@ def message_payload(message):
     }
 
 
-def post_message(match, sender, body, image_file=None):
+def post_message(match, sender, body, image_file=None, reply_to_id=None):
     body = (body or '').strip()
     help_request = match.help_request
     if sender.pk not in chat_participants(help_request):
@@ -742,7 +759,18 @@ def post_message(match, sender, body, image_file=None):
     hidden = settings.MODERATION_AUTO_HIDE and score >= settings.MODERATION_HIDE_THRESHOLD
     own_match = (match if sender.pk == match.helper_id else
                  help_request.matches.filter(status=Match.Status.IN_PROGRESS, helper=sender).first() or match)
+    reply_to = None
+    if reply_to_id:
+        try:
+            reply_pk = int(reply_to_id)
+        except (TypeError, ValueError):
+            reply_pk = None
+        if reply_pk:
+            # 返信先は同じチャットの表示中メッセージだけを許可する
+            reply_to = Message.objects.filter(pk=reply_pk, help_request=help_request,
+                                              is_hidden=False).first()
     message = Message(match=own_match, help_request=help_request, sender=sender, body=body,
+                      reply_to=reply_to,
                       risk_score=score, risk_labels=labels, is_hidden=hidden)
     if image is not None:
         message.image = image

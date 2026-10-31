@@ -649,6 +649,8 @@
         var reactionBar = document.createElement('div');
         reactionBar.className = 'reaction-bar';
         reactionBar.hidden = true;
+        var emojiRow = document.createElement('div');
+        emojiRow.className = 'reaction-emojis';
         REACTION_EMOJIS.forEach(function (emoji) {
             var b = document.createElement('button');
             b.type = 'button';
@@ -658,9 +660,81 @@
                 sendReaction(Number(reactionBar.dataset.messageId), emoji);
                 reactionBar.hidden = true;
             });
-            reactionBar.appendChild(b);
+            emojiRow.appendChild(b);
         });
+        reactionBar.appendChild(emojiRow);
+        var actionsRow = document.createElement('div');
+        actionsRow.className = 'bar-actions';
+        var replyAction = document.createElement('button');
+        replyAction.type = 'button';
+        replyAction.textContent = '↩ 返信';
+        replyAction.addEventListener('click', function () {
+            startReply(Number(reactionBar.dataset.messageId));
+            reactionBar.hidden = true;
+        });
+        var copyAction = document.createElement('button');
+        copyAction.type = 'button';
+        copyAction.textContent = '📋 コピー';
+        copyAction.addEventListener('click', function () {
+            copyMessage(Number(reactionBar.dataset.messageId));
+            reactionBar.hidden = true;
+        });
+        actionsRow.appendChild(replyAction);
+        actionsRow.appendChild(copyAction);
+        reactionBar.appendChild(actionsRow);
         document.body.appendChild(reactionBar);
+
+        // ---------- 返信とコピー ----------
+        var replyBar = document.getElementById('reply-bar');
+        var replyToInput = document.getElementById('reply-to-input');
+        var replyToId = null;
+        var clearReply = function () {
+            replyToId = null;
+            if (replyToInput) { replyToInput.value = ''; }
+            if (replyBar) { replyBar.hidden = true; }
+        };
+        var startReply = function (id) {
+            var bubble = log.querySelector('[data-message-id="' + id + '"]');
+            if (!bubble) { return; }
+            var textEl = bubble.querySelector('.bubble-text');
+            var excerpt = textEl && textEl.textContent.trim()
+                ? textEl.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)
+                : (bubble.querySelector('.bubble-img') ? '📷 写真' : '');
+            replyToId = id;
+            if (replyToInput) { replyToInput.value = id; }
+            if (replyBar) {
+                replyBar.querySelector('[data-reply-name]').textContent = bubble.dataset.senderName || '';
+                replyBar.querySelector('[data-reply-text]').textContent = excerpt;
+                replyBar.hidden = false;
+            }
+            var bi = form ? form.querySelector('input[name=body]') : null;
+            if (bi) { bi.focus(); }
+        };
+        var replyCancel = document.getElementById('reply-cancel');
+        if (replyCancel) { replyCancel.addEventListener('click', clearReply); }
+        var fallbackCopy = function (text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        };
+        var copyMessage = function (id) {
+            var bubble = log.querySelector('[data-message-id="' + id + '"]');
+            var textEl = bubble ? bubble.querySelector('.bubble-text') : null;
+            var text = textEl ? textEl.textContent : '';
+            if (!text) { toast('コピーできるテキストがありません。', '', 'warning'); return; }
+            var done = function () { toast('コピーしました。', '', 'info'); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); });
+            } else {
+                fallbackCopy(text);
+                done();
+            }
+        };
         document.addEventListener('click', function (e) {
             if (!reactionBar.hidden && !reactionBar.contains(e.target)) { reactionBar.hidden = true; }
         });
@@ -690,7 +764,7 @@
             reactionBar.hidden = false;
             var w = reactionBar.offsetWidth || 300;
             reactionBar.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - w - 8)) + 'px';
-            reactionBar.style.top = Math.max(8, y - 64) + 'px';
+            reactionBar.style.top = Math.max(8, y - 118) + 'px';
         };
         log.addEventListener('pointerdown', function (e) {
             var bubble = e.target.closest('[data-message-id]');
@@ -706,6 +780,16 @@
             if (bubble) { e.preventDefault(); openBarFor(bubble, e.clientX, e.clientY); }
         });
         log.addEventListener('click', function (e) {
+            var quote = e.target.closest('.bubble-quote');
+            if (quote) {
+                var target = log.querySelector('[data-message-id="' + quote.dataset.quoteTarget + '"]');
+                if (target) {
+                    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    target.classList.add('bubble-highlight');
+                    setTimeout(function () { target.classList.remove('bubble-highlight'); }, 1400);
+                }
+                return;
+            }
             var chip = e.target.closest('.reaction-chip');
             if (chip) {
                 var holder = chip.closest('[data-reactions-for]');
@@ -723,6 +807,7 @@
             var bubble = document.createElement('div');
             bubble.className = 'bubble' + (m.hidden ? ' bubble-hidden' : '');
             bubble.dataset.messageId = m.id;
+            bubble.dataset.senderName = m.sender || '';
             var reactionsEl = document.createElement('div');
             reactionsEl.className = 'reactions';
             reactionsEl.dataset.reactionsFor = m.id;
@@ -730,6 +815,20 @@
             if (m.hidden) {
                 bubble.textContent = 'このメッセージは相手に表示されていません';
             } else {
+                if (m.reply_to) {
+                    var quoteEl = document.createElement('div');
+                    quoteEl.className = 'bubble-quote';
+                    quoteEl.dataset.quoteTarget = m.reply_to.id;
+                    var qName = document.createElement('span');
+                    qName.className = 'bubble-quote-name';
+                    qName.textContent = m.reply_to.sender;
+                    var qText = document.createElement('span');
+                    qText.className = 'bubble-quote-text';
+                    qText.textContent = m.reply_to.excerpt;
+                    quoteEl.appendChild(qName);
+                    quoteEl.appendChild(qText);
+                    bubble.appendChild(quoteEl);
+                }
                 if (m.image_url) {
                     var img = document.createElement('img');
                     img.className = 'bubble-img';
@@ -738,7 +837,12 @@
                     img.loading = 'lazy';
                     bubble.appendChild(img);
                 }
-                if (m.body) { bubble.appendChild(document.createTextNode(m.body)); }
+                if (m.body) {
+                    var bodySpan = document.createElement('span');
+                    bodySpan.className = 'bubble-text';
+                    bodySpan.textContent = m.body;
+                    bubble.appendChild(bodySpan);
+                }
             }
             var meta = document.createElement('span');
             meta.className = 'bubble-meta';
@@ -825,7 +929,9 @@
                     var fd = new FormData();
                     fd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
                     fd.append('body', '');
+                    if (replyToId) { fd.append('reply_to', replyToId); }
                     fd.append('image', file);
+                    clearReply();
                     fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
                         .then(function (r) { if (!r.ok) { throw new Error('send failed'); } })
                         .catch(function () { toast('写真を送信できませんでした。もう一度お試しください。', '', 'warning'); });
@@ -835,9 +941,10 @@
             form.addEventListener('submit', function (e) {
                 var body = bodyInput.value.trim();
                 if (!body) { e.preventDefault(); return; }
-                if (chat.send({ body: body })) {  // 接続できないときは通常のフォーム送信にフォールバック
+                if (chat.send({ body: body, reply_to: replyToId })) {  // 接続できないときは通常のフォーム送信にフォールバック
                     e.preventDefault();
                     bodyInput.value = '';
+                    clearReply();
                 }
             });
 

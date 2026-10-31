@@ -261,8 +261,10 @@ def chat(request, pk):
         raise Http404
     form = MessageForm(request.POST or None, request.FILES or None)
     if request.method == 'POST' and form.is_valid():  # JavaScriptが使えない環境向け
-        _run(request, lambda: services.post_message(match, request.user, form.cleaned_data['body'],
-                                                    form.cleaned_data.get('image')))
+        reply_raw = request.POST.get('reply_to') or ''
+        _run(request, lambda: services.post_message(
+            match, request.user, form.cleaned_data['body'], form.cleaned_data.get('image'),
+            int(reply_raw) if reply_raw.isdigit() else None))
         return redirect('core:chat', pk=pk)
 
     help_request = match.help_request
@@ -274,9 +276,11 @@ def chat(request, pk):
     history_visible = services.chat_history_visible(match)
     chat_messages = []
     if history_visible:
-        for m in help_request.messages.select_related('sender').prefetch_related('reads', 'reactions'):
+        for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads', 'reactions'):
             if m.is_hidden and m.sender_id != request.user.pk:
                 continue
+            if m.reply_to_id:
+                m.reply_excerpt = services.reply_excerpt(m.reply_to)
             m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
             summary = services.reaction_summary(m)
             for entry in summary:

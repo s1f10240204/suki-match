@@ -924,7 +924,8 @@
             reactionBar.hidden = false;
             var w = reactionBar.offsetWidth || 300;
             reactionBar.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - w - 8)) + 'px';
-            reactionBar.style.top = Math.max(8, y - 150) + 'px';
+            var h = reactionBar.offsetHeight || 150;
+            reactionBar.style.top = Math.max(8, y - h - 14) + 'px';
         };
         log.addEventListener('pointerdown', function (e) {
             var bubble = e.target.closest('[data-message-id]');

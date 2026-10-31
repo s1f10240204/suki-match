@@ -688,14 +688,15 @@ ul.socialaccount_providers li { list-style: none; }
 .reaction-bar {
     position: fixed; z-index: 200; display: flex; flex-direction: column; padding: 6px 8px 2px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+    max-width: calc(100vw - 16px); box-sizing: border-box;
     box-shadow: 0 8px 24px rgba(60, 45, 30, .22);
 }
 .reaction-bar[hidden] { display: none; }
 .reaction-emojis { display: flex; gap: 2px; }
 .reaction-emojis button { border: 0; background: none; font-size: 24px; padding: 2px 5px; cursor: pointer; }
 .reaction-emojis button:active { transform: scale(1.25); }
-.bar-actions { display: flex; border-top: 1px solid var(--line); margin-top: 4px; }
-.bar-actions button { flex: 1; border: 0; background: none; font-size: .88rem; padding: 9px 10px; cursor: pointer; color: var(--text); white-space: nowrap; }
+.bar-actions { display: flex; flex-wrap: wrap; border-top: 1px solid var(--line); margin-top: 4px; }
+.bar-actions button { flex: 1 1 45%; border: 0; background: none; font-size: .88rem; padding: 9px 6px; cursor: pointer; color: var(--text); white-space: nowrap; }
 .bar-actions button:active { background: var(--bg); }
 
 /* ---------- 写真トリミング ---------- */

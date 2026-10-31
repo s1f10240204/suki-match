@@ -83,6 +83,9 @@
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 
     <main class="main {% block main_class %}{% endblock %}">
+        {% if user.is_authenticated and user.simple_ui %}{% with name=request.resolver_match.url_name %}{% if name != 'help_request_list' and name != 'help_request_create' and name != 'message_list' and name != 'notifications' and name != 'profile' %}
+        <button type="button" class="simple-back" onclick="if (window.history.length > 1) { history.back(); } else { location.href = '{% url 'core:help_request_list' %}'; }">← もどる</button>
+        {% endif %}{% endwith %}{% endif %}
         {% for message in messages %}
             <div class="message message-{{ message.tags }}">{{ message }}</div>
         {% endfor %}

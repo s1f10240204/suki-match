@@ -523,23 +523,97 @@ a.pt-desc { text-decoration: underline; text-underline-offset: 2px; }
     font: inherit; background: #fffdfa; color: var(--text);
 }
 
-/* ---------- シンプルUI(らくらくホン風: 大きな文字とボタン) ---------- */
-body.simple-ui { font-size: 18px; --muted: #6f6455; }
-body.simple-ui .btn { font-size: 1.12rem; padding: 16px 22px; border-radius: 16px; }
-body.simple-ui .form input, body.simple-ui .form select, body.simple-ui .form textarea,
-body.simple-ui .auth-page input { font-size: 1.12rem; padding: 15px 16px; }
-body.simple-ui .field-label { font-size: 1.05rem; }
-body.simple-ui .help { font-size: .98rem; line-height: 1.7; }
-body.simple-ui .card { padding: 22px; }
-body.simple-ui .section-title { font-size: 1.3rem; }
-body.simple-ui .tabbar a, body.simple-ui .tabbar button { font-size: 13px; }
-body.simple-ui .tabbar svg { width: 28px; height: 28px; }
-body.simple-ui .bubble { font-size: 1.08rem; line-height: 1.65; }
-body.simple-ui .chat-form input { font-size: 17px; padding: 15px 18px; }
-body.simple-ui .list-row { padding: 18px 2px; font-size: 1.05rem; }
+/* ---------- シンプルUI(お年寄り向け再設計: 大きい・濃い・少ない) ---------- */
+/* 方針: ①文字は19px基準でコントラスト強く ②押す場所は最低56px ③迷う要素は隠す */
+body.simple-ui {
+    font-size: 19px; line-height: 1.85;
+    --muted: #5a5142; --header-h: 66px; --tabbar-h: 82px;
+}
+body.simple-ui h1 { font-size: 1.7rem; line-height: 1.4; }
+body.simple-ui h2 { font-size: 1.4rem; line-height: 1.45; }
+body.simple-ui .meta { font-size: .95rem; color: var(--muted); }
+body.simple-ui .help { font-size: 1rem; line-height: 1.8; color: #5a5142; }
+
+/* ヘッダーと下部タブ: 大きく、現在地がはっきり分かる */
+body.simple-ui .logo { font-size: 1.35rem; }
+body.simple-ui .icon-button { width: 48px; height: 48px; }
+body.simple-ui .header-avatar img, body.simple-ui .header-avatar { width: 44px; height: 44px; }
+body.simple-ui .dot-count { min-width: 24px; height: 24px; font-size: .85rem; }
+body.simple-ui .tabbar a, body.simple-ui .tabbar button { font-size: 14.5px; font-weight: 700; gap: 5px; padding-top: 10px; }
+body.simple-ui .tabbar svg { width: 30px; height: 30px; }
+body.simple-ui .tabbar .is-active { color: var(--primary-dark); background: var(--primary-soft); box-shadow: inset 0 3px 0 var(--primary); }
+body.simple-ui .tab-badge { min-width: 25px; height: 25px; font-size: .85rem; }
+body.simple-ui .active-bar-inner { padding: 12px 16px; }
+body.simple-ui .active-item { font-size: 1rem; padding: 6px 0; }
+body.simple-ui .active-title { font-size: 1.02rem; }
+body.simple-ui .active-sub { font-size: .92rem; }
+
+/* お知らせ・バナー・通知オンの案内: 読める大きさで */
+body.simple-ui .message { font-size: 1.05rem; padding: 16px 18px; line-height: 1.7; }
+body.simple-ui .banner { font-size: 1.05rem; padding: 18px; line-height: 1.7; }
+body.simple-ui .push-prompt { padding: 22px; }
+body.simple-ui .push-prompt-title { font-size: 1.28rem; }
+body.simple-ui .push-prompt-text { font-size: 1.02rem; line-height: 1.85; }
+
+/* ボタン: どれも高さ56px以上・太字・はっきりした輪郭 */
+body.simple-ui .btn { font-size: 1.14rem; font-weight: 700; padding: 16px 22px; border-radius: 18px; min-height: 58px; }
+body.simple-ui .btn-sm { font-size: 1.05rem; padding: 12px 18px; min-height: 52px; }
+body.simple-ui .btn-ghost, body.simple-ui .btn-outline { border-width: 2px; }
+body.simple-ui .btn-text { font-size: 1.05rem; padding: 12px 8px; min-height: 52px; }
+
+/* カードと依頼リスト: 余白広く、題名を大きく、細かい文字は最低限に */
+body.simple-ui .card { padding: 24px; border-radius: 20px; border-width: 1.5px; }
+body.simple-ui .section-title { font-size: 1.32rem; }
 body.simple-ui .request-card, body.simple-ui .person-name { font-size: 1.08rem; }
-body.simple-ui h1 { font-size: 1.65rem; }
-body.simple-ui h2 { font-size: 1.35rem; }
+body.simple-ui .card-title { font-size: 1.32rem; line-height: 1.45; }
+body.simple-ui .card-desc { font-size: 1.04rem; line-height: 1.75; }
+body.simple-ui .chip { font-size: .98rem; padding: 6px 12px; }
+body.simple-ui .time-chip { font-size: .98rem; padding: 6px 12px; font-weight: 700; }
+body.simple-ui .segmented { padding: 5px; }
+body.simple-ui .segmented a { font-size: 1.1rem; font-weight: 700; padding: 14px; min-height: 56px; display: flex; align-items: center; justify-content: center; }
+body.simple-ui .search-form, body.simple-ui .filter-bar, body.simple-ui .page-head .btn { display: none; }
+body.simple-ui .page-head h1 { font-size: 1.55rem; }
+
+/* 一覧の行(メッセージ・通知など) */
+body.simple-ui .list-row { padding: 20px 2px; font-size: 1.06rem; line-height: 1.65; }
+
+/* フォーム: ラベル太く、入力は大きく、選択肢はカード型に */
+body.simple-ui .field-label { font-size: 1.12rem; font-weight: 700; margin-bottom: 10px; }
+body.simple-ui .form input, body.simple-ui .form select, body.simple-ui .form textarea,
+body.simple-ui .auth-page input { font-size: 1.14rem; padding: 16px; min-height: 60px; border-width: 1.5px; border-radius: 14px; }
+body.simple-ui .form textarea { min-height: 130px; line-height: 1.7; }
+body.simple-ui .chips-choice label { font-size: 1.06rem; padding: 15px 18px; min-height: 56px; border-width: 2px; border-radius: 16px; }
+body.simple-ui .chips-choice input { width: 22px; height: 22px; flex: none; }
+body.simple-ui .errorlist { font-size: 1.02rem; font-weight: 700; line-height: 1.7; }
+body.simple-ui .geo-button { font-size: 1.05rem; min-height: 52px; }
+
+/* 依頼の詳細: 大事な条件とボタンを大きく */
+body.simple-ui .summary { font-size: 1.04rem; }
+body.simple-ui .summary dt { font-size: 1.02rem; }
+body.simple-ui .summary dd { font-weight: 600; }
+
+/* チャット: 吹き出しと入力まわりを大きく */
+body.simple-ui .bubble { font-size: 1.14rem; line-height: 1.75; padding: 14px 17px; }
+body.simple-ui .bubble-name { font-size: .85rem; }
+body.simple-ui .chat-form input { font-size: 17px; padding: 15px 18px; min-height: 58px; }
+body.simple-ui .chat-form .btn { min-height: 58px; font-size: 1.08rem; padding: 0 22px; }
+body.simple-ui .stamp-item { padding: 18px 6px; }
+body.simple-ui .stamp-item-emoji { font-size: 40px; }
+body.simple-ui .stamp-item-label { font-size: .95rem; }
+
+/* マイページ・ポイント: 残高を大きく、行は押しやすく */
+body.simple-ui .points-main { font-size: 2.3rem; }
+body.simple-ui .invite-code { font-size: 1.9rem; letter-spacing: .18em; }
+
+/* 「もどる」バー(base.html がシンプルUI時のみ表示) */
+.simple-back {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    min-height: 58px; padding: 10px 16px; margin-bottom: 14px;
+    background: var(--surface); border: 2px solid var(--line); border-radius: 16px;
+    font: inherit; font-size: 1.14rem; font-weight: 700; color: var(--primary-dark);
+    cursor: pointer; text-align: left;
+}
+.simple-back:active { background: var(--primary-soft); border-color: var(--primary); }
 
 /* ---------- グループチャット ---------- */
 .bubble-side { display: flex; gap: 8px; align-items: flex-start; }
@@ -549,26 +623,22 @@ body.simple-ui h2 { font-size: 1.35rem; }
 .bubble-row:has(.bubble-side) { max-width: 88%; }
 .chip-headcount { background: #fdf0e4; color: #9a5a26; border-color: #f0d9bd; }
 
-/* ---------- シンプルUI: かんたんメニュー(大きなタイル) ---------- */
-.simple-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 20px; }
+/* ---------- シンプルUI: かんたんメニュー(大きなタイル+説明つき) ---------- */
+.simple-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0 24px; }
 .simple-tile {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-    min-height: 118px; padding: 16px 10px; text-align: center;
-    background: var(--surface); border: 1.5px solid var(--line); border-radius: 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+    min-height: 152px; padding: 20px 12px; text-align: center;
+    background: var(--surface); border: 2px solid var(--line); border-radius: 22px;
     box-shadow: 0 3px 10px rgba(80, 60, 40, .07); color: var(--text);
 }
 .simple-tile:active { background: var(--primary-soft); border-color: var(--primary); }
-.simple-tile-icon { font-size: 38px; line-height: 1; }
-.simple-tile-label { font-size: 1.18rem; font-weight: 700; line-height: 1.35; }
+.simple-tile-icon { font-size: 46px; line-height: 1; }
+.simple-tile-label { font-size: 1.3rem; font-weight: 700; line-height: 1.35; }
+.simple-tile-desc { font-size: .96rem; font-weight: 500; line-height: 1.5; color: #5a5142; }
 .simple-badge {
-    display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px;
-    border-radius: 12px; background: var(--accent); color: #fff; font-size: .85rem; vertical-align: 2px;
+    display: inline-grid; place-items: center; min-width: 27px; height: 27px; padding: 0 7px;
+    border-radius: 14px; background: var(--accent); color: #fff; font-size: .92rem; font-weight: 700; vertical-align: 2px;
 }
-body.simple-ui .search-form { display: none; }
-body.simple-ui .segmented a { font-size: 1.05rem; padding: 12px; }
-body.simple-ui .card-title { font-size: 1.25rem; }
-body.simple-ui .card-desc { font-size: 1.02rem; }
-body.simple-ui .chip { font-size: .9rem; padding: 4px 10px; }
 
 /* ---------- 外部アカウントのボタン ---------- */
 .social-btn {

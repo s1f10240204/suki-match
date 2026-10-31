@@ -53,6 +53,7 @@ urlpatterns = [
     path('support/inquiry/new/', views.inquiry_create, name='inquiry_create'),
     path('support/inquiry/<int:pk>/', views.inquiry_detail, name='inquiry_detail'),
     path('messages/<int:pk>/hide/', views.message_hide, name='message_hide'),
+    path('messages/<int:pk>/recall/', views.message_recall, name='message_recall'),
     path('talks/<int:pk>/hide/', views.talk_hide, name='talk_hide'),
     path('api/support-inquiries/recent/', views.support_inquiries_recent, name='support_inquiries_recent'),
     path('api/support-inquiries/pending/', views.support_inquiries_pending, name='support_inquiries_pending'),

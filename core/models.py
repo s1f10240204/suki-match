@@ -391,6 +391,7 @@ class Message(models.Model):
     risk_score = models.FloatField('リスクスコア', default=0)
     risk_labels = models.JSONField('検知ラベル', default=list, blank=True)
     is_hidden = models.BooleanField('非表示', default=False)
+    is_recalled = models.BooleanField('送信取り消し', default=False)
     hidden_by = models.ManyToManyField(User, related_name='hidden_messages', blank=True,
                                        verbose_name='自分の画面から消した人')
 

@@ -2523,6 +2523,53 @@ class SupportTests(BaseTestCase):
         inquiry.refresh_from_db()
         self.assertEqual(inquiry.status, Inquiry.Status.OPEN)
         self.assertEqual(inquiry.replies.get().author_kind, InquiryReply.Author.USER)
+
+
+class MessageRecallTests(BaseTestCase):
+    """チャットの送信取り消し(両方の画面から消える)。"""
+
+    def setUp(self):
+        super().setUp()
+        self.requester = make_user('recallreq')
+        User.objects.filter(pk=self.requester.pk).update(points=100)
+        self.requester.refresh_from_db()
+        self.req = make_request(self.requester)
+        services.publish_request(self.req)
+        self.helper = make_user('recallhelp')
+        self.match = services.accept_first_come(self.req, self.helper)
+        self.msg = services.post_message(self.match, self.helper, '取り消したい送信です')
+
+    def test_sender_recall_hides_body_for_both(self):
+        self.client.force_login(self.helper)
+        resp = self.client.post(reverse('core:message_recall', args=[self.msg.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.msg.refresh_from_db()
+        self.assertTrue(self.msg.is_recalled)
+        page = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertNotContains(page, '取り消したい送信です')
+        self.assertContains(page, '送信を取り消しました')
+        self.client.force_login(self.requester)
+        page = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertNotContains(page, '取り消したい送信です')
+        self.assertContains(page, 'メッセージの送信が取り消されました')
+
+    def test_others_cannot_recall(self):
+        self.client.force_login(self.requester)
+        resp = self.client.post(reverse('core:message_recall', args=[self.msg.pk]))
+        self.assertEqual(resp.status_code, 404)
+        self.msg.refresh_from_db()
+        self.assertFalse(self.msg.is_recalled)
+
+    def test_recalled_excluded_from_preview_and_quote(self):
+        self.assertEqual(services.reply_excerpt(self.msg), '取り消したい送信です')
+        self.msg.is_recalled = True
+        self.msg.save(update_fields=['is_recalled'])
+        self.assertEqual(services.reply_excerpt(self.msg), '取り消されたメッセージ')
+        from core.views import _annotate_chats
+        _annotate_chats(self.requester, [self.match])
+        self.assertEqual(self.match.last_preview, '')
+        self.assertEqual(self.match.unread_count, 0)
+
 class MessageHideTests(BaseTestCase):
     """チャットの「自分の画面から消す」(相手には残る)。"""
 

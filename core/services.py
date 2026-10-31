@@ -264,6 +264,12 @@ def photo_revealed(viewer, target):
 
 # ---------- 通知 ----------
 
+def broadcast_message_recalled(message):
+    help_request = message.help_request or message.match.help_request
+    push(chat_group_name(help_request),
+         {'type': 'chat.recall', 'message_id': message.pk})
+
+
 def push(group, payload):
     layer = get_channel_layer()
     if layer is not None:
@@ -1308,6 +1314,8 @@ def reply_excerpt(message):
     """返信先メッセージの引用表示用テキスト。"""
     if message.is_hidden:
         return 'このメッセージは表示されていません'
+    if message.is_recalled:
+        return '取り消されたメッセージ'
     if message.body:
         return message.body[:60]
     if message.image:

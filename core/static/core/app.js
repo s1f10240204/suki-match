@@ -774,6 +774,13 @@
             copyMessage(Number(reactionBar.dataset.messageId));
             reactionBar.hidden = true;
         });
+        var recallAction = document.createElement('button');
+        recallAction.type = 'button';
+        recallAction.textContent = '↩ 送信を取り消す';
+        recallAction.addEventListener('click', function () {
+            recallMessage(Number(reactionBar.dataset.messageId));
+            reactionBar.hidden = true;
+        });
         var hideAction = document.createElement('button');
         hideAction.type = 'button';
         hideAction.textContent = '🗑 自分の画面から消す';
@@ -781,6 +788,7 @@
             hideMessage(Number(reactionBar.dataset.messageId));
             reactionBar.hidden = true;
         });
+        actionsRow.appendChild(recallAction);
         actionsRow.appendChild(replyAction);
         actionsRow.appendChild(copyAction);
         actionsRow.appendChild(hideAction);
@@ -845,6 +853,32 @@
                 }
             }).catch(function () { toast('消せませんでした。', '', 'warning'); });
         };
+        var applyRecall = function (id) {
+            var bubble = log.querySelector('[data-message-id="' + id + '"]');
+            if (!bubble || bubble.classList.contains('bubble-recalled')) { return; }
+            var row = bubble.closest('.bubble-row');
+            var mine = row && row.classList.contains('mine');
+            bubble.className = 'bubble bubble-recalled';
+            bubble.textContent = mine ? '送信を取り消しました' : 'メッセージの送信が取り消されました';
+            var holder = log.querySelector('[data-reactions-for="' + id + '"]');
+            if (holder) { holder.remove(); }
+            if (row) {
+                var link = row.querySelector('.bubble-meta a');
+                if (link) { link.remove(); }
+            }
+        };
+        var recallMessage = function (id) {
+            if (!window.confirm('このメッセージの送信を取り消しますか？相手の画面からも消えます。')) { return; }
+            fetch('/messages/' + id + '/recall/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken() }
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d && d.ok) {
+                    applyRecall(id);
+                    toast('送信を取り消しました。', '', 'info');
+                }
+            }).catch(function () { toast('取り消せませんでした。', '', 'warning'); });
+        };
         var copyMessage = function (id) {
             var bubble = log.querySelector('[data-message-id="' + id + '"]');
             var textEl = bubble ? bubble.querySelector('.bubble-text') : null;
@@ -883,6 +917,9 @@
         // 長押し(または右クリック)でリアクションバーを開く
         var pressTimer = null;
         var openBarFor = function (bubble, x, y) {
+            if (bubble.classList.contains('bubble-recalled')) { return; }
+            var row = bubble.closest('.bubble-row');
+            recallAction.style.display = (row && row.classList.contains('mine')) ? '' : 'none';
             reactionBar.dataset.messageId = bubble.dataset.messageId;
             reactionBar.hidden = false;
             var w = reactionBar.offsetWidth || 300;
@@ -1041,6 +1078,7 @@
                 if (data.error) { toast(data.error, '', 'warning'); return; }
                 if (data.kind === 'read') { if (data.reader_id !== me) { markAllMineRead(); } return; }
                 if (data.kind === 'reaction_update') { updateReactions(data.message_id, data.reactions); return; }
+                if (data.kind === 'recall') { applyRecall(data.message_id); return; }
                 appendMessage(data.message);
             }
         });

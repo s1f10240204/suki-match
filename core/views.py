@@ -416,7 +416,7 @@ def chat(request, pk):
 def _annotate_chats(user, chats):
     for match in chats:
         match.other = match.other_user(user)
-        visible = match.help_request.messages.exclude(is_hidden=True).exclude(hidden_by=user)
+        visible = match.help_request.messages.exclude(is_hidden=True).exclude(hidden_by=user).exclude(is_recalled=True)
         match.last_message = visible.order_by('-created_at').first()
         match.last_preview = services.reply_excerpt(match.last_message) if match.last_message else ''
         match.unread_count = (visible.exclude(sender=user).exclude(reads__user=user).count())
@@ -1025,6 +1025,18 @@ def message_hide(request, pk):
     if request.user.pk not in services.chat_participants(help_request):
         raise Http404
     message.hidden_by.add(request.user)
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def message_recall(request, pk):
+    """自分のメッセージの送信を取り消す(相手の画面からも消える)。"""
+    message = get_object_or_404(Message, pk=pk, sender=request.user)
+    if not message.is_recalled:
+        message.is_recalled = True
+        message.save(update_fields=['is_recalled'])
+        services.broadcast_message_recalled(message)
     return JsonResponse({'ok': True})
 
 

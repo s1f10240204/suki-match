@@ -119,6 +119,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def chat_read(self, event):
         await self.send_json({'kind': 'read', 'reader_id': event['reader_id']})
 
+    async def chat_recall(self, event):
+        await self.send_json({'kind': 'recall', 'message_id': event['message_id']})
+
     async def chat_reaction(self, event):
         await self.send_json({'kind': 'reaction_update', 'message_id': event['message_id'],
                               'reactions': event['reactions']})

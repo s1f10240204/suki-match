@@ -1,6 +1,5 @@
 """マッチングのドメインロジック。ビューとWebSocketの両方から使う。"""
 import json
-from collections import defaultdict
 from datetime import timedelta
 from math import asin, ceil, cos, radians, sin, sqrt
 
@@ -8,7 +7,6 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Avg, Count, F, Q
 from django.db.models.functions import ExtractHour
@@ -220,7 +218,7 @@ def push(group, payload):
 
 
 def notify(user, kind, text, url=''):
-    """通知履歴に残し、接続中ならWebSocketでも届ける。メールは定期処理でまとめて送る。"""
+    """通知履歴に残し、接続中ならWebSocketでも届ける。LINE・プッシュは設定に応じて送る。"""
     notification = Notification.objects.create(user=user, kind=kind, text=text[:200], url=url)
     push(f'user_{user.pk}', {'type': 'notify', 'kind': kind, 'message': notification.text, 'url': url})
     setting = notification_setting(user)
@@ -876,6 +874,25 @@ def expire_requests():
 
 # ---------- チャット ----------
 
+# チャットで送れるスタンプ(キー -> 絵文字, ラベル)。LINEスタンプのように大きく表示する
+STAMPS = {
+    'thanks': ('🙏', 'ありがとう'),
+    'good': ('👍', 'いいね'),
+    'heart': ('❤️', 'だいすき'),
+    'smile': ('😊', 'にっこり'),
+    'laugh': ('😆', 'わはは'),
+    'wow': ('😮', 'すごい'),
+    'party': ('🎉', 'おめでとう'),
+    'ganbare': ('💪', 'がんばって'),
+    'otsukare': ('😴', 'おつかれさま'),
+}
+
+
+def stamp_info(stamp):
+    """スタンプキーから (絵文字, ラベル) を返す。不正なキーは None。"""
+    return STAMPS.get(stamp or '')
+
+
 def chat_group_name(help_request):
     """グループチャットの配信グループ名(依頼単位)。"""
     return f'chat_{help_request.pk}'
@@ -1019,6 +1036,9 @@ def reply_excerpt(message):
         return message.body[:60]
     if message.image:
         return '📷 写真'
+    info = stamp_info(message.stamp)
+    if info:
+        return f'{info[0]} スタンプ'
     return ''
 
 
@@ -1034,6 +1054,9 @@ def message_payload(message):
         'sender': message.sender.username,
         'sender_id': message.sender_id,
         'body': '' if message.is_hidden else message.body,
+        'stamp': '' if message.is_hidden else message.stamp,
+        'stamp_emoji': '' if message.is_hidden else (stamp_info(message.stamp) or ('', ''))[0],
+        'stamp_label': '' if message.is_hidden else (stamp_info(message.stamp) or ('', ''))[1],
         'image_url': '' if message.is_hidden or not message.image else reverse('core:chat_image', args=[message.pk]),
         'avatar_url': reverse('core:user_photo', args=[message.sender_id]) if message.sender.avatar else '',
         'report_url': reverse('core:report_user', args=[message.sender.username]),
@@ -1044,8 +1067,11 @@ def message_payload(message):
     }
 
 
-def post_message(match, sender, body, image_file=None, reply_to_id=None):
+def post_message(match, sender, body, image_file=None, reply_to_id=None, stamp=''):
     body = (body or '').strip()
+    stamp = stamp or ''
+    if stamp and stamp not in STAMPS:
+        raise ServiceError('スタンプが不正です。')
     help_request = match.help_request
     if sender.pk not in chat_participants(help_request):
         raise ServiceError('このチャットには参加していません。')
@@ -1059,7 +1085,7 @@ def post_message(match, sender, body, image_file=None, reply_to_id=None):
             image = images.normalize_photo(image_file)
         except images.InvalidImage as error:
             raise ServiceError(str(error))
-    if not body and image is None:
+    if not body and image is None and not stamp:
         raise ServiceError('メッセージを入力してください。')
 
     score, labels = moderation.assess(match, sender, body)
@@ -1076,7 +1102,7 @@ def post_message(match, sender, body, image_file=None, reply_to_id=None):
             # 返信先は同じチャットの表示中メッセージだけを許可する
             reply_to = Message.objects.filter(pk=reply_pk, help_request=help_request,
                                               is_hidden=False).first()
-    message = Message(match=own_match, help_request=help_request, sender=sender, body=body,
+    message = Message(match=own_match, help_request=help_request, sender=sender, body=body, stamp=stamp,
                       reply_to=reply_to,
                       risk_score=score, risk_labels=labels, is_hidden=hidden)
     if image is not None:
@@ -1117,7 +1143,7 @@ def file_report(reporter, target, category, detail='', help_request=None, messag
     return report
 
 
-# ---------- 画面の常時表示・メール・統計 ----------
+# ---------- 画面の常時表示・統計 ----------
 
 def active_items(user):
     """「進行中の依頼」バー用。"""
@@ -1136,29 +1162,6 @@ def active_items(user):
                                           applications__status=Application.Status.APPLIED)
                .annotate(applicants=Count('applications')).distinct())
     return matches, list(pending)
-
-
-def send_email_digests(now=None):
-    """未読の通知をユーザーごとに1通のメールにまとめて送る。オンライン中・静かな時間帯は送らない。"""
-    now = now or timezone.now()
-    grouped = defaultdict(list)
-    for n in Notification.objects.filter(email_processed_at__isnull=True).select_related('user'):
-        grouped[n.user].append(n)
-
-    sent = 0
-    for user, notes in grouped.items():
-        setting = notification_setting(user)
-        to_send = [] if is_online(user.pk) or not user.email or setting.forced_off else [
-            n for n in notes if not n.is_read
-            and (setting.email_nearby if n.kind == 'nearby_request' else setting.email_activity)]
-        if to_send:
-            lines = [f'・{n.text}\n  {settings.SITE_URL}{n.url}' for n in to_send]
-            send_mail(f'[Suki-match] 新しいお知らせが{len(to_send)}件あります',
-                      '\n'.join(lines) + '\n\n通知メールの設定はマイページから変更できます。',
-                      settings.DEFAULT_FROM_EMAIL, [user.email])
-            sent += 1
-        Notification.objects.filter(pk__in=[n.pk for n in notes]).update(email_processed_at=now)
-    return sent
 
 
 def hourly_stats(area='', days=90):

@@ -794,7 +794,9 @@
             var textEl = bubble.querySelector('.bubble-text');
             var excerpt = textEl && textEl.textContent.trim()
                 ? textEl.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)
-                : (bubble.querySelector('.bubble-img') ? '📷 写真' : '');
+                : (bubble.querySelector('.bubble-img') ? '📷 写真'
+                   : (bubble.querySelector('.bubble-stamp-emoji')
+                       ? bubble.querySelector('.bubble-stamp-emoji').textContent + ' スタンプ' : ''));
             replyToId = id;
             if (replyToInput) { replyToInput.value = id; }
             if (replyBar) {
@@ -932,6 +934,19 @@
                     img.loading = 'lazy';
                     bubble.appendChild(img);
                 }
+                if (m.stamp_emoji) {
+                    var stampEl = document.createElement('span');
+                    stampEl.className = 'bubble-stamp';
+                    var stampEmoji = document.createElement('span');
+                    stampEmoji.className = 'bubble-stamp-emoji';
+                    stampEmoji.textContent = m.stamp_emoji;
+                    var stampLabel = document.createElement('span');
+                    stampLabel.className = 'bubble-stamp-label';
+                    stampLabel.textContent = m.stamp_label || '';
+                    stampEl.appendChild(stampEmoji);
+                    stampEl.appendChild(stampLabel);
+                    bubble.appendChild(stampEl);
+                }
                 if (m.body) {
                     var bodySpan = document.createElement('span');
                     bodySpan.className = 'bubble-text';
@@ -1031,6 +1046,31 @@
                         .then(function (r) { if (!r.ok) { throw new Error('send failed'); } })
                         .catch(function () { toast('写真を送信できませんでした。もう一度お試しください。', '', 'warning'); });
                     photoInput.value = '';
+                });
+            }
+            var stampPanel = document.getElementById('stamp-panel');
+            var stampToggle = document.getElementById('stamp-toggle');
+            if (stampPanel && stampToggle) {
+                stampToggle.addEventListener('click', function () {
+                    stampPanel.hidden = !stampPanel.hidden;
+                    if (!stampPanel.hidden) { scrollDown(); }
+                });
+                stampPanel.querySelectorAll('[data-stamp]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var key = btn.dataset.stamp;
+                        stampPanel.hidden = true;
+                        if (chat.send({ stamp: key, body: '' })) { return; }
+                        // 接続できないときは通常のPOSTで送る(写真と同じ方式)
+                        var fd = new FormData();
+                        fd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+                        fd.append('body', '');
+                        fd.append('stamp', key);
+                        if (replyToId) { fd.append('reply_to', replyToId); }
+                        clearReply();
+                        fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
+                            .then(function (r) { if (!r.ok) { throw new Error('send failed'); } })
+                            .catch(function () { toast('スタンプを送信できませんでした。', '', 'warning'); });
+                    });
                 });
             }
             form.addEventListener('submit', function (e) {

@@ -375,6 +375,7 @@ class Message(models.Model):
                                  related_name='replies', verbose_name='返信先')
     body = models.TextField('本文', max_length=1000, blank=True)
     image = models.ImageField('写真', upload_to=chat_image_upload_to, blank=True)
+    stamp = models.CharField('スタンプ', max_length=16, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     read_at = models.DateTimeField(null=True, blank=True)
     risk_score = models.FloatField('リスクスコア', default=0)
@@ -461,8 +462,6 @@ class Notification(models.Model):
     text = models.CharField(max_length=200)
     url = models.CharField(max_length=200, blank=True)
     is_read = models.BooleanField(default=False)
-    # メールダイジェストで処理済み(送信・スキップどちらも)
-    email_processed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -472,13 +471,11 @@ class Notification(models.Model):
 
 class NotificationSetting(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_setting')
-    email_nearby = models.BooleanField('近くの新しい依頼をメールで受け取る', default=False)
-    email_activity = models.BooleanField('マッチング・メッセージをメールで受け取る', default=True)
     line_activity = models.BooleanField('マッチング・メッセージをLINEで受け取る', default=True)
     line_nearby = models.BooleanField('近くの新しい依頼をLINEで受け取る', default=False)
     push_activity = models.BooleanField('マッチング・メッセージをプッシュ通知で受け取る', default=True)
     forced_off = models.BooleanField('管理者による通知停止', default=False,
-                                     help_text='オンにすると、このユーザーへのメール・LINE・プッシュ通知をすべて止めます(管理者のみ変更可)')
+                                     help_text='オンにすると、このユーザーへのLINE・プッシュ通知をすべて止めます(管理者のみ変更可)')
 
     class Meta:
         verbose_name = verbose_name_plural = '通知設定'

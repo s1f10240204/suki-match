@@ -646,26 +646,7 @@ class LinePostRetentionTests(BaseTestCase):
         self.assertEqual(hr.chat_retention_days, 7)
 
 
-class EmailDigestTests(BaseTestCase):
-    def test_sends_one_digest_for_offline_users(self):
-        user = make_user('mailme')
-        services.notify(user, 'matched', 'Aさんが引き受けました', '/1/')
-        services.notify(user, 'message', 'Aさんから新しいメッセージ', '/matches/1/chat/')
-        services.notify(user, 'nearby_request', '近くで依頼', '/2/')  # 既定では近くの依頼はメールしない
-        self.assertEqual(services.send_email_digests(), 1)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn('2件', mail.outbox[0].subject)
-        self.assertEqual(services.send_email_digests(), 0)  # 処理済みは再送しない
-
-    def test_skips_online_users(self):
-        online, target = make_user('online'), make_user('target')
-        services.set_online(online.pk, 1)
-        services.notify(online, 'matched', 'x')
-        services.notify(target, 'matched', 'y')
-        services.send_email_digests()
-        self.assertEqual(len(mail.outbox), 1)  # オンライン中のユーザーには送らない
-        self.assertEqual(mail.outbox[0].to, [target.email])
-
+class PeriodicCommandTests(BaseTestCase):
     def test_periodic_command(self):
         make_request(make_user('req'), expires_at=timezone.now() - timedelta(minutes=1))
         call_command('run_periodic_tasks', stdout=StringIO())
@@ -1906,3 +1887,46 @@ class RatingVisibilityTests(BaseTestCase):
         self.client.force_login(viewer)
         resp = self.client.get(reverse('core:help_request_list'))
         self.assertContains(resp, '★5.0(1)')
+class StampTests(BaseTestCase):
+    """チャットのスタンプ送信(LINEスタンプ風)。"""
+
+    def _setup(self, name):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = make_user(f'{name}help')
+        match = services.accept_first_come(hr, helper)
+        return requester, hr, helper, match
+
+    def test_post_stamp_message(self):
+        requester, hr, helper, match = self._setup('st1')
+        message = services.post_message(match, helper, '', stamp='thanks')
+        self.assertEqual(message.stamp, 'thanks')
+        self.assertEqual(message.body, '')
+        payload = services.message_payload(message)
+        self.assertEqual(payload['stamp'], 'thanks')
+        self.assertEqual(payload['stamp_emoji'], '🙏')
+        self.assertEqual(payload['stamp_label'], 'ありがとう')
+        self.assertEqual(services.reply_excerpt(message), '🙏 スタンプ')
+
+    def test_invalid_stamp_rejected(self):
+        requester, hr, helper, match = self._setup('st2')
+        with self.assertRaises(services.ServiceError):
+            services.post_message(match, helper, '', stamp='not-a-stamp')
+        with self.assertRaises(services.ServiceError):
+            services.post_message(match, helper, '')  # 本文もスタンプも無いのは不可
+
+    def test_stamp_via_chat_page(self):
+        requester, hr, helper, match = self._setup('st3')
+        self.client.force_login(helper)
+        resp = self.client.post(reverse('core:chat', args=[match.pk]),
+                                {'body': '', 'stamp': 'party'})
+        self.assertEqual(resp.status_code, 302)
+        message = hr.messages.get()
+        self.assertEqual(message.stamp, 'party')
+        page = self.client.get(reverse('core:chat', args=[match.pk]))
+        self.assertContains(page, 'data-stamp="thanks"')   # スタンプパネル
+        self.assertContains(page, '🎉')                    # 送信済みスタンプの描画
+        self.assertContains(page, 'おめでとう')

@@ -41,7 +41,7 @@ class PasswordConfirmMixin:
 
 @admin.register(NotificationSetting)
 class NotificationSettingAdmin(admin.ModelAdmin):
-    list_display = ('user', 'email_activity', 'line_activity', 'push_activity', 'forced_off')
+    list_display = ('user', 'line_activity', 'push_activity', 'forced_off')
     list_filter = ('forced_off',)
     list_editable = ('forced_off',)
     search_fields = ('user__username', 'user__email')

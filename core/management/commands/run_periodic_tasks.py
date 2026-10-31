@@ -6,7 +6,7 @@ from core import services
 
 
 class Command(BaseCommand):
-    help = '掲載期限切れの締め切りと、通知メールのまとめ送信を行う(cron等で数分おきに実行)'
+    help = '掲載期限切れの締め切りやチャット履歴の削除などを行う(cron等で数分おきに実行)'
 
     def add_arguments(self, parser):
         parser.add_argument('--loop', type=int, default=0, help='指定秒ごとに繰り返す(開発用)')
@@ -14,10 +14,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         while True:
             expired = services.expire_requests()
-            mailed = services.send_email_digests()
             purged = services.purge_expired_chat_messages()
             reminded = services.send_schedule_reminders()
-            self.stdout.write(f'締め切り: {expired}件 / メール送信: {mailed}人 / チャット履歴削除: {purged}件 / リマインダー: {reminded}件')
+            self.stdout.write(f'締め切り: {expired}件 / チャット履歴削除: {purged}件 / リマインダー: {reminded}件')
             if not options['loop']:
                 break
             time.sleep(options['loop'])

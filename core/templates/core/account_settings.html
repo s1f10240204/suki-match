@@ -39,10 +39,8 @@
 
 <form method="post" class="card form">
     {% csrf_token %}
-    <h2 class="section-title">通知（メール・LINE）</h2>
-    <p class="help">アプリを開いていないときに、届いたお知らせをメールやLINEで送ります。</p>
-    {% include 'core/_field.html' with field=notify_form.email_activity %}
-    {% include 'core/_field.html' with field=notify_form.email_nearby %}
+    <h2 class="section-title">通知（LINE・プッシュ）</h2>
+    <p class="help">アプリを開いていないときに、届いたお知らせをLINEやプッシュ通知で送ります。</p>
     {% include 'core/_field.html' with field=notify_form.line_activity %}
     {% include 'core/_field.html' with field=notify_form.line_nearby %}
     {% include 'core/_field.html' with field=notify_form.push_activity %}

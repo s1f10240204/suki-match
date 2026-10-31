@@ -31,6 +31,11 @@
 </div>
 
 {% if chat_open %}
+    <div class="stamp-panel" id="stamp-panel" hidden>
+        {% for key, emoji, label in stamps %}
+        <button type="button" class="stamp-item" data-stamp="{{ key }}"><span class="stamp-item-emoji">{{ emoji }}</span><span class="stamp-item-label">{{ label }}</span></button>
+        {% endfor %}
+    </div>
     <form method="post" enctype="multipart/form-data" class="chat-form" id="chat-form">
         {% csrf_token %}
         <div class="reply-bar" id="reply-bar" hidden>
@@ -39,6 +44,7 @@
         </div>
         <input type="hidden" name="reply_to" id="reply-to-input" value="">
         {{ form.body }}
+        <button type="button" class="chat-stamp-btn" id="stamp-toggle" title="スタンプを送る" aria-label="スタンプを送る">😊</button>
         <label class="chat-photo-btn" for="{{ form.image.id_for_label }}" title="写真を送る" aria-label="写真を送る">📷</label>
         {{ form.image }}
         <button class="btn btn-primary">送信</button>

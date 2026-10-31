@@ -240,7 +240,7 @@ class ReportForm(forms.ModelForm):
 class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
-        fields = ('email_nearby', 'email_activity', 'line_activity', 'line_nearby', 'push_activity')
+        fields = ('line_activity', 'line_nearby', 'push_activity')
 
 
 class ActivityBaseForm(forms.ModelForm):
@@ -259,9 +259,10 @@ class MessageForm(forms.Form):
         attrs={'autocomplete': 'off', 'placeholder': 'メッセージを入力', 'aria-label': 'メッセージ', 'enterkeyhint': 'send'}))
     image = forms.ImageField(label='写真', required=False, widget=forms.FileInput(
         attrs={'accept': 'image/*', 'class': 'chat-photo-input', 'aria-label': '写真を送る'}))
+    stamp = forms.CharField(required=False, widget=forms.HiddenInput)
 
     def clean(self):
         cleaned = super().clean()
-        if not (cleaned.get('body') or '').strip() and not cleaned.get('image'):
+        if not (cleaned.get('body') or '').strip() and not cleaned.get('image') and not cleaned.get('stamp'):
             raise forms.ValidationError('メッセージを入力するか、写真を選んでください。')
         return cleaned

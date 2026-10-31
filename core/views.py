@@ -362,7 +362,8 @@ def chat(request, pk):
         reply_raw = request.POST.get('reply_to') or ''
         _run(request, lambda: services.post_message(
             match, request.user, form.cleaned_data['body'], form.cleaned_data.get('image'),
-            int(reply_raw) if reply_raw.isdigit() else None))
+            int(reply_raw) if reply_raw.isdigit() else None,
+            stamp=form.cleaned_data.get('stamp') or ''))
         return redirect('core:chat', pk=pk)
 
     help_request = match.help_request
@@ -377,6 +378,8 @@ def chat(request, pk):
         for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads', 'reactions'):
             if m.is_hidden and m.sender_id != request.user.pk:
                 continue
+            info = services.stamp_info(m.stamp)
+            m.stamp_emoji, m.stamp_label = info if info else ('', '')
             if m.reply_to_id:
                 m.reply_excerpt = services.reply_excerpt(m.reply_to)
             m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
@@ -398,6 +401,7 @@ def chat(request, pk):
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),
         'is_group': help_request.is_group, 'members': members,
+        'stamps': [(key, emoji, label) for key, (emoji, label) in services.STAMPS.items()],
     })
 
 
@@ -751,11 +755,11 @@ def healthz(request):
 @csrf_exempt
 @require_POST
 def run_tasks(request):
-    """期限切れの締め切りとメールのまとめ送信。GitHub Actions などから合言葉つきで定期的に呼ぶ。"""
+    """期限切れの締め切りやチャット履歴の削除など。GitHub Actions などから合言葉つきで定期的に呼ぶ。"""
     token = request.headers.get('X-Tasks-Token', '')
     if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
         return HttpResponseForbidden('forbidden')
-    return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests(),
+    return JsonResponse({'expired': services.expire_requests(),
                          'purged_messages': services.purge_expired_chat_messages(),
                          'reminded': services.send_schedule_reminders()})
 

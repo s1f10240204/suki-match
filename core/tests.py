@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from . import geocoding, images, line_chat, moderation, services, skills
 from django.core.files.uploadedfile import SimpleUploadedFile
-from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, LineChatState, Match, Message, Notification, PresetTag,
+from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, LineChatState, Match, Message, Notification, PresetTag, SupportQuestion,
                      PushSubscription, Report, Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
 from .text import normalize_text
@@ -1485,7 +1485,13 @@ class PhotoReviewApiTests(BaseTestCase):
         self.assertEqual(ok.status_code, 200)
         user.refresh_from_db()
         self.assertEqual(user.avatar_status, User.PhotoStatus.APPROVED)
-        self.assertEqual(self.client.get(photo_url, **self.TOKEN).status_code, 404)
+        # 承認済みの写真も同一人物チェック用に配信される(仕様)。対象外の人は404。
+        self.assertEqual(self.client.get(photo_url, **self.TOKEN).status_code, 200)
+        outsider = make_user('revoutsider')
+        outsider.avatar_status = User.PhotoStatus.NONE
+        outsider.save(update_fields=['avatar_status'])
+        outsider_url = reverse('core:photo_review_photo', args=[outsider.pk])
+        self.assertEqual(self.client.get(outsider_url, **self.TOKEN).status_code, 404)
 
     def test_reject_with_reason(self):
         user = self._pending_user('rev4')
@@ -2428,3 +2434,73 @@ class RequestPhotoTests(BaseTestCase):
         resp = self.client.post(reverse('core:help_request_create'), self._payload(image=bad))
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(HelpRequest.objects.exists())
+class SupportTests(BaseTestCase):
+    """FAQ / サポートbot / お問い合わせ / 自動応答API。"""
+
+    def setUp(self):
+        super().setUp()
+        self.user = make_user('supporter')
+        self.client.force_login(self.user)
+
+    def test_faq_page_public(self):
+        self.client.logout()
+        resp = self.client.get(reverse('core:faq'))
+        self.assertContains(resp, 'ポイントの仕組みを教えてください')
+
+    def test_bot_answers_points_question(self):
+        resp = self.client.post(reverse('core:support_ask'),
+                                data=json.dumps({'question': 'ポイントが足りなくて困ってます'}),
+                                content_type='application/json')
+        data = resp.json()
+        self.assertTrue(data['matched'])
+        self.assertEqual(data['faq_id'], 'points-not-enough')
+        self.assertTrue(SupportQuestion.objects.filter(matched_faq='points-not-enough').exists())
+
+    def test_bot_fallback_logs_unmatched(self):
+        resp = self.client.post(reverse('core:support_ask'),
+                                data=json.dumps({'question': 'あいうえおZZZ'}),
+                                content_type='application/json')
+        self.assertFalse(resp.json()['matched'])
+        log = SupportQuestion.objects.get()
+        self.assertEqual(log.matched_faq, '')
+
+    def test_inquiry_flow_and_privacy(self):
+        resp = self.client.post(reverse('core:inquiry_create'), {'body': '依頼の出し方が分かりません'})
+        inquiry = Inquiry.objects.get()
+        self.assertRedirects(resp, reverse('core:inquiry_detail', args=[inquiry.pk]))
+        detail = self.client.get(reverse('core:inquiry_detail', args=[inquiry.pk]))
+        self.assertContains(detail, '未対応')
+        other = make_user('supportother')
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(reverse('core:inquiry_detail', args=[inquiry.pk])).status_code, 404)
+
+    @override_settings(PHOTO_REVIEW_TOKEN='test' + '-token')
+    def test_inquiry_api_reply_and_escalate(self):
+        headers = {'HTTP_X_REVIEW_TOKEN': 'test' + '-token'}
+        q1 = Inquiry.objects.create(user=self.user, body='ポイントって何ですか')
+        q2 = Inquiry.objects.create(user=self.user, body='個別の調査が要る話')
+        resp = self.client.get(reverse('core:support_inquiries_pending'))
+        self.assertEqual(resp.status_code, 403)
+        resp = self.client.get(reverse('core:support_inquiries_pending'), **headers)
+        self.assertEqual(len(resp.json()['inquiries']), 2)
+        resp = self.client.post(reverse('core:support_inquiry_reply', args=[q1.pk]),
+                                data=json.dumps({'body': 'ポイントはありがとうの印です'}),
+                                content_type='application/json', **headers)
+        self.assertEqual(resp.status_code, 200)
+        q1.refresh_from_db()
+        self.assertEqual(q1.status, Inquiry.Status.ANSWERED)
+        self.assertEqual(q1.replies.get().author_kind, InquiryReply.Author.BOT)
+        self.assertTrue(Notification.objects.filter(user=self.user, kind='inquiry_reply').exists())
+        resp = self.client.post(reverse('core:support_inquiry_escalate', args=[q2.pk]), **headers)
+        self.assertEqual(resp.status_code, 200)
+        q2.refresh_from_db()
+        self.assertEqual(q2.status, Inquiry.Status.ESCALATED)
+        digest = self.client.get(reverse('core:photo_review_digest')).json()
+        self.assertEqual(digest['inquiries'], 0)
+
+    def test_user_followup_reopens_inquiry(self):
+        inquiry = Inquiry.objects.create(user=self.user, body='質問です', status=Inquiry.Status.ANSWERED)
+        self.client.post(reverse('core:inquiry_detail', args=[inquiry.pk]), {'body': '追加の質問です'})
+        inquiry.refresh_from_db()
+        self.assertEqual(inquiry.status, Inquiry.Status.OPEN)
+        self.assertEqual(inquiry.replies.get().author_kind, InquiryReply.Author.USER)

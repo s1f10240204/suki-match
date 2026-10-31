@@ -1,0 +1,86 @@
+{% extends 'core/base.html' %}
+
+{% block title %}サポート | suki-match{% endblock %}
+
+{% block content %}
+<h1>サポート</h1>
+<p class="help">聞きたいことを入力すると、よくある質問から自動でお答えします。<a href="{% url 'core:faq' %}">よくある質問の一覧はこちら</a>。</p>
+
+<div class="card bot-card">
+    <div class="bot-log" id="bot-log" aria-live="polite">
+        <div class="bot-msg bot-msg-bot"><p>こんにちは！ suki-match の使い方で分からないことがあれば、質問を入力してください。</p></div>
+    </div>
+    <div class="bot-quick">
+        {% for f in quick_faqs %}
+        <button type="button" class="chip bot-quick-btn" data-question="{{ f.question }}">{{ f.question }}</button>
+        {% endfor %}
+    </div>
+    <form class="bot-form" id="bot-form">
+        {% csrf_token %}
+        <input type="text" id="bot-input" placeholder="質問を入力（例：ポイントが足りない）" aria-label="質問" maxlength="500">
+        <button type="submit" class="btn btn-primary">聞く</button>
+    </form>
+    <div class="bot-unresolved" id="bot-unresolved" hidden>
+        <p class="help">解決しなかった場合は、運営にお問い合わせください。内容を確認して返信します。</p>
+        <a class="btn btn-outline" href="{% url 'core:inquiry_create' %}">お問い合わせフォームへ</a>
+    </div>
+</div>
+
+{% if inquiries %}
+<h2 class="section-title">あなたのお問い合わせ</h2>
+<div class="card">
+    {% for q in inquiries %}
+    <a class="list-row inquiry-row" href="{% url 'core:inquiry_detail' q.pk %}">
+        <span class="inquiry-body">{{ q.body|truncatechars:60 }}</span>
+        <span class="chip {% if q.status == 'answered' %}chip-done{% elif q.status == 'escalated' %}chip-warn{% endif %}">{{ q.get_status_display }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<script>
+(function () {
+    var log = document.getElementById('bot-log');
+    var form = document.getElementById('bot-form');
+    var input = document.getElementById('bot-input');
+    var unresolved = document.getElementById('bot-unresolved');
+    var csrf = form.querySelector('input[name=csrfmiddlewaretoken]').value;
+    function addMsg(text, who) {
+        var div = document.createElement('div');
+        div.className = 'bot-msg bot-msg-' + who;
+        var p = document.createElement('p');
+        p.textContent = text;
+        div.appendChild(p);
+        log.appendChild(div);
+        div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function ask(question) {
+        addMsg(question, 'user');
+        fetch('{% url "core:support_ask" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+            body: JSON.stringify({ question: question })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (data.matched) {
+                addMsg(data.answer, 'bot');
+            } else {
+                addMsg('ごめんなさい、その質問にはうまく答えられませんでした。聞き方を変えるか、下の「よくある質問」も見てみてください。', 'bot');
+                unresolved.hidden = false;
+            }
+        }).catch(function () {
+            addMsg('通信に失敗しました。時間をおいてもう一度お試しください。', 'bot');
+        });
+    }
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var q = input.value.trim();
+        if (!q) return;
+        input.value = '';
+        ask(q);
+    });
+    document.querySelectorAll('.bot-quick-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { ask(btn.dataset.question); });
+    });
+})();
+</script>
+{% endblock %}

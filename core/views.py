@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles import finders
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg, Count, F, Q, Sum
+from django.db.models import Avg, Count, Exists, F, OuterRef, Q, Sum
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,7 +22,8 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from . import geocoding
 from .geocoding import area_label_for
-from .models import (Application, DuplicatePhotoFlag, HelpRequest, Match, Message, PointTransaction, PresetTag,
+from .models import (Application, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, Match, Message,
+                     PointTransaction, PresetTag, SupportQuestion,
                      PushSubscription,
                      Review, Sanction, Skill, User, UserBlock)
 from .services import ServiceError
@@ -770,9 +771,14 @@ def photo_review_digest(request):
     flags = list(DuplicatePhotoFlag.objects.filter(acknowledged_at__isnull=True)
                  .values_list('pk', 'user_id', 'matched_user_id'))
     flags_fingerprint = '|'.join(f'{pk}:{uid}:{mid}' for pk, uid, mid in flags)
+    open_inquiries = list(Inquiry.objects.filter(status=Inquiry.Status.OPEN)
+                          .values_list('pk', 'updated_at'))
+    inquiries_fingerprint = '|'.join(f'{pk}:{ts.isoformat()}' for pk, ts in open_inquiries)
     return JsonResponse({'count': len(users), 'digest': digest,
                          'flags': len(flags),
-                         'flags_digest': hashlib.sha256(flags_fingerprint.encode()).hexdigest()})
+                         'flags_digest': hashlib.sha256(flags_fingerprint.encode()).hexdigest(),
+                         'inquiries': len(open_inquiries),
+                         'inquiries_digest': hashlib.sha256(inquiries_fingerprint.encode()).hexdigest()})
 
 
 @csrf_exempt
@@ -790,9 +796,10 @@ def photo_review_pending(request):
 def photo_review_photo(request, user_id):
     if not _photo_review_token_ok(request):
         return JsonResponse({'error': 'unauthorized'}, status=403)
+    flagged = DuplicatePhotoFlag.objects.filter(user=OuterRef('pk'), acknowledged_at__isnull=True)
     visible = (User.objects.exclude(avatar='')
                .filter(Q(avatar_status__in=(User.PhotoStatus.PENDING, User.PhotoStatus.APPROVED))
-                       | Q(duplicate_photo_flags__acknowledged_at__isnull=True)))
+                       | Q(Exists(flagged))))
     user = visible.filter(pk=user_id).first()
     if user is None:
         return JsonResponse({'error': 'not available'}, status=404)
@@ -916,6 +923,128 @@ def staff_switch_back(request):
     request.session.pop('impersonator_id', None)
     messages.success(request, '管理者アカウントに戻りました。')
     return redirect('core:help_request_list')
+
+
+# ---------- FAQ / サポートbot / お問い合わせ ----------
+
+def faq_page(request):
+    from .faq_data import FAQS
+    categories = []
+    for entry in FAQS:
+        if not categories or categories[-1][0] != entry['category']:
+            categories.append((entry['category'], []))
+        categories[-1][1].append(entry)
+    return render(request, 'core/faq.html', {'categories': categories})
+
+
+@login_required
+def support_page(request):
+    from .faq_data import FAQS
+    inquiries = request.user.inquiries.all()[:20]
+    quick = [f for f in FAQS if f['id'] in (
+        'points-not-enough', 'photo-review', 'notifications', 'how-to-request', 'chat-retention')]
+    return render(request, 'core/support.html', {'inquiries': inquiries, 'quick_faqs': quick})
+
+
+@login_required
+@require_POST
+def support_ask(request):
+    from .faq_data import FAQS, match_faq
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'bad json'}, status=400)
+    question = str(payload.get('question', '')).strip()[:500]
+    if not question:
+        return JsonResponse({'error': 'question required'}, status=400)
+    entry, _score = match_faq(question)
+    SupportQuestion.objects.create(
+        user=request.user, question=question, matched_faq=entry['id'] if entry else '')
+    if entry is None:
+        popular = [{'id': f['id'], 'question': f['question']} for f in FAQS[:4]]
+        return JsonResponse({'matched': False, 'suggestions': popular})
+    return JsonResponse({'matched': True, 'faq_id': entry['id'],
+                         'question': entry['question'], 'answer': entry['answer']})
+
+
+@login_required
+def inquiry_create(request):
+    if request.method == 'POST':
+        body = request.POST.get('body', '').strip()
+        if body:
+            inquiry = Inquiry.objects.create(user=request.user, body=body[:5000])
+            messages.success(request, 'お問い合わせを送りました。回答があると通知でお知らせします。')
+            return redirect('core:inquiry_detail', pk=inquiry.pk)
+        messages.error(request, '内容を入力してください。')
+    return render(request, 'core/inquiry_form.html')
+
+
+@login_required
+def inquiry_detail(request, pk):
+    inquiry = get_object_or_404(Inquiry, pk=pk, user=request.user)
+    if request.method == 'POST':
+        body = request.POST.get('body', '').strip()
+        if body:
+            InquiryReply.objects.create(inquiry=inquiry, author_kind=InquiryReply.Author.USER,
+                                        body=body[:5000])
+            if inquiry.status != Inquiry.Status.OPEN:
+                inquiry.status = Inquiry.Status.OPEN
+                inquiry.save(update_fields=['status', 'updated_at'])
+            messages.success(request, 'メッセージを送りました。')
+            return redirect('core:inquiry_detail', pk=inquiry.pk)
+    return render(request, 'core/inquiry_detail.html',
+                  {'inquiry': inquiry, 'replies': inquiry.replies.all()})
+
+
+# --- お問い合わせ自動応答API(トークン認証。digest は写真審査と共用) ---
+
+@csrf_exempt
+@require_GET
+def support_inquiries_pending(request):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    inquiries = (Inquiry.objects.filter(status=Inquiry.Status.OPEN)
+                 .select_related('user').prefetch_related('replies').order_by('created_at'))
+    return JsonResponse({'inquiries': [
+        {'id': q.pk, 'username': q.user.username, 'body': q.body,
+         'created_at': q.created_at.isoformat(),
+         'replies': [{'author': r.author_kind, 'body': r.body} for r in q.replies.all()]}
+        for q in inquiries]})
+
+
+@csrf_exempt
+@require_POST
+def support_inquiry_reply(request, pk):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    inquiry = get_object_or_404(Inquiry, pk=pk)
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'bad json'}, status=400)
+    body = str(payload.get('body', '')).strip()
+    if not body:
+        return JsonResponse({'error': 'body required'}, status=400)
+    author = (InquiryReply.Author.OPERATOR if payload.get('author') == 'operator'
+              else InquiryReply.Author.BOT)
+    InquiryReply.objects.create(inquiry=inquiry, author_kind=author, body=body[:5000])
+    inquiry.status = Inquiry.Status.ANSWERED
+    inquiry.save(update_fields=['status', 'updated_at'])
+    services.notify(inquiry.user, 'inquiry_reply', 'お問い合わせに回答が届きました',
+                    reverse('core:inquiry_detail', kwargs={'pk': inquiry.pk}))
+    return JsonResponse({'ok': True, 'inquiry_id': inquiry.pk})
+
+
+@csrf_exempt
+@require_POST
+def support_inquiry_escalate(request, pk):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    updated = (Inquiry.objects.filter(pk=pk, status=Inquiry.Status.OPEN)
+               .update(status=Inquiry.Status.ESCALATED, updated_at=timezone.now()))
+    if not updated:
+        return JsonResponse({'error': 'not open'}, status=404)
+    return JsonResponse({'ok': True, 'inquiry_id': pk})
 
 
 @login_required

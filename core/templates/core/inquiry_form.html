@@ -1,0 +1,18 @@
+{% extends 'core/base.html' %}
+
+{% block title %}お問い合わせ | suki-match{% endblock %}
+
+{% block content %}
+<h1>お問い合わせ</h1>
+<p class="help">内容は運営が確認し、このアプリ内の「お問い合わせ」画面に返信します（返信があると通知が届きます）。パスワードなどの大事な情報は書かないでください。</p>
+
+<form method="post" class="form card">
+    {% csrf_token %}
+    <div class="field">
+        <label class="field-label" for="inquiry-body">お問い合わせ内容</label>
+        <textarea id="inquiry-body" name="body" rows="7" required placeholder="例：ポイントの計算が合っていない気がします。○月○日の依頼です。"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">送信する</button>
+</form>
+<p class="help"><a href="{% url 'core:support' %}">← サポートに戻る</a></p>
+{% endblock %}

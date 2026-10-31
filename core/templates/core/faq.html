@@ -1,0 +1,26 @@
+{% extends 'core/base.html' %}
+
+{% block title %}よくある質問 | suki-match{% endblock %}
+
+{% block content %}
+<h1>よくある質問</h1>
+<p class="help">タップすると回答が開きます。解決しないときは<a href="{% url 'core:support' %}">サポート（自動応答）</a>やお問い合わせも使えます。</p>
+
+{% for category, entries in categories %}
+<section class="faq-section">
+    <h2 class="section-title">{{ category }}</h2>
+    {% for entry in entries %}
+    <details class="faq-item" id="faq-{{ entry.id }}">
+        <summary>{{ entry.question }}</summary>
+        <p class="faq-answer">{{ entry.answer }}</p>
+    </details>
+    {% endfor %}
+</section>
+{% endfor %}
+
+<div class="card faq-cta">
+    <p><strong>解決しませんでしたか？</strong></p>
+    <p class="help">サポートbotに質問するか、お問い合わせフォームから運営に送れます。</p>
+    <a class="btn btn-primary" href="{% url 'core:support' %}">サポートを開く</a>
+</div>
+{% endblock %}

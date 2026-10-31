@@ -502,6 +502,57 @@ class ActivityBase(models.Model):
         verbose_name = verbose_name_plural = '活動拠点'
 
 
+class SupportQuestion(models.Model):
+    """サポートbotへの質問ログ(答えられなかった質問を把握してFAQを増やすため)。"""
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                             related_name='support_questions', verbose_name='質問した人')
+    question = models.TextField('質問')
+    matched_faq = models.CharField('一致したFAQ', max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'サポートbot質問ログ'
+        ordering = ['-created_at']
+
+
+class Inquiry(models.Model):
+    """お問い合わせ。Muse が自動応答し、無理なものは運営(管理者)へ回す。"""
+
+    class Status(models.TextChoices):
+        OPEN = 'open', '未対応'
+        ESCALATED = 'escalated', '運営確認中'
+        ANSWERED = 'answered', '回答済み'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inquiries',
+                             verbose_name='問い合わせた人')
+    body = models.TextField('内容')
+    status = models.CharField('状態', max_length=12, choices=Status.choices,
+                              default=Status.OPEN, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'お問い合わせ'
+        ordering = ['-updated_at']
+
+
+class InquiryReply(models.Model):
+    class Author(models.TextChoices):
+        BOT = 'bot', '自動応答'
+        OPERATOR = 'operator', '運営'
+        USER = 'user', 'ユーザー'
+
+    inquiry = models.ForeignKey(Inquiry, on_delete=models.CASCADE, related_name='replies')
+    author_kind = models.CharField('投稿者種別', max_length=10, choices=Author.choices)
+    body = models.TextField('内容')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'お問い合わせ返信'
+        ordering = ['created_at']
+
+
 class DuplicatePhotoFlag(models.Model):
     """別のアカウントと同じ写真が登録されたため自動却下した記録(運営への報告用)。"""
 

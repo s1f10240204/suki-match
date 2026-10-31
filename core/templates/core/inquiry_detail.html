@@ -1,0 +1,29 @@
+{% extends 'core/base.html' %}
+
+{% block title %}お問い合わせ | suki-match{% endblock %}
+
+{% block content %}
+<h1>お問い合わせ</h1>
+<p class="meta">状態：{{ inquiry.get_status_display }} ・ {{ inquiry.created_at|date:"Y/n/j H:i" }}</p>
+
+<div class="card inquiry-thread">
+    <div class="bot-msg bot-msg-user"><p>{{ inquiry.body }}</p><span class="bot-msg-meta">あなた</span></div>
+    {% for r in replies %}
+    {% if r.author_kind == 'user' %}
+    <div class="bot-msg bot-msg-user"><p>{{ r.body }}</p><span class="bot-msg-meta">あなた ・ {{ r.created_at|date:"n/j H:i" }}</span></div>
+    {% else %}
+    <div class="bot-msg bot-msg-bot"><p>{{ r.body }}</p><span class="bot-msg-meta">{% if r.author_kind == 'bot' %}自動応答{% else %}運営{% endif %} ・ {{ r.created_at|date:"n/j H:i" }}</span></div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<form method="post" class="form card">
+    {% csrf_token %}
+    <div class="field">
+        <label class="field-label" for="inquiry-reply">追加でメッセージを送る</label>
+        <textarea id="inquiry-reply" name="body" rows="4" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">送信する</button>
+</form>
+<p class="help"><a href="{% url 'core:support' %}">← サポートに戻る</a></p>
+{% endblock %}

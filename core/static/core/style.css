@@ -779,3 +779,29 @@ body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
 .card-photo { display: block; width: 100%; height: 168px; object-fit: cover; border-radius: 14px; margin-bottom: 12px; background: #ece6dc; }
 .detail-photo { display: block; width: 100%; border-radius: 16px; margin: 14px 0 4px; background: #ece6dc; }
 .photo-preview { display: block; max-width: 100%; max-height: 240px; border-radius: 14px; margin-top: 10px; }
+/* ---------- FAQ / サポートbot / お問い合わせ ---------- */
+.faq-section { margin-bottom: 26px; }
+.faq-item { background: var(--surface); border: 1.5px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
+.faq-item summary { padding: 15px 17px; font-weight: 700; cursor: pointer; list-style: none; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::before { content: 'Q. '; color: var(--primary); }
+.faq-item[open ] summary { border-bottom: 1px solid var(--line); }
+.faq-answer { padding: 14px 17px 17px; line-height: 1.8; margin: 0; }
+.faq-cta { text-align: left; }
+.bot-card { padding: 18px; }
+.bot-log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.bot-msg { max-width: 88%; padding: 11px 15px; border-radius: 16px; line-height: 1.75; }
+.bot-msg p { margin: 0; }
+.bot-msg-bot { background: var(--primary-soft); align-self: flex-start; border-bottom-left-radius: 4px; }
+.bot-msg-user { background: var(--surface); border: 1.5px solid var(--line); align-self: flex-end; border-bottom-right-radius: 4px; }
+.bot-msg-meta { display: block; font-size: .75rem; color: var(--muted); margin-top: 4px; }
+.bot-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.bot-quick-btn { cursor: pointer; }
+.bot-form { display: flex; gap: 8px; }
+.bot-form input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #e2d9cd; border-radius: 999px; font: inherit; font-size: 16px; background: #fff; }
+.bot-unresolved { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.inquiry-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.inquiry-body { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inquiry-thread { display: flex; flex-direction: column; gap: 10px; }
+.chip-done { background: var(--primary-soft); color: var(--primary-dark); }
+.chip-warn { background: #fdf0e4; color: #9a5a26; }

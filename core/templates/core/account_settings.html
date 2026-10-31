@@ -20,6 +20,8 @@
     <a class="list-row" href="{% url 'account_email' %}"><span>メールアドレス</span><span class="meta">{{ user.email|default:"未登録" }} ›</span></a>
     <a class="list-row" href="{% url 'account_change_password' %}"><span>パスワードの変更</span><span class="meta">›</span></a>
     <a class="list-row" href="{% url 'socialaccount_connections' %}"><span>外部アカウント連携</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'core:faq' %}"><span>よくある質問</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'core:support' %}"><span>サポート・お問い合わせ</span><span class="meta">›</span></a>
 </section>
 
 <section class="card">

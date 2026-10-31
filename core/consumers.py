@@ -45,6 +45,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     """マッチングした2人のチャット。"""
     RATE_LIMIT = 5          # RATE_WINDOW 秒あたりの送信数
     RATE_WINDOW = 10
+    REACTION_LIMIT = 30     # リアクションの連打制限(同ウィンドウあたり)
 
     async def connect(self):
         user = self.scope['user']
@@ -58,6 +59,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             return
         self.group = info[0]  # グループチャットは依頼単位で配信
         self.sent_at = deque(maxlen=self.RATE_LIMIT)
+        self.reacted_at = deque(maxlen=self.REACTION_LIMIT)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
         await self._mark_read()  # 開いた時点で相手のメッセージを既読にする
@@ -75,6 +77,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_json(self, content, **kwargs):
         if content.get('type') == 'reaction':
+            now = time.monotonic()
+            if len(self.reacted_at) == self.REACTION_LIMIT and now - self.reacted_at[0] < self.RATE_WINDOW:
+                return  # 連打時は黙って捨てる
+            self.reacted_at.append(now)
             await self._react(int(content.get('message_id') or 0), str(content.get('emoji') or ''))
             return
         if content.get('type') == 'read':

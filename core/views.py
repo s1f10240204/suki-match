@@ -10,6 +10,7 @@ from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -224,7 +225,7 @@ def approve_application(request, pk):
 
 def _work_back(request, match):
     nxt = request.POST.get('next') or ''
-    if nxt.startswith('/') and not nxt.startswith('//'):
+    if url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
         return redirect(nxt)
     return redirect('core:help_request_detail', pk=match.help_request_id)
 
@@ -504,11 +505,25 @@ def public_profile(request, username):
 @login_required
 def report_user(request, username):
     target = get_object_or_404(User, username=username)
-    help_request = HelpRequest.objects.filter(pk=request.GET.get('request') or None).first()
-    message = Message.objects.filter(pk=request.GET.get('message') or None, sender=target).select_related(
+
+    def _safe_pk(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    help_request = HelpRequest.objects.filter(pk=_safe_pk(request.GET.get('request'))).first()
+    if help_request is not None and request.user.pk not in services.chat_participants(help_request):
+        help_request = None  # 通報者と無関係な依頼は紐付けない
+    message = Message.objects.filter(pk=_safe_pk(request.GET.get('message')), sender=target).select_related(
         'match__help_request').first()
-    if message is not None and request.user.pk not in message.match.participants():
-        message = None
+    if message is not None:
+        if message.help_request_id is not None:
+            in_conversation = request.user.pk in services.chat_participants(message.help_request)
+        else:
+            in_conversation = request.user.pk in message.match.participants()
+        if not in_conversation:
+            message = None
     form = ReportForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         done = _run(request, lambda: services.file_report(
@@ -541,8 +556,13 @@ def chat_image(request, pk):
     message = get_object_or_404(Message, pk=pk)
     if not message.image:
         raise Http404
-    if not request.user.is_staff and request.user.pk not in message.match.participants():
-        raise Http404
+    if not request.user.is_staff:
+        if message.help_request_id is not None:
+            allowed = request.user.pk in services.chat_participants(message.help_request)
+        else:
+            allowed = request.user.pk in message.match.participants()
+        if not allowed:
+            raise Http404
     response = FileResponse(message.image.storage.open(message.image.name, 'rb'), content_type='image/jpeg')
     response['Cache-Control'] = 'private, max-age=300'
     return response
@@ -564,7 +584,8 @@ def _photo_review_token_ok(request):
     import hmac
     expected = settings.PHOTO_REVIEW_TOKEN
     provided = request.headers.get('X-Review-Token', '')
-    return bool(expected) and hmac.compare_digest(provided, expected)
+    return bool(expected) and hmac.compare_digest(
+        provided.encode('utf-8', 'ignore'), expected.encode())
 
 
 def _pending_photo_users():
@@ -765,6 +786,9 @@ def push_subscribe(request):
         p256dh, auth = str(keys['p256dh'])[:200], str(keys['auth'])[:100]
     except (ValueError, KeyError, TypeError, AttributeError):
         return JsonResponse({'ok': False}, status=400)
+    existing = PushSubscription.objects.filter(endpoint=endpoint).first()
+    if existing is not None and existing.user_id != request.user.pk:
+        return JsonResponse({'ok': False}, status=409)  # 他人の購読は付け替えない
     PushSubscription.objects.update_or_create(
         endpoint=endpoint,
         defaults={'user': request.user, 'p256dh': p256dh, 'auth': auth,

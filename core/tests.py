@@ -1516,3 +1516,181 @@ class PhotoReviewApiTests(BaseTestCase):
         resp = self.client.get(reverse('core:photo_review_pending'),
                                HTTP_X_REVIEW_TOKEN='anything')
         self.assertEqual(resp.status_code, 403)
+
+
+class SecurityFixTests(BaseTestCase):
+    """2026-10-31 セキュリティ監査の修正に対する回帰テスト。"""
+
+    def _funded_request(self, name, points=100, duration=15, **extra):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=points)
+        requester.refresh_from_db()
+        hr = make_request(requester, duration_minutes=duration, **extra)
+        services.publish_request(hr)
+        requester.refresh_from_db()
+        return requester, hr
+
+    def test_complete_twice_does_not_double_pay(self):
+        from .models import PointTransaction
+        requester, hr = self._funded_request('s1')
+        helper = make_user('s1help')
+        services.accept_first_come(hr, helper)
+        stale = HelpRequest.objects.get(pk=hr.pk)  # 精算前に読み込んだ古いインスタンス
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 15)
+        with self.assertRaises(services.ServiceError):
+            services.complete(stale, requester)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 15)  # 二重支払いなし
+        self.assertEqual(
+            PointTransaction.objects.filter(user=helper, kind=PointTransaction.Kind.EARNED).count(), 1)
+
+    def test_refund_only_once(self):
+        requester, hr = self._funded_request('s2')
+        self.assertEqual(requester.points, 85)
+        services.cancel(hr, requester)
+        requester.refresh_from_db()
+        self.assertEqual(requester.points, 100)
+        fresh = HelpRequest.objects.get(pk=hr.pk)
+        services._refund_escrow(fresh)  # 別インスタンスから再度返金しても二重にならない
+        requester.refresh_from_db()
+        self.assertEqual(requester.points, 100)
+
+    def test_charge_is_idempotent(self):
+        from .models import PointTransaction
+        requester = make_user('s3req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        requester.refresh_from_db()
+        hr = make_request(requester, duration_minutes=15)
+        self.assertEqual(services.charge_for_request(hr), 15)
+        self.assertEqual(services.charge_for_request(hr), 15)
+        requester.refresh_from_db()
+        self.assertEqual(requester.points, 85)
+        self.assertEqual(
+            PointTransaction.objects.filter(help_request=hr, kind=PointTransaction.Kind.ESCROW).count(), 1)
+
+    def test_helper_cancel_after_expiry_keeps_remaining_work(self):
+        requester, hr = self._funded_request('s4', headcount=2)
+        helper1, helper2 = make_user('s4h1'), make_user('s4h2')
+        services.accept_first_come(hr, helper1)
+        services.accept_first_come(hr, helper2)
+        HelpRequest.objects.filter(pk=hr.pk).update(expires_at=timezone.now() - timedelta(hours=1))
+        hr.refresh_from_db()
+        services.cancel(hr, helper1)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)  # EXPIRED にならない
+        requester.refresh_from_db()
+        self.assertEqual(requester.points, 85)  # 預かり分は返金されない
+        services.complete(hr, requester)
+        helper2.refresh_from_db()
+        self.assertEqual(helper2.points, 15)  # 残ったヘルパーには預かり分から支払われる
+
+    def test_purge_includes_expired_requests(self):
+        requester, hr = self._funded_request('s5', chat_retention_days=0)
+        helper = make_user('s5help')
+        match = services.accept_first_come(hr, helper)
+        services.post_message(match, helper, 'テストメッセージ')
+        self.assertEqual(Message.objects.filter(help_request=hr).count(), 1)
+        Match.objects.filter(pk=match.pk).update(
+            status=Match.Status.CANCELED, canceled_at=timezone.now() - timedelta(days=1))
+        HelpRequest.objects.filter(pk=hr.pk).update(status=HelpRequest.Status.EXPIRED)
+        services.purge_expired_chat_messages()
+        self.assertEqual(Message.objects.filter(help_request=hr).count(), 0)
+
+    def test_auto_sanction_needs_trusted_reporters(self):
+        target = make_user('s6victim')
+        reporters = [make_user(f's6r{i}', avatar='', avatar_status=User.PhotoStatus.NONE)
+                     for i in range(3)]
+        for reporter in reporters:
+            services.file_report(reporter, target, 'harassment')
+        self.assertFalse(Sanction.objects.filter(user=target).exists())  # 未承認の通報だけでは発動しない
+        User.objects.filter(pk__in=[r.pk for r in reporters]).update(
+            avatar_status=User.PhotoStatus.APPROVED)
+        services.file_report(reporters[0], target, 'harassment')
+        self.assertTrue(Sanction.objects.filter(user=target).exists())
+
+    def test_oversized_image_rejected(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from core import images
+        upload = SimpleUploadedFile('big.jpg', _tiny_jpeg(), content_type='image/jpeg')
+        with mock.patch.object(images, 'MAX_PIXELS', 50):  # 10x10=100px でも上限超過にする
+            with self.assertRaises(images.InvalidImage):
+                images.normalize_photo(upload)
+
+    def test_report_page_bad_params_do_not_500(self):
+        user = make_user('s8user')
+        target = make_user('s8target')
+        self.client.force_login(user)
+        resp = self.client.get(reverse('core:report_user', args=[target.username]),
+                               {'request': 'abc', 'message': 'xyz'})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_review_rating_range_and_group_reviewee(self):
+        requester, hr = self._funded_request('s9', headcount=2)
+        helper1, helper2 = make_user('s9h1'), make_user('s9h2')
+        services.accept_first_come(hr, helper1)
+        services.accept_first_come(hr, helper2)
+        services.complete(hr, requester)
+        hr.refresh_from_db()
+        with self.assertRaises(services.ServiceError):
+            services.submit_review(hr, requester, 100)
+        review = services.submit_review(hr, helper2, 5)  # 先頭でないマッチのヘルパーでもレビューできる
+        self.assertEqual(review.reviewee, requester)
+
+    def test_reaction_blocked_after_completion(self):
+        requester, hr = self._funded_request('s10')
+        helper = make_user('s10help')
+        match = services.accept_first_come(hr, helper)
+        message = services.post_message(match, helper, '写真なし本文')
+        services.complete(hr, requester)
+        with self.assertRaises(services.ServiceError):
+            services.toggle_reaction(message, helper, '❤️')
+
+    def test_push_subscribe_cannot_steal_endpoint(self):
+        user_a, user_b = make_user('s11a'), make_user('s11b')
+        payload = json.dumps({'endpoint': 'https://push.example/abc',
+                              'keys': {'p256dh': 'x', 'auth': 'y'}})
+        self.client.force_login(user_a)
+        resp = self.client.post(reverse('core:push_subscribe'), data=payload,
+                                content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        self.client.force_login(user_b)
+        resp = self.client.post(reverse('core:push_subscribe'), data=payload,
+                                content_type='application/json')
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(PushSubscription.objects.get(endpoint='https://push.example/abc').user, user_a)
+
+    def test_chat_image_visible_to_group_members_only(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        requester, hr = self._funded_request('s12', headcount=2)
+        helper1, helper2 = make_user('s12h1'), make_user('s12h2')
+        match1 = services.accept_first_come(hr, helper1)
+        services.accept_first_come(hr, helper2)
+        message = services.post_message(
+            match1, helper1, '', image_file=SimpleUploadedFile('p.jpg', _tiny_jpeg(), content_type='image/jpeg'))
+        url = reverse('core:chat_image', args=[message.pk])
+        self.client.force_login(helper2)
+        self.assertEqual(self.client.get(url).status_code, 200)  # 同じ依頼の別ヘルパーも見られる
+        stranger = make_user('s12stranger')
+        self.client.force_login(stranger)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_photo_review_token_non_ascii_header_is_403(self):
+        from django.test import RequestFactory
+        from core import views
+        request = RequestFactory().get('/api/photo-review/pending/',
+                                       HTTP_X_REVIEW_TOKEN='ああああ')
+        with self.settings(PHOTO_REVIEW_TOKEN='some-token'):
+            resp = views.photo_review_pending(request)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_work_back_rejects_backslash_redirect(self):
+        requester, hr = self._funded_request('s14')
+        helper = make_user('s14help')
+        match = services.accept_first_come(hr, helper)
+        self.client.force_login(helper)
+        resp = self.client.post(reverse('core:work_start', args=[match.pk]),
+                                {'next': '/\\evil.example'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn('evil', resp.url)

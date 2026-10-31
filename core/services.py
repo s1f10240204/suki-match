@@ -326,6 +326,10 @@ def charge_for_request(help_request):
     """投稿時に依頼ポイントを残高から預かる。残高不足なら ServiceError。"""
     cost = cost_for_duration(help_request.duration_minutes)
     with transaction.atomic():
+        existing = PointTransaction.objects.filter(
+            help_request=help_request, kind=PointTransaction.Kind.ESCROW).first()
+        if existing is not None:
+            return -existing.amount  # 徴収済み(二重送信・再送でも二重徴収しない)
         requester = User.objects.select_for_update().get(pk=help_request.requester_id)
         if requester.points < cost:
             raise ServiceError(
@@ -340,9 +344,16 @@ def charge_for_request(help_request):
     return cost
 
 
+def _claim_points_settlement(help_request):
+    """精算・返金の権利を原子的に確保する。確保できた場合だけ True(同時実行でも一度だけ)。"""
+    return HelpRequest.objects.filter(
+        pk=help_request.pk, points_settled=False).update(points_settled=True) == 1
+
+
 def _refund_escrow(help_request):
     """預かったポイントを依頼者へ返す(キャンセル・期限切れ用)。精算は一度だけ。"""
-    if help_request.points_cost and not help_request.points_settled:
+    if help_request.points_cost and _claim_points_settlement(help_request):
+        help_request.points_settled = True
         User.objects.filter(pk=help_request.requester_id).update(
             points=F('points') + help_request.points_cost)
         help_request.points_settled = True
@@ -355,6 +366,8 @@ def _refund_escrow(help_request):
 
 
 def publish_request(help_request):
+    if not 1 <= help_request.headcount <= 20:
+        raise ServiceError('募集人数が不正です。')
     charge_for_request(help_request)
     help_request.area_label = area_label_for(help_request.latitude, help_request.longitude)
     help_request.save(update_fields=['area_label'])
@@ -556,12 +569,20 @@ def complete(help_request, user):
     """依頼者が完了を確定。参加していた全ヘルパーにポイントを付与する。"""
     if help_request.requester_id != user.pk:
         raise ServiceError('完了にできるのは依頼者だけです。')
-    matches = list(help_request.active_matches)
-    if not matches:
-        raise ServiceError('進行中のマッチングがありません。')
     awarded = {}
+    matches = []
     with transaction.atomic():
-        if help_request.points_cost and not help_request.points_settled:
+        # 依頼行をロックして最新の状態で判定する(二重送信・同時実行で精算が二重に走らないように)
+        help_request = HelpRequest.objects.select_for_update().get(pk=help_request.pk)
+        if help_request.status not in (HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS):
+            raise ServiceError('この依頼は既に終了しています。')
+        matches = list(help_request.active_matches)
+        if not matches:
+            raise ServiceError('進行中のマッチングがありません。')
+        if help_request.points_cost and not _claim_points_settlement(help_request):
+            raise ServiceError('この依頼は既に精算されています。')
+        if help_request.points_cost:
+            help_request.points_settled = True
             # 実績ベース精算: 各ヘルパーに実効分数×単価を支払う。預かり分を
             # 超えた分は依頼者の残高から追加で引き、余った分は依頼者へ返す。
             now = timezone.now()
@@ -646,11 +667,12 @@ def cancel(help_request, user, reason=''):
             if penalized:
                 penalized_match = match
             reopen = help_request.expires_at > now
-            if not reopen:
+            if help_request.active_matches.exists():
+                # 他のヘルパーが作業中なら依頼は継続する。預かり分は完了時の精算まで保持
+                help_request.status = HelpRequest.Status.IN_PROGRESS
+            elif not reopen:
                 _refund_escrow(help_request)
                 help_request.status = HelpRequest.Status.EXPIRED
-            elif help_request.active_matches.exists():
-                help_request.status = HelpRequest.Status.IN_PROGRESS  # 残りのメンバーで継続し、空いた枠は再募集
             else:
                 help_request.status = HelpRequest.Status.OPEN
         help_request.save(update_fields=['status', 'points_settled'])
@@ -683,8 +705,15 @@ def apply_cancel_penalty(user, match):
 
 
 def submit_review(help_request, user, rating, comment=''):
-    match = help_request.matches.filter(status=Match.Status.DONE).select_related('helper').first()
-    if help_request.status != HelpRequest.Status.DONE or match is None or user.pk not in match.participants():
+    try:
+        rating = int(rating)
+    except (TypeError, ValueError):
+        raise ServiceError('評価が不正です。')
+    if not 1 <= rating <= 5:
+        raise ServiceError('評価は1〜5で入力してください。')
+    match = next((m for m in help_request.matches.filter(status=Match.Status.DONE)
+                  .select_related('helper') if user.pk in m.participants()), None)
+    if help_request.status != HelpRequest.Status.DONE or match is None:
         raise ServiceError('レビューできません。')
     if Review.objects.filter(reviewer=user, help_request=help_request).exists():
         raise ServiceError('すでにレビュー済みです。')
@@ -790,7 +819,8 @@ def purge_expired_chat_messages():
     now = timezone.now()
     targets = []
     for help_request in HelpRequest.objects.filter(
-            status__in=[HelpRequest.Status.DONE, HelpRequest.Status.CANCELED]):
+            status__in=[HelpRequest.Status.DONE, HelpRequest.Status.CANCELED,
+                        HelpRequest.Status.EXPIRED]):
         ended_at = request_ended_at(help_request)
         if ended_at is not None and ended_at + timedelta(days=help_request.chat_retention_days) <= now:
             targets.append(help_request.pk)
@@ -823,6 +853,10 @@ def toggle_reaction(message, user, emoji):
         raise ServiceError('そのリアクションは使えません')
     if message.help_request_id is None or user.pk not in chat_participants(message.help_request):
         raise ServiceError('この会話の参加者だけがリアクションできます')
+    request_status = HelpRequest.objects.values_list('status', flat=True).get(pk=message.help_request_id)
+    if request_status in (HelpRequest.Status.DONE, HelpRequest.Status.CANCELED,
+                          HelpRequest.Status.EXPIRED):
+        raise ServiceError('この会話は終了しているため、リアクションできません')
     reaction, created = MessageReaction.objects.get_or_create(message=message, user=user, emoji=emoji)
     if not created:
         reaction.delete()
@@ -833,6 +867,8 @@ def toggle_reaction(message, user, emoji):
 
 def mark_chat_read(help_request, user):
     """依頼のチャットで、自分以外が送った表示可能なメッセージを既読にする。新しく既読になった件数を返す。"""
+    if user.pk not in chat_participants(help_request):
+        return 0
     ids = list(Message.objects.filter(help_request=help_request, is_hidden=False)
                .exclude(sender=user).exclude(reads__user=user).values_list('pk', flat=True))
     if not ids:
@@ -935,8 +971,12 @@ def file_report(reporter, target, category, detail='', help_request=None, messag
     report = Report.objects.create(reporter=reporter, target_user=target, category=category, detail=detail,
                                    help_request=help_request, message=message)
     since = timezone.now() - timedelta(days=REPORT_WINDOW_DAYS)
-    reporters = (Report.objects.filter(target_user=target, created_at__gte=since)
-                 .values('reporter').distinct().count())
+    reporter_ids = (Report.objects.filter(target_user=target, created_at__gte=since)
+                    .values_list('reporter', flat=True).distinct())
+    # 自動ペナルティの集計は、顔写真の承認済み(または承認免除)の通報者だけを数える。
+    # 捨てアカウントの通報だけで即時ペナルティが発動しないようにするため
+    reporters = sum(1 for u in User.objects.filter(pk__in=reporter_ids)
+                    if u.avatar_status == User.PhotoStatus.APPROVED or photo_exempt(u))
     if reporters >= REPORT_AUTO_SANCTION_REPORTERS and strongest_sanction(target) is None:
         Sanction.objects.create(
             user=target, level=Sanction.Level.NO_ACCEPT,

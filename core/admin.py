@@ -49,6 +49,8 @@ class NotificationSettingAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(PasswordConfirmMixin, BaseUserAdmin):
+    def has_delete_permission(self, request, obj=None):
+        return False  # ユーザー削除は不可逆。管理画面からは行えないようにする(必要時はシェルで対応)
     list_display = ('username', 'photo_thumb', 'avatar_status', 'email', 'area_label', 'level', 'is_shadow_banned', 'is_active')
     list_filter = ('avatar_status', 'is_shadow_banned') + BaseUserAdmin.list_filter
     readonly_fields = ('photo_preview',)

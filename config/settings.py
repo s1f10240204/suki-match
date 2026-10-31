@@ -18,7 +18,7 @@ def env_bool(name, default):
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY', 'django-insecure-#(c5umtbor79n^-*e)bz8a9vz74z4k^9&7%h)42rpo41dz0wb9')
 
-DEBUG = env_bool('DJANGO_DEBUG', True)
+DEBUG = env_bool('DJANGO_DEBUG', False)  # 明示指定がなければ本番側(安全側)に倒す
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 # Render が自動で設定する公開ホスト名(例: suki-match.onrender.com)
@@ -36,7 +36,8 @@ if not DEBUG:
     SECURE_REDIRECT_EXEMPT = [r'^healthz/$']
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 60 * 60 * 24
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 # LINE連携(ログイン用チャネル / 通知用Messaging APIチャネル)。未設定なら機能ごと無効
@@ -204,7 +205,7 @@ EMAIL_CODE_RESEND_SECONDS = 60                   # 再送ボタンが押せる�
 ACCOUNT_RATE_LIMITS = {'confirm_email': f'1/{EMAIL_CODE_RESEND_SECONDS}s/key'}
 ACCOUNT_EMAIL_SUBJECT_PREFIX = '[suki-match] '
 ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http' if DEBUG else 'https'
-ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True  # パスワード変更で全セッションを失効させる
 ACCOUNT_SIGNUP_REDIRECT_URL = 'core:profile_edit'
 ACCOUNT_ADAPTER = 'core.adapters.AccountAdapter'
 ACCOUNT_FORMS = {'signup': 'core.forms.CustomSignupForm'}

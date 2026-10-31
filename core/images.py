@@ -9,6 +9,8 @@ from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 MAX_SIDE = 800          # 保存する写真の最大辺(px)
 MOSAIC_BLOCKS = 10      # モザイクの粗さ(縦横のブロック数)
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_PIXELS = 40_000_000  # 解凍爆弾対策: デコード前にピクセル数の上限を検証する
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
 
 class InvalidImage(Exception):
@@ -27,8 +29,12 @@ def normalize_photo(uploaded):
         raise InvalidImage('画像は8MB以下にしてください。')
     try:
         image = Image.open(uploaded)
+        if image.width * image.height > MAX_PIXELS:
+            raise InvalidImage('画像の解像度が大きすぎます。')
         image = ImageOps.exif_transpose(image).convert('RGB')
-    except (UnidentifiedImageError, OSError):
+    except InvalidImage:
+        raise
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise InvalidImage('画像ファイルを読み込めませんでした。JPEGかPNGを選んでください。')
     image.thumbnail((MAX_SIDE, MAX_SIDE))
     return ContentFile(_to_jpeg(image), name='photo.jpg')

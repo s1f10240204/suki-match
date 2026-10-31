@@ -3,7 +3,7 @@ from datetime import timedelta
 from math import floor, sqrt
 
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -138,14 +138,26 @@ class User(AbstractUser):
         return bool(self.avatar) and self.avatar_status == self.PhotoStatus.APPROVED
 
     def add_points(self, amount):
-        self.points += amount
-        if amount > 0:
-            self.total_earned += amount
-        self.level = level_for_points(self.total_earned)
-        self.save(update_fields=['points', 'total_earned', 'level'])
+        # 行をロックしてから加算する(同時付与で加算が上書きされて消えないように)
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=self.pk)
+            user.points += amount
+            if amount > 0:
+                user.total_earned += amount
+            user.level = level_for_points(user.total_earned)
+            user.save(update_fields=['points', 'total_earned', 'level'])
+            self.points, self.total_earned, self.level = user.points, user.total_earned, user.level
 
     def resolved_skill_ids(self):
         return {s.resolved.pk for s in self.skills.select_related('canonical')}
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            models.CheckConstraint(condition=models.Q(points__gte=0),
+                                   name='user_points_non_negative'),
+            models.CheckConstraint(condition=models.Q(total_earned__gte=0),
+                                   name='user_total_earned_non_negative'),
+        ]
 
 
 class PresetTag(models.Model):

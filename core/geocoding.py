@@ -61,7 +61,7 @@ SEARCH_URL = 'https://msearch.gsi.go.jp/address-search/AddressSearch'
 ZIP_URL = 'https://zipcloud.ibsnet.co.jp/api/search'
 NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 SEARCH_CACHE_SECONDS = 300
-_FULLWIDTH = str.maketrans('０１２３４５６７８９－ー―', '0123456789---')
+_FULLWIDTH = str.maketrans('０１２３４５６７８９－', '0123456789-')
 _ZIP_PART = re.compile(r'^〒?\d{3}-\d{4}$')
 
 
@@ -109,9 +109,9 @@ def _nominatim_label(display_name):
     return ' '.join(parts)
 
 
-def _nominatim_candidates(query):
+def _nominatim_candidates(query, limit=8):
     """駅名・施設名など、住所ではない地名の候補(OpenStreetMap / Nominatim)。"""
-    params = urlencode({'q': query, 'format': 'jsonv2', 'countrycodes': 'jp', 'limit': 8})
+    params = urlencode({'q': query, 'format': 'jsonv2', 'countrycodes': 'jp', 'limit': limit})
     data = json.loads(_fetch(f'{NOMINATIM_URL}?{params}'))
     results = []
     for item in data:
@@ -125,12 +125,79 @@ def _nominatim_candidates(query):
     return results
 
 
+_KANJI_DIGITS = str.maketrans('一二三四五六七八九', '123456789')
+
+
+def _match_norm(text):
+    """関連性チェック用の正規化(漢数字→数字、空白除去など)。"""
+    text = (text or '').translate(_FULLWIDTH).translate(_KANJI_DIGITS)
+    text = text.replace('十', '').replace(' ', '').replace('　', '').replace('・', '')
+    return text
+
+
+def _lcs_len(a, b):
+    """最長共通部分文字列の長さ。"""
+    if len(a) > len(b):
+        a, b = b, a
+    best = 0
+    prev = [0] * (len(a) + 1)
+    for j in range(1, len(b) + 1):
+        cur = [0] * (len(a) + 1)
+        for i in range(1, len(a) + 1):
+            if a[i - 1] == b[j - 1]:
+                cur[i] = prev[i - 1] + 1
+                best = max(best, cur[i])
+        prev = cur
+    return best
+
+
+def _relevant(query, title, min_lcs=None):
+    """部分一致ノイズ対策: 検索語と候補タイトルの共通部分が十分長い候補だけ残す。
+
+    「ラーメン山岡家…」のような店名検索で「ラ」だけ一致する無関係な地名
+    (ラントウ前、ラッコベツ等)が大量に返るのを防ぐ。
+    """
+    core = _match_norm(query)
+    if not core:
+        return False
+    threshold = min_lcs if min_lcs else (2 if len(core) <= 3 else 3)
+    return _lcs_len(core, _match_norm(title)) >= threshold
+
+
+def _area_fallback(query):
+    """店名などで直接見つからないとき、末尾の地名らしい部分で探し直す。
+
+    例: 「ラーメン山岡家武蔵村山店」→「武蔵村山」で武蔵村山市が引ける。
+    Nominatim(駅・地名)を優先し、住所らしい接尾辞は GSI でも探す。
+    """
+    core = query[:-1] if query.endswith('店') else query
+    for start in range(0, min(8, len(core) - 2)):
+        suffix = core[start:]
+        if len(suffix) < 3:
+            break
+        if suffix[0] in 'ー・っゃゅょ':
+            continue  # 単語の途中から始まる接尾辞はノイズが多い
+        try:
+            hits = [c for c in _nominatim_candidates(suffix, limit=3)
+                    if _relevant(suffix, c['name'], min_lcs=3)]
+            if not hits:
+                min_lcs = 3 if len(suffix) <= 3 else 4
+                hits = [c for c in _gsi_candidates(suffix)
+                        if _relevant(suffix, c['name'], min_lcs=min_lcs)]
+        except Exception:
+            logger.warning('fallback search failed', exc_info=True)
+            return []
+        if hits:
+            return hits[:3]
+    return []
+
+
 def _merged_candidates(normalized):
     digits = re.sub(r'[\s-]', '', normalized)
     if re.fullmatch(r'\d{7}', digits):
         return _zip_candidates(digits)
     try:
-        results = _gsi_candidates(normalized)
+        results = [c for c in _gsi_candidates(normalized) if _relevant(normalized, c['name'])]
     except Exception:
         logger.warning('gsi search failed', exc_info=True)
         results = []
@@ -138,11 +205,13 @@ def _merged_candidates(normalized):
     try:
         for cand in _nominatim_candidates(normalized):
             key = (round(cand['lat'], 4), round(cand['lng'], 4))
-            if key not in seen:
+            if key not in seen and _relevant(normalized, cand['name']):
                 seen.add(key)
                 results.append(cand)
     except Exception:
         logger.warning('nominatim search failed', exc_info=True)
+    if not results:
+        results = _area_fallback(normalized)
     return results
 
 

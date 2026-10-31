@@ -1174,11 +1174,21 @@ class PlaceSearchTests(BaseTestCase):
             return json.dumps({'status': 200, 'results': [
                 {'address1': '東京都', 'address2': '北区', 'address3': '志茂'}]})
         if 'nominatim' in url:
+            if '武蔵村山' in url:
+                return json.dumps([{'lat': '35.7549', 'lon': '139.3874',
+                                    'display_name': '武蔵村山市役所, 武蔵村山市, 東京都, 日本'}])
             if '赤羽' in url:
                 return json.dumps([{'lat': '35.778926', 'lon': '139.720245',
                                     'display_name': '赤羽駅, 赤羽一丁目, 北区, 東京都, 115-0045, 日本'}])
             return '[]'
         if 'AddressSearch' in url:
+            if '山岡家' in url:
+                # 店名検索に紛れる GSI の部分一致ノイズ(実例)
+                return json.dumps([
+                    {'geometry': {'coordinates': [142.0, 44.0]},
+                     'properties': {'title': '北海道広尾町ラッコベツ'}},
+                    {'geometry': {'coordinates': [131.0, 33.0]},
+                     'properties': {'title': '沖縄県北中城村ライカム'}}])
             if '志茂' in url:
                 return json.dumps(self.GSI_SHIMO)
             if '赤羽' in url:
@@ -1211,6 +1221,16 @@ class PlaceSearchTests(BaseTestCase):
         self.assertLess(names.index('東京都北区赤羽'), names.index('北海道美瑛町赤羽'))
         self.assertEqual(names[-1], '北海道美瑛町赤羽')
         self.assertTrue(any('赤羽駅' in n for n in names))
+
+    def test_shop_query_filters_gsi_noise_and_falls_back_to_area(self):
+        # 「ラ」でしか一致しない無関係候補は除外され、末尾の地名でエリアが引ける
+        results = geocoding.search_places('ラーメン山岡家武蔵村山店')
+        self.assertTrue(results)
+        self.assertTrue(all('武蔵村山' in r['name'] for r in results))
+        self.assertFalse(any('ラッコベツ' in r['name'] or 'ライカム' in r['name'] for r in results))
+
+    def test_long_vowel_mark_is_preserved(self):
+        self.assertEqual(geocoding._normalize_query('ラーメン'), 'ラーメン')
 
     def test_place_search_api(self):
         user = make_user('searcher')

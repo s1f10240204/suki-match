@@ -348,6 +348,12 @@ details.more[open] > summary { margin-bottom: 8px; }
 .place-results li + li { border-top: 1px solid var(--line); }
 .place-results button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 12px 14px; font-size: .92rem; color: var(--text); cursor: pointer; min-height: 44px; }
 .place-results button:hover, .place-results button:active { background: var(--bg); }
+/* iOS Safari: 文字が16px未満の入力欄にフォーカスすると画面が自動で拡大され、
+   戻らなくなることがある。モバイルではフォーム部品を16px以上に保って防ぐ。 */
+@media (max-width: 700px) {
+    input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
+}
+a, button, input, select, textarea, label { touch-action: manipulation; }
 .work-panel { background: #fff; border: 1.5px solid var(--line); border-radius: 16px; padding: 14px 16px; margin: 12px 0; }
 .work-title { font-weight: 700; margin: 0 0 8px; }
 .work-live { font-weight: 700; color: var(--primary-dark); }

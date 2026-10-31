@@ -1261,6 +1261,11 @@ class PushPromptTests(BaseTestCase):
         response = self.client.get(reverse('core:privacy'))
         self.assertNotContains(response, 'id="push-prompt"')
 
+    def test_viewport_locks_maximum_scale(self):
+        # iOS の入力時自動ズーム(拡大バグ)防止が外れていないこと
+        response = self.client.get(reverse('core:privacy'))
+        self.assertContains(response, 'maximum-scale=1.0')
+
 
 class ReplyTests(BaseTestCase):
     """メッセージへの返信: 保存・payload・他チャットのメッセージは返信先にできないこと。"""

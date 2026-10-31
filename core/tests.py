@@ -2377,3 +2377,54 @@ class StaffSwitchTests(BaseTestCase):
         self.client.force_login(self.admin)
         resp = self.client.get(reverse('core:staff_switch_to', args=[self.target.pk]))
         self.assertEqual(resp.status_code, 405)
+class RequestPhotoTests(BaseTestCase):
+    """依頼への写真添付。"""
+
+    def setUp(self):
+        super().setUp()
+        self.user = make_user('photoreq')
+        User.objects.filter(pk=self.user.pk).update(points=1000)
+        self.client.force_login(self.user)
+
+    def _payload(self, **data):
+        payload = {'title': '蛇口の水漏れ', 'mode': 'first_come', 'description': '直してほしい',
+                   'duration_minutes': 30, 'listing_minutes': 30,
+                   'latitude': LAT, 'longitude': LNG, 'skill_names': ''}
+        payload.update(data)
+        return payload
+
+    def test_create_with_photo_and_display(self):
+        resp = self.client.post(reverse('core:help_request_create'),
+                                self._payload(image=jpeg_upload()))
+        hr = HelpRequest.objects.get()
+        self.assertRedirects(resp, reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertTrue(hr.image)
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, 'detail-photo')
+        listing = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(listing, 'card-photo')
+        img = self.client.get(reverse('core:request_image', args=[hr.pk]))
+        self.assertEqual(img.status_code, 200)
+        self.assertEqual(img['Content-Type'], 'image/jpeg')
+
+    def test_create_without_photo(self):
+        resp = self.client.post(reverse('core:help_request_create'), self._payload())
+        hr = HelpRequest.objects.get()
+        self.assertFalse(hr.image)
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertNotContains(detail, 'detail-photo')
+        img = self.client.get(reverse('core:request_image', args=[hr.pk]))
+        self.assertEqual(img.status_code, 404)
+
+    def test_image_endpoint_requires_login(self):
+        self.client.post(reverse('core:help_request_create'), self._payload(image=jpeg_upload()))
+        hr = HelpRequest.objects.get()
+        self.client.logout()
+        resp = self.client.get(reverse('core:request_image', args=[hr.pk]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_invalid_image_rejected(self):
+        bad = SimpleUploadedFile('memo.txt', b'not an image', content_type='text/plain')
+        resp = self.client.post(reverse('core:help_request_create'), self._payload(image=bad))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(HelpRequest.objects.exists())

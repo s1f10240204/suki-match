@@ -135,7 +135,7 @@ class HelpRequestForm(forms.ModelForm):
 
     class Meta:
         model = HelpRequest
-        fields = ('title', 'mode', 'preset_tags', 'description', 'duration_minutes',
+        fields = ('title', 'mode', 'preset_tags', 'description', 'image', 'duration_minutes',
                   'scheduled_for', 'address_detail', 'latitude', 'longitude', 'chat_retention_days')
         widgets = {
             'mode': forms.RadioSelect,
@@ -159,6 +159,17 @@ class HelpRequestForm(forms.ModelForm):
         self.fields['title'].widget.attrs['placeholder'] = '例: 保育園のお迎え後、15分だけ子どもを見ていてほしい'
         self.fields['address_detail'].widget.attrs['placeholder'] = '例: 〇〇マンション3階 / 公園の入口'
         self.fields['mode'].label = '決め方'
+        self.fields['image'].label = '写真（任意）'
+        self.fields['image'].help_text = '壊れたものや、買ってほしい物の写真があると伝わりやすくなります'
+
+    def clean_image(self):
+        uploaded = self.cleaned_data.get('image')
+        if not uploaded:
+            return None
+        try:
+            return images.normalize_photo(uploaded)
+        except images.InvalidImage as e:
+            raise forms.ValidationError(str(e))
 
     def clean_scheduled_for(self):
         when = self.cleaned_data.get('scheduled_for')

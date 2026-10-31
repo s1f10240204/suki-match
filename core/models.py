@@ -75,6 +75,10 @@ def chat_image_upload_to(instance, filename):
     return f'chat/{instance.match_id or "misc"}/{filename}'
 
 
+def request_image_upload_to(instance, filename):
+    return f'requests/{uuid.uuid4().hex}.jpg'
+
+
 def avatar_upload_to(instance, filename):
     # 推測されにくいファイル名にする(写真はモザイク判定つきのビュー経由でのみ配信)
     return f'avatars/{uuid.uuid4().hex}.jpg'
@@ -198,6 +202,7 @@ class HelpRequest(models.Model):
     requester = models.ForeignKey(User, on_delete=models.CASCADE, related_name='requests', verbose_name='依頼者')
     title = models.CharField('タイトル', max_length=200)
     description = models.TextField('詳細', blank=True)
+    image = models.ImageField('写真', upload_to=request_image_upload_to, blank=True)
     preset_tags = models.ManyToManyField(PresetTag, blank=True, verbose_name='定型タグ')
     required_skills = models.ManyToManyField(Skill, blank=True, related_name='help_requests',
                                              verbose_name='必要なスキル')

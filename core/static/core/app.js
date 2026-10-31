@@ -1431,3 +1431,18 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         }
     });
 });
+// 依頼フォーム: 選んだ写真のプレビュー
+(function () {
+    var input = document.getElementById('id_image');
+    var preview = document.querySelector('[data-photo-preview]');
+    if (!input || !preview) return;
+    input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (file) {
+            preview.src = URL.createObjectURL(file);
+            preview.hidden = false;
+        } else {
+            preview.hidden = true;
+        }
+    });
+})();

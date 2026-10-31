@@ -135,7 +135,7 @@ def help_request_create(request):
                 'skill_names': ', '.join(s.name for s in source.required_skills.all()),
             })
             messages.info(request, '前回の依頼内容をコピーしました。場所と内容を確認して投稿してください。')
-    form = HelpRequestForm(request.POST or None, initial=initial, user=request.user)
+    form = HelpRequestForm(request.POST or None, request.FILES or None, initial=initial, user=request.user)
     if request.method == 'POST' and form.is_valid():
         help_request = form.save()
         try:
@@ -700,6 +700,23 @@ def stats(request):
 
 
 @login_required
+@login_required
+def request_image(request, pk):
+    """依頼の写真。ログイン済みユーザーに配信(ゴーストBan中は関係者のみ)。"""
+    help_request = get_object_or_404(HelpRequest, pk=pk)
+    if not help_request.image:
+        raise Http404
+    user = request.user
+    if help_request.requester.is_shadow_banned and not (
+            user.is_staff or user.pk == help_request.requester_id
+            or help_request.matches.filter(helper=user).exists()):
+        raise Http404
+    response = FileResponse(help_request.image.storage.open(help_request.image.name, 'rb'),
+                            content_type='image/jpeg')
+    response['Cache-Control'] = 'private, max-age=300'
+    return response
+
+
 @login_required
 def chat_image(request, pk):
     """チャットの写真。参加者(と運営)にだけ配信する。"""

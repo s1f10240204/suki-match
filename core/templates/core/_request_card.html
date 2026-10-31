@@ -1,5 +1,6 @@
 {% load suki %}
 <a href="{% url 'core:help_request_detail' hr.pk %}" class="card request-card{% if hr.recommended %} is-recommended{% endif %}">
+    {% if hr.image %}<img class="card-photo" src="{% url 'core:request_image' hr.pk %}" alt="" loading="lazy">{% endif %}
     <div class="card-top">
         {% if hr.scheduled_for %}
             <span class="time-chip">{{ hr.scheduled_for|date:"n/j(D) H:i" }}〜</span>

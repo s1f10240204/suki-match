@@ -25,6 +25,7 @@
         <ul class="preset-list">{% for t in help_request.preset_tags.all %}<li>{{ t.label }}</li>{% endfor %}</ul>
     {% endif %}
     {% if help_request.description %}<p class="detail-desc">{{ help_request.description }}</p>{% endif %}
+    {% if help_request.image %}<a href="{% url 'core:request_image' help_request.pk %}"><img class="detail-photo" src="{% url 'core:request_image' help_request.pk %}" alt="依頼の写真"></a>{% endif %}
 
     <section class="location-box">
         <h2 class="section-title">場所</h2>

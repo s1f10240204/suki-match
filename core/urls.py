@@ -9,6 +9,7 @@ urlpatterns = [
     path('privacy/', views.privacy_policy, name='privacy'),
     path('new/', views.help_request_create, name='help_request_create'),
     path('<int:pk>/', views.help_request_detail, name='help_request_detail'),
+    path('<int:pk>/image/', views.request_image, name='request_image'),
     path('<int:pk>/accept/', views.accept_help_request, name='accept_help_request'),
     path('<int:pk>/apply/', views.apply_help_request, name='apply_help_request'),
     path('<int:pk>/complete/', views.complete_help_request, name='complete_help_request'),

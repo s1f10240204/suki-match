@@ -4,7 +4,7 @@
 {% block extra_head %}{% include 'core/_maps.html' %}{% endblock %}
 
 {% block content %}
-<form method="post" class="stepper form" data-stepper data-points-balance="{{ points_balance }}" novalidate>
+<form method="post" enctype="multipart/form-data" class="stepper form" data-stepper data-points-balance="{{ points_balance }}" novalidate>
     {% csrf_token %}
     <div class="stepper-head">
         <h1>お手伝いを依頼する</h1>
@@ -24,6 +24,8 @@
             {% include 'core/_field.html' with field=form.description %}
         </details>
         {% for error in form.description.errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {% include 'core/_field.html' with field=form.image %}
+        <img class="photo-preview" data-photo-preview alt="選んだ写真のプレビュー" hidden>
     </section>
 
     <section class="card step" data-step>

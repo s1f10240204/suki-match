@@ -746,3 +746,32 @@ ul.socialaccount_providers li { list-style: none; }
 .invite-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eee; }
 .invite-form label { display: block; font-size: .85rem; font-weight: 700; margin-bottom: 6px; }
 .invite-form input[name="code"] { text-transform: uppercase; letter-spacing: .1em; }
+/* ---------- 運営バー / テスト表示中バー ---------- */
+.admin-bar {
+    display: flex; align-items: center; gap: 2px; overflow-x: auto;
+    background: #2e2a23; color: #e8e2d4; padding: 5px 10px; font-size: .82rem;
+    scrollbar-width: none;
+}
+.admin-bar::-webkit-scrollbar { display: none; }
+.admin-bar-label { opacity: .65; font-weight: 700; margin: 0 4px 0 2px; white-space: nowrap; }
+.admin-bar a { color: #fff; font-weight: 700; padding: 7px 11px; border-radius: 9px; white-space: nowrap; }
+.admin-bar a:active { background: rgba(255, 255, 255, .16); }
+.impersonate-bar {
+    position: sticky; top: 0; z-index: 56; height: 46px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: #b3541e; color: #fff; padding: 6px 12px; font-size: .9rem;
+}
+.impersonate-bar form { margin: 0; flex: none; }
+.impersonate-bar > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.impersonate-back {
+    background: #fff; color: #8a3d12; border: 0; border-radius: 10px;
+    font: inherit; font-weight: 700; padding: 8px 14px; cursor: pointer; white-space: nowrap;
+}
+body.impersonating .header { top: 46px; }
+body.impersonating .active-bar { top: calc(var(--header-h) + 46px); }
+body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
+.staff-search { display: flex; gap: 8px; margin: 14px 0; }
+.staff-search input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #e2d9cd; border-radius: 12px; font: inherit; font-size: 16px; background: #fffdfa; }
+.staff-user-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.staff-user-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.staff-user-name { font-weight: 700; }

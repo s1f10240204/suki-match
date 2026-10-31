@@ -1,0 +1,34 @@
+{% extends 'core/base.html' %}
+{% load suki %}
+
+{% block title %}アカウント切替（運営） | suki-match{% endblock %}
+
+{% block content %}
+<h1>アカウント切替</h1>
+<p class="help">テストアカウントとしてサイトを表示できます。切り替え中は画面の上に「テスト表示中」のバーが出て、いつでも管理者に戻れます。管理者アカウント同士の切り替えはできません。</p>
+
+<form method="get" class="staff-search">
+    <input type="search" name="q" value="{{ q }}" placeholder="ユーザー名で検索" aria-label="ユーザー名で検索">
+    <button type="submit" class="btn btn-primary btn-sm">検索</button>
+</form>
+
+<div class="card">
+    {% for u in users %}
+    <div class="list-row staff-user-row">
+        <div class="staff-user-main">
+            {% avatar u 'sm' %}
+            <div>
+                <div class="staff-user-name">{{ u.username }}{% if u.is_staff %} <span class="chip">運営</span>{% endif %}</div>
+                <div class="meta">{{ u.date_joined|date:"Y/n/j" }} 登録 ・ 写真: {{ u.get_avatar_status_display }} ・ {{ u.points }}pt</div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'core:staff_switch_to' u.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline btn-sm">このアカウントで表示</button>
+        </form>
+    </div>
+    {% empty %}
+    <p class="meta">ユーザーが見つかりませんでした。</p>
+    {% endfor %}
+</div>
+{% endblock %}

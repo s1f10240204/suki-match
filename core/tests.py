@@ -2322,3 +2322,58 @@ class PhotoDuplicateTests(BaseTestCase):
         services.review_photo(user_a, True)
         resp = self.client.get(reverse('core:photo_review_approved'), **headers)
         self.assertEqual([u['username'] for u in resp.json()['approved']], [user_a.username])
+class StaffSwitchTests(BaseTestCase):
+    """運営のアカウント切替(管理バー/テスト表示)。"""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('boss', password='x')
+        self.target = make_user('switchtarget')
+
+    def test_picker_forbidden_for_normal_user(self):
+        self.client.force_login(self.target)
+        resp = self.client.get(reverse('core:staff_switch'))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_switch_roundtrip(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('core:staff_switch'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'switchtarget')
+        points_before = User.objects.get(pk=self.target.pk).points
+        resp = self.client.post(reverse('core:staff_switch_to', args=[self.target.pk]))
+        self.assertRedirects(resp, reverse('core:help_request_list'))
+        # テスト表示中バナーが出て、切替先として振る舞う
+        resp = self.client.get(reverse('core:profile'))
+        self.assertContains(resp, 'テスト表示中')
+        self.assertContains(resp, 'switchtarget')
+        # 切替中は一覧を開けない/再切替できない
+        self.assertEqual(self.client.get(reverse('core:staff_switch')).status_code, 403)
+        # ログイン扱いにならないのでログインボーナスは付かない
+        self.assertEqual(User.objects.get(pk=self.target.pk).points, points_before)
+        # 運営への通知が残る
+        self.assertTrue(Notification.objects.filter(user=self.admin, kind='staff_switch').exists())
+        # 戻ると管理者に戻る
+        self.client.post(reverse('core:staff_switch_back'))
+        resp = self.client.get(reverse('core:staff_switch'))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_admin_bar_only_for_staff(self):
+        self.client.force_login(self.target)
+        resp = self.client.get(reverse('core:help_request_list'))
+        self.assertNotContains(resp, 'アカウント切替')
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(resp, 'アカウント切替')
+        self.assertContains(resp, '管理画面')
+
+    def test_cannot_switch_to_superuser(self):
+        other_admin = User.objects.create_superuser('boss2', password='x')
+        self.client.force_login(self.admin)
+        resp = self.client.post(reverse('core:staff_switch_to', args=[other_admin.pk]))
+        self.assertRedirects(resp, reverse('core:staff_switch'))
+        self.assertEqual(self.client.get(reverse('core:staff_switch')).status_code, 200)
+
+    def test_switch_requires_post(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('core:staff_switch_to', args=[self.target.pk]))
+        self.assertEqual(resp.status_code, 405)

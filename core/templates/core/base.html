@@ -36,7 +36,22 @@
     {% block extra_head %}{% endblock %}
 {% if vapid_public_key %}<meta name="vapid-public-key" content="{{ vapid_public_key }}">{% endif %}
 </head>
-<body{% if user.is_authenticated and user.simple_ui %} class="simple-ui"{% endif %} data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
+<body class="{% if user.is_authenticated and user.simple_ui %}simple-ui{% endif %}{% if impersonator_id %} impersonating{% endif %}" data-ws-enabled="{% if user.is_authenticated %}1{% else %}0{% endif %}">
+    {% if impersonator_id %}
+    <div class="impersonate-bar">
+        <span>🧪 テスト表示中：<strong>{{ user.username }}</strong> として表示しています</span>
+        <form method="post" action="{% url 'core:staff_switch_back' %}">{% csrf_token %}<button type="submit" class="impersonate-back">管理者に戻る</button></form>
+    </div>
+    {% elif user.is_staff %}
+    <nav class="admin-bar" aria-label="運営メニュー">
+        <span class="admin-bar-label">運営</span>
+        <a href="{% url 'admin:index' %}">管理画面</a>
+        <a href="{% url 'admin:core_user_changelist' %}">ユーザー</a>
+        <a href="{% url 'admin:core_duplicatephotoflag_changelist' %}">写真フラグ</a>
+        <a href="{% url 'admin:core_report_changelist' %}">通報</a>
+        <a href="{% url 'core:staff_switch' %}">アカウント切替</a>
+    </nav>
+    {% endif %}
     <header class="header">
         <div class="header-inner">
             <a href="{% url 'core:help_request_list' %}" class="logo" aria-label="suki-match ホーム">

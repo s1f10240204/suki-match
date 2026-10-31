@@ -844,6 +844,63 @@ def photo_review_approved(request):
         {'user_id': u.pk, 'username': u.username} for u in users]})
 
 
+# ---------- 運営: アカウント切替(テスト表示) ----------
+
+def _set_session_user(request, user):
+    """ログインシグナルを発火させずにセッションのユーザーを差し替える。
+    (切替のたびにログインボーナス等が動かないようにするため)"""
+    request.session.cycle_key()
+    request.session['_auth_user_id'] = str(user.pk)
+    request.session['_auth_user_backend'] = 'django.contrib.auth.backends.ModelBackend'
+    request.session['_auth_user_hash'] = user.get_session_auth_hash()
+
+
+@login_required
+def staff_switch(request):
+    """アカウント切替のユーザー一覧。スーパーユーザー本人のときだけ。"""
+    if request.session.get('impersonator_id') or not request.user.is_superuser:
+        return HttpResponseForbidden('権限がありません。')
+    q = request.GET.get('q', '').strip()
+    users = User.objects.filter(is_active=True).exclude(pk=request.user.pk).order_by('-date_joined')
+    if q:
+        users = users.filter(username__icontains=q)
+    return render(request, 'core/staff_switch.html', {'users': users[:50], 'q': q})
+
+
+@login_required
+@require_POST
+def staff_switch_to(request, user_id):
+    if request.session.get('impersonator_id') or not request.user.is_superuser:
+        return HttpResponseForbidden('権限がありません。')
+    target = get_object_or_404(User, pk=user_id, is_active=True)
+    if target.is_superuser:
+        messages.error(request, '管理者アカウントには切り替えできません。')
+        return redirect('core:staff_switch')
+    admin = request.user
+    _set_session_user(request, target)
+    request.session['impersonator_id'] = admin.pk
+    services.notify(admin, 'staff_switch',
+                    f'アカウント切替を開始しました: {target.username} として表示中',
+                    reverse('core:help_request_list'))
+    messages.info(request, f'{target.username} さんとして表示しています（テスト表示中）。')
+    return redirect('core:help_request_list')
+
+
+@login_required
+@require_POST
+def staff_switch_back(request):
+    admin_id = request.session.get('impersonator_id')
+    if not admin_id:
+        return redirect('core:help_request_list')
+    admin = User.objects.filter(pk=admin_id, is_superuser=True, is_active=True).first()
+    if admin is None:
+        return redirect('core:help_request_list')
+    _set_session_user(request, admin)
+    request.session.pop('impersonator_id', None)
+    messages.success(request, '管理者アカウントに戻りました。')
+    return redirect('core:help_request_list')
+
+
 @login_required
 def place_search_api(request):
     """住所・地名・駅名・郵便番号 → 場所候補(近い順)。場所ピッカー用。"""

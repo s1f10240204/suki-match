@@ -13,6 +13,9 @@ def app_context(request):
         'GOOGLE_MAPS_MAP_ID': settings.GOOGLE_MAPS_MAP_ID,
         'EMAIL_CODE_RESEND_SECONDS': settings.EMAIL_CODE_RESEND_SECONDS,
     }
+    session = getattr(request, 'session', None)
+    if session is not None:
+        context['impersonator_id'] = session.get('impersonator_id')
     user = getattr(request, 'user', None)
     if user is None or not user.is_authenticated:
         return context

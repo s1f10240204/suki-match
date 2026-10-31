@@ -1066,7 +1066,31 @@
 (function () {
     var meta = document.querySelector('meta[name="vapid-public-key"]');
     var key = meta ? meta.getAttribute('content') : '';
-    if (!key || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { return; }
+    /* 通知オプトインカード: 登録直後などの最初の画面で自動表示する。
+       iOS の仕様上、許可ダイアログ自体はボタンのタップからしか出せない。 */
+    var prompt = document.getElementById('push-prompt');
+    var DISMISS_KEY = 'sukiPushPromptDismissed';
+    var isDismissed = function () { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (e) { return false; } };
+    var markDismissed = function () { try { localStorage.setItem(DISMISS_KEY, '1'); } catch (e) {} };
+    var supported = !!(key && ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window));
+    if (prompt && !supported && !isDismissed()) {
+        // iPhone の Safari タブでは通知が使えないため、ホーム画面への追加を案内する
+        var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        var standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+        if (isIOS && !standalone) {
+            var guideText = prompt.querySelector('[data-push-text]');
+            if (guideText) { guideText.textContent = 'iPhoneで通知を受け取るには、このページをホーム画面に追加してください。共有ボタンから「ホーム画面に追加」を選んで、ホーム画面のアイコンから開くと通知をオンにできます。'; }
+            var guideEnable = prompt.querySelector('[data-push-enable]');
+            if (guideEnable) { guideEnable.hidden = true; }
+            var guideDismiss = prompt.querySelector('[data-push-dismiss]');
+            if (guideDismiss) {
+                guideDismiss.textContent = 'わかった';
+                guideDismiss.addEventListener('click', function () { markDismissed(); prompt.hidden = true; });
+            }
+            prompt.hidden = false;
+        }
+    }
+    if (!supported) { return; }
     var csrf = function () {
         var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
         return m ? decodeURIComponent(m[1]) : '';
@@ -1094,6 +1118,23 @@
         }).then(function (sub) { return post('/push/subscribe/', sub); });
     };
     if (Notification.permission === 'granted') { subscribe().catch(function () {}); }
+    if (prompt && !isDismissed() && Notification.permission === 'default') {
+        navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); })
+            .then(function (sub) { if (!sub) { prompt.hidden = false; } }).catch(function () {});
+        var enableBtn = prompt.querySelector('[data-push-enable]');
+        if (enableBtn) {
+            enableBtn.addEventListener('click', function () {
+                Notification.requestPermission().then(function (perm) {
+                    markDismissed();
+                    prompt.hidden = true;
+                    if (perm !== 'granted') { toast('通知はオンになりませんでした。あとから設定画面で変更できます。', '', 'warning'); return; }
+                    return subscribe().then(function () { toast('プッシュ通知を有効にしました。', '', 'info'); });
+                }).catch(function () { prompt.hidden = true; });
+            });
+        }
+        var dismissBtn = prompt.querySelector('[data-push-dismiss]');
+        if (dismissBtn) { dismissBtn.addEventListener('click', function () { markDismissed(); prompt.hidden = true; }); }
+    }
     var btn = document.getElementById('push-toggle');
     if (btn) {
         var refreshLabel = function () {

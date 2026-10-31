@@ -1241,3 +1241,18 @@ class PlaceSearchTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.content)
         self.assertEqual(body['results'][0]['name'], '〒115-0042 東京都北区志茂')
+
+
+class PushPromptTests(BaseTestCase):
+    """通知オプトインカード: ログイン中ユーザーにだけ表示されること。"""
+
+    def test_prompt_shown_to_logged_in_user(self):
+        user = make_user('promptuser')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(response, 'id="push-prompt"')
+        self.assertContains(response, 'data-push-enable')
+
+    def test_prompt_hidden_from_anonymous(self):
+        response = self.client.get(reverse('core:privacy'))
+        self.assertNotContains(response, 'id="push-prompt"')

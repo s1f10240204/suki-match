@@ -78,6 +78,16 @@
         {% for message in messages %}
             <div class="message message-{{ message.tags }}">{{ message }}</div>
         {% endfor %}
+        {% if user.is_authenticated %}
+        <div class="push-prompt" id="push-prompt" hidden>
+            <p class="push-prompt-title">🔔 通知をオンにしませんか？</p>
+            <p class="push-prompt-text" data-push-text>近くの新しい依頼や、メッセージ・申し込みが届いたらすぐにお知らせします。</p>
+            <div class="push-prompt-actions">
+                <button type="button" class="btn btn-primary" data-push-enable>通知をオンにする</button>
+                <button type="button" class="btn btn-ghost" data-push-dismiss>あとで</button>
+            </div>
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 

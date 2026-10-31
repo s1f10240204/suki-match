@@ -12,7 +12,7 @@
     {% if r.author_kind == 'user' %}
     <div class="bot-msg bot-msg-user"><p>{{ r.body }}</p><span class="bot-msg-meta">あなた ・ {{ r.created_at|date:"n/j H:i" }}</span></div>
     {% else %}
-    <div class="bot-msg bot-msg-bot"><p>{{ r.body }}</p><span class="bot-msg-meta">{% if r.author_kind == 'bot' %}自動応答{% else %}運営{% endif %} ・ {{ r.created_at|date:"n/j H:i" }}</span></div>
+    <div class="bot-msg bot-msg-bot"><p>{{ r.body }}</p><span class="bot-msg-meta">{% if r.author_kind == 'bot' %}<span class="reply-badge reply-badge-ai">🤖 AIが確認して返信</span>{% else %}<span class="reply-badge reply-badge-op">運営が確認して返信</span>{% endif %} ・ {{ r.created_at|date:"n/j H:i" }}</span></div>
     {% endif %}
     {% endfor %}
 </div>

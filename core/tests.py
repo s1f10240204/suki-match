@@ -2498,6 +2498,16 @@ class SupportTests(BaseTestCase):
         digest = self.client.get(reverse('core:photo_review_digest')).json()
         self.assertEqual(digest['inquiries'], 0)
 
+    def test_reply_badges_distinguish_ai_and_operator(self):
+        inquiry = Inquiry.objects.create(user=self.user, body='質問です')
+        InquiryReply.objects.create(inquiry=inquiry, author_kind=InquiryReply.Author.BOT, body='AIの回答')
+        InquiryReply.objects.create(inquiry=inquiry, author_kind=InquiryReply.Author.OPERATOR, body='運営の回答')
+        resp = self.client.get(reverse('core:inquiry_detail', args=[inquiry.pk]))
+        self.assertContains(resp, 'AIが確認して返信')
+        self.assertContains(resp, '運営が確認して返信')
+        self.assertContains(resp, 'reply-badge-ai')
+        self.assertContains(resp, 'reply-badge-op')
+
     def test_user_followup_reopens_inquiry(self):
         inquiry = Inquiry.objects.create(user=self.user, body='質問です', status=Inquiry.Status.ANSWERED)
         self.client.post(reverse('core:inquiry_detail', args=[inquiry.pk]), {'body': '追加の質問です'})

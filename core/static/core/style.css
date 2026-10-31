@@ -805,3 +805,6 @@ body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
 .inquiry-thread { display: flex; flex-direction: column; gap: 10px; }
 .chip-done { background: var(--primary-soft); color: var(--primary-dark); }
 .chip-warn { background: #fdf0e4; color: #9a5a26; }
+.reply-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.reply-badge-ai { background: #e3ecff; color: #33549e; }
+.reply-badge-op { background: #fdf0e4; color: #9a5a26; }

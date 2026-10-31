@@ -9,7 +9,7 @@
     {% for group in person_groups %}
         {% if group.chats|length == 1 %}
             {% with match=group.chats.0 %}
-            <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
+            <a class="list-row chat-row" data-talk-hide="{{ match.help_request.pk }}" href="{% url 'core:chat' match.pk %}">
                 {% avatar group.person 'md' %}
                 <span class="chat-row-body">
                     <span class="person-name">{{ group.person.username }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>
@@ -20,7 +20,7 @@
             </a>
             {% endwith %}
         {% else %}
-            <a class="list-row chat-row" href="{% url 'core:message_person' group.person.username %}">
+            <a class="list-row chat-row" data-talk-hide="{% for c in group.chats %}{{ c.help_request.pk }}{% if not forloop.last %},{% endif %}{% endfor %}" href="{% url 'core:message_person' group.person.username %}">
                 {% avatar group.person 'md' %}
                 <span class="chat-row-body">
                     <span class="person-name">{{ group.person.username }}{% if group.unread_total %} <span class="unread-badge">{{ group.unread_total }}</span>{% endif %}</span>
@@ -32,7 +32,7 @@
         {% endif %}
     {% endfor %}
     {% for match in group_chats %}
-        <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
+        <a class="list-row chat-row" data-talk-hide="{{ match.help_request.pk }}" href="{% url 'core:chat' match.pk %}">
             <span class="group-avatar" aria-hidden="true">👥</span>
             <span class="chat-row-body">
                 <span class="person-name">{{ match.help_request.title }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>

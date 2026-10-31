@@ -1472,3 +1472,38 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         }
     });
 })();
+// ---------- トーク一覧: 長押しでトークを消す(自分の画面だけ) ----------
+(function () {
+    var rows = document.querySelectorAll('[data-talk-hide]');
+    if (!rows.length) { return; }
+    var csrf = function () {
+        var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    };
+    rows.forEach(function (row) {
+        var timer = null;
+        var suppress = false;
+        row.addEventListener('pointerdown', function () {
+            timer = setTimeout(function () {
+                suppress = true;
+                setTimeout(function () { suppress = false; }, 600);
+                if (!window.confirm('このトークを自分の画面から消しますか？相手の画面には影響しません。新しいメッセージが来ると、また表示されます。')) { return; }
+                var ids = row.dataset.talkHide.split(',').filter(Boolean);
+                (async function () {
+                    for (var i = 0; i < ids.length; i++) {
+                        await fetch('/talks/' + ids[i] + '/hide/', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': csrf() }
+                        });
+                    }
+                    location.reload();
+                })();
+            }, 550);
+        });
+        ['pointerup', 'pointermove', 'pointercancel'].forEach(function (ev) {
+            row.addEventListener(ev, function () { if (timer) { clearTimeout(timer); timer = null; } });
+        });
+        row.addEventListener('click', function (e) { if (suppress) { e.preventDefault(); } });
+        row.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    });
+})();

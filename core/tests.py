@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from . import geocoding, images, line_chat, moderation, services, skills
 from django.core.files.uploadedfile import SimpleUploadedFile
-from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, LineChatState, Match, Message, Notification, PresetTag, SupportQuestion,
+from .models import (ActivityBase, Application, ChatHide, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, LineChatState, Match, Message, Notification, PresetTag, SupportQuestion,
                      PushSubscription, Report, Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
 from .text import normalize_text
@@ -2553,3 +2553,38 @@ class MessageHideTests(BaseTestCase):
         _annotate_chats(self.requester, chats)
         target = next(c for c in chats if c.pk == self.match.pk)
         self.assertEqual(target.last_preview, '最新のメッセージ')
+class TalkHideTests(BaseTestCase):
+    """トーク単位の非表示(自分のメッセージ一覧からだけ消える)。"""
+
+    def setUp(self):
+        super().setUp()
+        self.requester = make_user('talkreq')
+        User.objects.filter(pk=self.requester.pk).update(points=100)
+        self.requester.refresh_from_db()
+        self.req = make_request(self.requester)
+        services.publish_request(self.req)
+        self.helper = make_user('talkhelp')
+        self.match = services.accept_first_come(self.req, self.helper)
+        services.post_message(self.match, self.helper, '最初のメッセージ')
+
+    def test_hide_talk_for_self_only(self):
+        self.client.force_login(self.requester)
+        resp = self.client.post(reverse('core:talk_hide', args=[self.req.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(services.filter_visible_talks(self.requester, services.open_chats(self.requester)), [])
+        self.assertEqual(len(services.filter_visible_talks(self.helper, services.open_chats(self.helper))), 1)
+        # 一覧ページもチャット直行ではなくホームへ戻る
+        resp = self.client.get(reverse('core:message_list'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_new_message_revives_talk(self):
+        ChatHide.objects.create(user=self.requester, help_request=self.req)
+        self.assertEqual(services.filter_visible_talks(self.requester, services.open_chats(self.requester)), [])
+        services.post_message(self.match, self.helper, '新しいメッセージです')
+        self.assertEqual(len(services.filter_visible_talks(self.requester, services.open_chats(self.requester))), 1)
+
+    def test_hide_requires_participant(self):
+        outsider = make_user('talkoutsider')
+        self.client.force_login(outsider)
+        resp = self.client.post(reverse('core:talk_hide', args=[self.req.pk]))
+        self.assertEqual(resp.status_code, 404)

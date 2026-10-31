@@ -808,3 +808,5 @@ body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
 .reply-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .reply-badge-ai { background: #e3ecff; color: #33549e; }
 .reply-badge-op { background: #fdf0e4; color: #9a5a26; }
+.chat-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.bubble { -webkit-touch-callout: none; }

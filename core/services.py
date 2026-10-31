@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from . import images, line_api, moderation
 from .geocoding import area_label_for
-from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, Match, Message, MessageRead,
+from .models import (ActivityBase, Application, ChatHide, DuplicatePhotoFlag, HelpRequest, Match, Message, MessageRead,
                      MessageReaction,
                      Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User,
                      MissionClaim, UserBlock)
@@ -1214,6 +1214,27 @@ def group_chats_by_person(user, chats):
     group_chats.sort(
         key=lambda c: c.last_message.created_at if c.last_message else c.created_at, reverse=True)
     return person_groups, group_chats
+
+
+def filter_visible_talks(user, chats):
+    """自分で消したトークを一覧から除く(新しいメッセージが来たトークは再表示)。"""
+    if not chats:
+        return chats
+    hides = {h.help_request_id: h.created_at for h in ChatHide.objects.filter(
+        user=user, help_request_id__in=[c.help_request_id for c in chats])}
+    if not hides:
+        return chats
+    visible = []
+    for chat in chats:
+        hidden_at = hides.get(chat.help_request_id)
+        if hidden_at is None:
+            visible.append(chat)
+            continue
+        latest = (chat.help_request.messages.order_by('-created_at')
+                  .values_list('created_at', flat=True).first())
+        if latest is not None and latest > hidden_at:
+            visible.append(chat)
+    return visible
 
 
 def purge_expired_chat_messages():

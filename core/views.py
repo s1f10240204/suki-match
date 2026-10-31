@@ -22,7 +22,7 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from . import geocoding
 from .geocoding import area_label_for
-from .models import (Application, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, Match, Message,
+from .models import (Application, ChatHide, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, Match, Message,
                      PointTransaction, PresetTag, SupportQuestion,
                      PushSubscription,
                      Review, Sanction, Skill, User, UserBlock)
@@ -423,8 +423,21 @@ def _annotate_chats(user, chats):
 
 
 @login_required
+@require_POST
+def talk_hide(request, pk):
+    """トークを自分のメッセージ一覧から消す(相手には影響しない)。"""
+    help_request = get_object_or_404(HelpRequest, pk=pk)
+    if request.user.pk not in services.chat_participants(help_request):
+        raise Http404
+    ChatHide.objects.update_or_create(
+        user=request.user, help_request=help_request,
+        defaults={'created_at': timezone.now()})
+    return JsonResponse({'ok': True})
+
+
+@login_required
 def message_list(request):
-    chats = services.open_chats(request.user)
+    chats = services.filter_visible_talks(request.user, services.open_chats(request.user))
     if not chats:
         messages.info(request, '現在はマッチングしていないため、メッセージ機能は使用できません。')
         return redirect('core:help_request_list')
@@ -440,7 +453,7 @@ def message_list(request):
 def message_person(request, username):
     """同じ相手とのトークを依頼ごとに並べるページ。"""
     person = get_object_or_404(User, username=username, is_active=True)
-    chats = services.open_chats(request.user)
+    chats = services.filter_visible_talks(request.user, services.open_chats(request.user))
     _annotate_chats(request.user, chats)
     person_groups, _group_chats = services.group_chats_by_person(request.user, chats)
     group = next((g for g in person_groups if g['person'].pk == person.pk), None)

@@ -504,6 +504,23 @@ class ActivityBase(models.Model):
         verbose_name = verbose_name_plural = '活動拠点'
 
 
+class ChatHide(models.Model):
+    """トーク(依頼単位のチャット)を自分のメッセージ一覧から消した記録。
+    新しいメッセージが来たら再表示される。"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hidden_chats',
+                             verbose_name='消した人')
+    help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE,
+                                     related_name='hidden_by_users', verbose_name='依頼')
+    created_at = models.DateTimeField('消した日時', default=timezone.now)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'トーク非表示'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'help_request'], name='one_hide_per_user_request'),
+        ]
+
+
 class SupportQuestion(models.Model):
     """サポートbotへの質問ログ(答えられなかった質問を把握してFAQを増やすため)。"""
 

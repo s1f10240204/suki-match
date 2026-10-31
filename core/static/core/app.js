@@ -774,8 +774,16 @@
             copyMessage(Number(reactionBar.dataset.messageId));
             reactionBar.hidden = true;
         });
+        var hideAction = document.createElement('button');
+        hideAction.type = 'button';
+        hideAction.textContent = '🗑 自分の画面から消す';
+        hideAction.addEventListener('click', function () {
+            hideMessage(Number(reactionBar.dataset.messageId));
+            reactionBar.hidden = true;
+        });
         actionsRow.appendChild(replyAction);
         actionsRow.appendChild(copyAction);
+        actionsRow.appendChild(hideAction);
         reactionBar.appendChild(actionsRow);
         document.body.appendChild(reactionBar);
 
@@ -819,6 +827,24 @@
             try { document.execCommand('copy'); } catch (e) {}
             document.body.removeChild(ta);
         };
+        var hideMessage = function (id) {
+            if (!window.confirm('このメッセージを自分の画面からだけ消します。相手の画面には残ります。よろしいですか？')) { return; }
+            fetch('/messages/' + id + '/hide/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken() }
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d && d.ok) {
+                    var bubble = log.querySelector('[data-message-id="' + id + '"]');
+                    if (bubble) {
+                        var row = bubble.closest('.bubble-row');
+                        if (row) { row.remove(); } else { bubble.remove(); }
+                    }
+                    var holder = log.querySelector('[data-reactions-for="' + id + '"]');
+                    if (holder) { holder.remove(); }
+                    toast('自分の画面から消しました。', '', 'info');
+                }
+            }).catch(function () { toast('消せませんでした。', '', 'warning'); });
+        };
         var copyMessage = function (id) {
             var bubble = log.querySelector('[data-message-id="' + id + '"]');
             var textEl = bubble ? bubble.querySelector('.bubble-text') : null;
@@ -861,7 +887,7 @@
             reactionBar.hidden = false;
             var w = reactionBar.offsetWidth || 300;
             reactionBar.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - w - 8)) + 'px';
-            reactionBar.style.top = Math.max(8, y - 118) + 'px';
+            reactionBar.style.top = Math.max(8, y - 150) + 'px';
         };
         log.addEventListener('pointerdown', function (e) {
             var bubble = e.target.closest('[data-message-id]');

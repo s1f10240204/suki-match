@@ -378,13 +378,18 @@ def chat(request, pk):
     history_visible = services.chat_history_visible(match)
     chat_messages = []
     if history_visible:
-        for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads', 'reactions'):
+        for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads', 'reactions', 'hidden_by', 'reply_to__hidden_by'):
             if m.is_hidden and m.sender_id != request.user.pk:
+                continue
+            if any(u.pk == request.user.pk for u in m.hidden_by.all()):
                 continue
             info = services.stamp_info(m.stamp)
             m.stamp_emoji, m.stamp_label = info if info else ('', '')
             if m.reply_to_id:
-                m.reply_excerpt = services.reply_excerpt(m.reply_to)
+                if any(u.pk == request.user.pk for u in m.reply_to.hidden_by.all()):
+                    m.reply_excerpt = '(自分の画面から消したメッセージ)'
+                else:
+                    m.reply_excerpt = services.reply_excerpt(m.reply_to)
             m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
             summary = services.reaction_summary(m)
             for entry in summary:
@@ -411,10 +416,10 @@ def chat(request, pk):
 def _annotate_chats(user, chats):
     for match in chats:
         match.other = match.other_user(user)
-        match.last_message = match.help_request.messages.exclude(is_hidden=True).order_by('-created_at').first()
+        visible = match.help_request.messages.exclude(is_hidden=True).exclude(hidden_by=user)
+        match.last_message = visible.order_by('-created_at').first()
         match.last_preview = services.reply_excerpt(match.last_message) if match.last_message else ''
-        match.unread_count = (match.help_request.messages.filter(is_hidden=False)
-                              .exclude(sender=user).exclude(reads__user=user).count())
+        match.unread_count = (visible.exclude(sender=user).exclude(reads__user=user).count())
 
 
 @login_required
@@ -997,6 +1002,29 @@ def inquiry_detail(request, pk):
 
 
 # --- お問い合わせ自動応答API(トークン認証。digest は写真審査と共用) ---
+
+@login_required
+@require_POST
+def message_hide(request, pk):
+    """メッセージを自分の画面からだけ消す(相手には残る)。"""
+    message = get_object_or_404(Message, pk=pk)
+    help_request = message.help_request or message.match.help_request
+    if request.user.pk not in services.chat_participants(help_request):
+        raise Http404
+    message.hidden_by.add(request.user)
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_GET
+def support_inquiries_recent(request):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    inquiries = Inquiry.objects.select_related('user').order_by('-created_at')[:20]
+    return JsonResponse({'inquiries': [
+        {'id': q.pk, 'username': q.user.username, 'status': q.status, 'body': q.body,
+         'created_at': q.created_at.isoformat()} for q in inquiries]})
+
 
 @csrf_exempt
 @require_GET

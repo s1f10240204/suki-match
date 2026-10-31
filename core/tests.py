@@ -2514,3 +2514,42 @@ class SupportTests(BaseTestCase):
         inquiry.refresh_from_db()
         self.assertEqual(inquiry.status, Inquiry.Status.OPEN)
         self.assertEqual(inquiry.replies.get().author_kind, InquiryReply.Author.USER)
+class MessageHideTests(BaseTestCase):
+    """チャットの「自分の画面から消す」(相手には残る)。"""
+
+    def setUp(self):
+        super().setUp()
+        self.requester = make_user('hidereq')
+        User.objects.filter(pk=self.requester.pk).update(points=100)
+        self.requester.refresh_from_db()
+        self.req = make_request(self.requester)
+        services.publish_request(self.req)
+        self.helper = make_user('hidehelp')
+        self.match = services.accept_first_come(self.req, self.helper)
+        self.msg = services.post_message(self.match, self.helper, '消したいメッセージです')
+
+    def test_hide_for_self_only(self):
+        self.client.force_login(self.requester)
+        resp = self.client.post(reverse('core:message_hide', args=[self.msg.pk]))
+        self.assertEqual(resp.status_code, 200)
+        page = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertNotContains(page, '消したいメッセージです')
+        self.client.force_login(self.helper)
+        page = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertContains(page, '消したいメッセージです')
+
+    def test_hide_requires_participant(self):
+        outsider = make_user('hideoutsider')
+        self.client.force_login(outsider)
+        resp = self.client.post(reverse('core:message_hide', args=[self.msg.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_hidden_message_excluded_from_preview(self):
+        services.post_message(self.match, self.helper, '最新のメッセージ')
+        latest = services.post_message(self.match, self.requester, '消すとプレビューが変わる')
+        latest.hidden_by.add(self.requester)
+        chats = services.open_chats(self.requester)
+        from .views import _annotate_chats
+        _annotate_chats(self.requester, chats)
+        target = next(c for c in chats if c.pk == self.match.pk)
+        self.assertEqual(target.last_preview, '最新のメッセージ')

@@ -1507,3 +1507,18 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         row.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     });
 })();
+// ---------- チャットの長押しヒント(閉じたら端末に記憶) ----------
+(function () {
+    var hint = document.getElementById('chat-hint');
+    if (!hint) { return; }
+    var KEY = 'sukiChatHintDismissed';
+    try { if (localStorage.getItem(KEY) === '1') { return; } } catch (e) {}
+    hint.hidden = false;
+    var btn = document.getElementById('chat-hint-close');
+    if (btn) {
+        btn.addEventListener('click', function () {
+            hint.hidden = true;
+            try { localStorage.setItem(KEY, '1'); } catch (e) {}
+        });
+    }
+})();

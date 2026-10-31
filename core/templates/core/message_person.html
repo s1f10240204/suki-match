@@ -5,6 +5,7 @@
 
 {% block content %}
 <div class="page-head"><h1>メッセージ</h1></div>
+<p class="help list-hint">🗑 トークを長押しすると、自分の画面から消せます（相手の画面には残ります）</p>
 <section class="card">
     <a href="{% url 'core:public_profile' person.username %}" class="person">
         {% avatar person %}

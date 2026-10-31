@@ -22,6 +22,11 @@
 {% include 'core/_work_helper.html' with wm=match %}
 {% endif %}
 
+<div class="chat-hint" id="chat-hint" hidden>
+    <span>💡 メッセージを<strong>長押し</strong>すると、返信・リアクション・<strong>自分の画面から消す</strong>ができます</span>
+    <button type="button" class="chat-hint-close" id="chat-hint-close" aria-label="ヒントを閉じる">×</button>
+</div>
+
 <div class="chat-log" id="chat-log" data-chat-id="{{ match.pk }}" data-user-id="{{ user.pk }}"{% if is_group %} data-group="1"{% endif %}
      data-report-url="{% url 'core:report_user' other.username %}">
     <p class="chat-note">連絡先(LINE・電話番号など)の交換や、依頼と関係のない誘いはお控えください。やり取りは安全のため確認されることがあります。</p>

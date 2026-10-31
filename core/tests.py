@@ -2538,6 +2538,12 @@ class MessageHideTests(BaseTestCase):
         page = self.client.get(reverse('core:chat', args=[self.match.pk]))
         self.assertContains(page, '消したいメッセージです')
 
+    def test_chat_page_shows_long_press_hint(self):
+        self.client.force_login(self.requester)
+        page = self.client.get(reverse('core:chat', args=[self.match.pk]))
+        self.assertContains(page, 'id="chat-hint"')
+        self.assertContains(page, '自分の画面から消す')
+
     def test_hide_requires_participant(self):
         outsider = make_user('hideoutsider')
         self.client.force_login(outsider)

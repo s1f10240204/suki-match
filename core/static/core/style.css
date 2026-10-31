@@ -802,7 +802,8 @@ body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
 .bot-form input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #e2d9cd; border-radius: 999px; font: inherit; font-size: 16px; background: #fff; }
 .bot-unresolved { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
 .inquiry-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.inquiry-body { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inquiry-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inquiry-row .chip { flex-shrink: 0; white-space: nowrap; }
 .inquiry-thread { display: flex; flex-direction: column; gap: 10px; }
 .chip-done { background: var(--primary-soft); color: var(--primary-dark); }
 .chip-warn { background: #fdf0e4; color: #9a5a26; }

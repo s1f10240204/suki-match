@@ -122,6 +122,26 @@
                 {% endfor %}
             {% endif %}
             <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>
+            {% if participants %}
+            <div class="work-panel">
+                <p class="work-title">⏱ 作業時間と精算見込み</p>
+                {% for p in participants %}
+                <div class="work-row">
+                    <span>{{ p.helper.username }}さん:
+                        {% if p.work_measured %}実測 約{{ p.work_measured }}分{% elif p.work_started_at %}作業中{% else %}未開始{% endif %}{% if p.declared_minutes %} / 申告 {{ p.declared_minutes }}分{% endif %}
+                        → 精算 {{ p.work_basis }}分（{{ p.work_basis }}pt）</span>
+                    {% if p.declared_minutes and p.work_started_at and not p.declaration_approved %}
+                    <form method="post" action="{% url 'core:work_declaration_review' p.pk %}" class="work-review">
+                        {% csrf_token %}
+                        <button name="decision" value="approve" class="btn btn-primary btn-sm">申告を承認</button>
+                        <button name="decision" value="reject" class="btn btn-ghost btn-sm">却下</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                <p class="meta">完了すると上記の時間で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
+            </div>
+            {% endif %}
             <form method="post" action="{% url 'core:complete_help_request' help_request.pk %}">
                 {% csrf_token %}
                 <button class="btn btn-primary btn-block">完了にする</button>
@@ -130,6 +150,7 @@
 
     {% elif is_helper and help_request.status == 'in_progress' %}
         <a href="{% url 'core:chat' match.pk %}" class="btn btn-primary btn-block">チャットを開く</a>
+        {% if my_match %}{% include 'core/_work_helper.html' with wm=my_match %}{% endif %}
         <p class="meta">終わったら、依頼者が「完了」にするとポイントが付与されます。</p>
 
     {% elif accepting %}

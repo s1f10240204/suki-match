@@ -1092,7 +1092,9 @@ class PointsEconomyTests(BaseTestCase):
         self.assertEqual((helper.points, helper.total_earned), (30, 30))
         self.assertEqual(helper.level, level_for_points(30))
 
-    def test_payout_split_with_remainder(self):
+    def test_payout_per_helper_full_posted_time(self):
+        # 実績ベース精算: タイマーも申告もなければ各自が投稿時間ぶんを受け取り、
+        # 預かり分を超えた分は依頼者の残高から払われる
         requester = self._funded('sreq', 100)
         hr = make_request(requester, duration_minutes=31, headcount=2)
         services.publish_request(hr)
@@ -1102,7 +1104,9 @@ class PointsEconomyTests(BaseTestCase):
         services.complete(hr, requester)
         h1.refresh_from_db()
         h2.refresh_from_db()
-        self.assertEqual((h1.points, h2.points), (16, 15))
+        requester.refresh_from_db()
+        self.assertEqual((h1.points, h2.points), (31, 31))
+        self.assertEqual(requester.points, 100 - 31 - 31)
 
     def test_insufficient_points_blocks_publish(self):
         requester = self._funded('breq', 10)
@@ -1296,3 +1300,95 @@ class ReplyTests(BaseTestCase):
         response = self.client.get(reverse('core:chat', args=[self.match.pk]))
         self.assertContains(response, 'bubble-quote')
         self.assertContains(response, '先に着いてます')
+
+
+class WorkTimerTests(BaseTestCase):
+    """作業タイマー実測 + 申告のハイブリッド精算。"""
+
+    def _setup(self, name, requester_points=100, duration=15):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=requester_points)
+        requester.refresh_from_db()
+        hr = make_request(requester, duration_minutes=duration)
+        services.publish_request(hr)
+        helper = make_user(f'{name}help')
+        match = services.accept_first_come(hr, helper)
+        return requester, hr, helper, match
+
+    def _set_timer(self, match, minutes_ago_start, minutes_ago_end=0):
+        now = timezone.now()
+        Match.objects.filter(pk=match.pk).update(
+            work_started_at=now - timedelta(minutes=minutes_ago_start),
+            work_ended_at=now - timedelta(minutes=minutes_ago_end) if minutes_ago_end is not None else None)
+        match.refresh_from_db()
+
+    def test_start_stop_rules(self):
+        _, _, helper, match = self._setup('w1')
+        with self.assertRaises(services.ServiceError):
+            services.stop_work(match, helper)
+        services.start_work(match, helper)
+        self.assertIsNotNone(match.work_started_at)
+        with self.assertRaises(services.ServiceError):
+            services.start_work(match, helper)
+        services.stop_work(match, helper)
+        self.assertIsNotNone(match.work_ended_at)
+        with self.assertRaises(services.ServiceError):
+            services.start_work(match, make_user('w1other'))
+
+    def test_measured_rounding_and_cap(self):
+        _, hr, _, match = self._setup('w2', duration=15)
+        self._set_timer(match, 27)  # 27分作業 → 5分切り上げで30分
+        self.assertEqual(services.measured_minutes(match, hr), 30)
+        self._set_timer(match, 50)  # 上限は投稿(15分)の2倍=30分
+        self.assertEqual(services.measured_minutes(match, hr), 30)
+
+    def test_overtime_charged_to_requester(self):
+        # 本件の発端: 15分の依頼で30分掛かったら、差額15ptが依頼者から引かれる
+        requester, hr, helper, match = self._setup('w3', requester_points=100, duration=15)
+        self._set_timer(match, 27)
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(helper.points, 30)
+        self.assertEqual(requester.points, 100 - 15 - 15)
+
+    def test_shorter_work_refunds_requester(self):
+        requester, hr, helper, match = self._setup('w4', requester_points=100, duration=30)
+        self._set_timer(match, 8)  # 8分 → 切り上げ10分
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(helper.points, 10)
+        self.assertEqual(requester.points, 100 - 10)
+
+    def test_insufficient_balance_pays_what_is_available(self):
+        requester, hr, helper, match = self._setup('w5', requester_points=15, duration=15)
+        self._set_timer(match, 27)  # 30分ぶん発生するが残高は預かり15のみ
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(helper.points, 15)
+        self.assertEqual(requester.points, 0)
+
+    def test_declaration_without_timer_is_used(self):
+        requester, hr, helper, match = self._setup('w6', requester_points=100, duration=15)
+        services.declare_minutes(match, helper, 40)  # 上限2倍で30分に丸められる
+        self.assertTrue(match.declaration_approved)
+        self.assertEqual(services.effective_minutes(match, hr), 30)
+        services.complete(hr, requester)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 30)
+
+    def test_correction_declaration_needs_requester_approval(self):
+        requester, hr, helper, match = self._setup('w7', requester_points=100, duration=30)
+        self._set_timer(match, 27)  # 実測30分
+        services.declare_minutes(match, helper, 20)  # 訂正申告20分
+        match.refresh_from_db()
+        self.assertFalse(match.declaration_approved)
+        self.assertEqual(services.effective_minutes(match, hr), 30)  # 承認までは実測
+        services.review_declaration(match, requester, approve=True)
+        self.assertEqual(services.effective_minutes(match, hr), 20)
+        services.review_declaration(match, requester, approve=False)
+        match.refresh_from_db()
+        self.assertIsNone(match.declared_minutes)
+        self.assertEqual(services.effective_minutes(match, hr), 30)

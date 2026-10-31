@@ -138,12 +138,21 @@ def help_request_detail(request, pk):
     is_helper = user.is_authenticated and help_request.matches.filter(
         helper=user, status=Match.Status.IN_PROGRESS).exists()
 
+    participants = list(help_request.active_matches)
+    my_match = None
+    if is_requester or is_helper:
+        now = timezone.now()
+        for participant in participants:
+            participant.work_basis = services.effective_minutes(participant, help_request, now)
+            participant.work_measured = services.measured_minutes(participant, help_request, now)
+            if is_helper and participant.helper_id == user.pk:
+                my_match = participant
     context = {
-        'help_request': help_request, 'match': match,
+        'help_request': help_request, 'match': match, 'my_match': my_match,
         'is_requester': is_requester, 'is_helper': is_helper,
         'show_exact': services.can_view_exact_location(user, help_request),
         'cancel_form': CancelForm(),
-        'participants': list(help_request.active_matches),
+        'participants': participants,
         'slots_left': help_request.slots_left,
         'accepting': help_request.accepting,
     }
@@ -211,6 +220,48 @@ def approve_application(request, pk):
     _run(request, lambda: services.approve(application, request.user),
          f'{application.applicant.username}さんにお願いしました。')
     return redirect('core:help_request_detail', pk=application.help_request_id)
+
+
+def _work_back(request, match):
+    nxt = request.POST.get('next') or ''
+    if nxt.startswith('/') and not nxt.startswith('//'):
+        return redirect(nxt)
+    return redirect('core:help_request_detail', pk=match.help_request_id)
+
+
+@login_required
+@require_POST
+def work_start(request, pk):
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    _run(request, lambda: services.start_work(match, request.user), '作業を開始しました。')
+    return _work_back(request, match)
+
+
+@login_required
+@require_POST
+def work_stop(request, pk):
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    _run(request, lambda: services.stop_work(match, request.user), '作業を終了しました。お疲れさまでした。')
+    return _work_back(request, match)
+
+
+@login_required
+@require_POST
+def work_declare(request, pk):
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    _run(request, lambda: services.declare_minutes(match, request.user, request.POST.get('minutes')),
+         '作業時間を申告しました。')
+    return _work_back(request, match)
+
+
+@login_required
+@require_POST
+def work_declaration_review(request, pk):
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    approve = request.POST.get('decision') == 'approve'
+    _run(request, lambda: services.review_declaration(match, request.user, approve),
+         '申告を承認しました。' if approve else '申告を却下しました。')
+    return _work_back(request, match)
 
 
 @login_required
@@ -287,6 +338,10 @@ def chat(request, pk):
                 entry['mine'] = request.user.pk in entry['user_ids']
             m.reaction_list = summary
             chat_messages.append(m)
+    if match.status == Match.Status.IN_PROGRESS:
+        now = timezone.now()
+        match.work_basis = services.effective_minutes(match, help_request, now)
+        match.work_measured = services.measured_minutes(match, help_request, now)
     members = [help_request.requester] + [m.helper for m in
                                           help_request.matches.exclude(status=Match.Status.CANCELED)
                                           .select_related('helper').order_by('created_at')]

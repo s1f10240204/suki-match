@@ -619,6 +619,18 @@
         });
     }
 
+    // ---------- 作業タイマーの経過表示 ----------
+    document.querySelectorAll('[data-elapsed-since]').forEach(function (el) {
+        var started = Date.parse(el.getAttribute('data-elapsed-since'));
+        if (isNaN(started)) { return; }
+        var render = function () {
+            var min = Math.max(0, Math.floor((Date.now() - started) / 60000));
+            el.textContent = '（開始から約' + min + '分経過）';
+        };
+        render();
+        setInterval(render, 30000);
+    });
+
     // ---------- チャット ----------
     var log = document.getElementById('chat-log');
     if (log) {

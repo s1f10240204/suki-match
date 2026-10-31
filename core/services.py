@@ -2,7 +2,7 @@
 import json
 from collections import defaultdict
 from datetime import timedelta
-from math import asin, cos, radians, sin, sqrt
+from math import asin, ceil, cos, radians, sin, sqrt
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -435,6 +435,106 @@ def approve(application, user):
     return match
 
 
+# ---------- 作業時間(タイマー実測 + 申告) ----------
+
+WORK_ROUND_MINUTES = 5   # 実績時間は5分単位に切り上げる
+WORK_CAP_MULTIPLIER = 2  # 自動精算の上限は投稿時間の2倍まで
+
+
+def _round_up_minutes(minutes):
+    return int(ceil(minutes / WORK_ROUND_MINUTES)) * WORK_ROUND_MINUTES
+
+
+def measured_minutes(match, help_request, now=None):
+    """タイマー実測の分数(5分切り上げ、上限は投稿時間の2倍)。未開始なら None。"""
+    if not match.work_started_at:
+        return None
+    now = now or timezone.now()
+    end = match.work_ended_at or now
+    seconds = (end - match.work_started_at).total_seconds()
+    if seconds <= 0:
+        return None
+    minutes = _round_up_minutes(seconds / 60)
+    posted = help_request.duration_minutes or 0
+    if posted:
+        minutes = min(minutes, posted * WORK_CAP_MULTIPLIER)
+    return max(WORK_ROUND_MINUTES, minutes)
+
+
+def effective_minutes(match, help_request, now=None):
+    """精算に使う分数。優先順位: 承認された申告 > 実測 > 申告(実測がない場合) > 投稿時間。"""
+    posted = help_request.duration_minutes or 0
+    measured = measured_minutes(match, help_request, now)
+    if match.declared_minutes:
+        declared = _round_up_minutes(match.declared_minutes)
+        if posted:
+            declared = min(declared, posted * WORK_CAP_MULTIPLIER)
+        if measured is None or match.declaration_approved:
+            return max(WORK_ROUND_MINUTES, declared)
+    if measured is not None:
+        return measured
+    return posted
+
+
+def _own_active_match(match, user):
+    if match.helper_id != user.pk:
+        raise ServiceError('このマッチングのヘルパーではありません。')
+    if match.status != Match.Status.IN_PROGRESS:
+        raise ServiceError('進行中のマッチングではありません。')
+
+
+def start_work(match, user):
+    _own_active_match(match, user)
+    if match.work_started_at:
+        raise ServiceError('すでに作業を開始しています。')
+    match.work_started_at = timezone.now()
+    match.save(update_fields=['work_started_at'])
+    return match
+
+
+def stop_work(match, user):
+    _own_active_match(match, user)
+    if not match.work_started_at:
+        raise ServiceError('まだ作業を開始していません。')
+    if match.work_ended_at:
+        raise ServiceError('すでに作業を終了しています。')
+    match.work_ended_at = timezone.now()
+    match.save(update_fields=['work_ended_at'])
+    return match
+
+
+def declare_minutes(match, user, minutes):
+    """実績時間の申告。実測がなければそのまま採用し、実測がある場合は
+    訂正申告として依頼者の承認待ちにする。"""
+    _own_active_match(match, user)
+    try:
+        minutes = int(minutes)
+    except (TypeError, ValueError):
+        raise ServiceError('分数を入力してください。')
+    if minutes < 1 or minutes > 600:
+        raise ServiceError('申告時間は1〜600分で入力してください。')
+    match.declared_minutes = minutes
+    match.declaration_approved = match.work_started_at is None
+    match.save(update_fields=['declared_minutes', 'declaration_approved'])
+    return match
+
+
+def review_declaration(match, user, approve):
+    """依頼者が訂正申告を承認/却下する。却下すると申告は取り消される。"""
+    if match.help_request.requester_id != user.pk:
+        raise ServiceError('申告を確認できるのは依頼者だけです。')
+    if match.status != Match.Status.IN_PROGRESS or not match.declared_minutes:
+        raise ServiceError('確認できる申告がありません。')
+    if approve:
+        match.declaration_approved = True
+        match.save(update_fields=['declaration_approved'])
+    else:
+        match.declared_minutes = None
+        match.declaration_approved = False
+        match.save(update_fields=['declared_minutes', 'declaration_approved'])
+    return match
+
+
 def complete(help_request, user):
     """依頼者が完了を確定。参加していた全ヘルパーにポイントを付与する。"""
     if help_request.requester_id != user.pk:
@@ -445,10 +545,22 @@ def complete(help_request, user):
     awarded = {}
     with transaction.atomic():
         if help_request.points_cost and not help_request.points_settled:
-            # 振替モデル: 依頼者が預けたポイントを参加ヘルパー全員で分ける(端数は先頭のヘルパーへ)
-            share, remainder = divmod(help_request.points_cost, len(matches))
-            for i, match in enumerate(matches):
-                awarded[match.pk] = share + (remainder if i == 0 else 0)
+            # 実績ベース精算: 各ヘルパーに実効分数×単価を支払う。預かり分を
+            # 超えた分は依頼者の残高から追加で引き、余った分は依頼者へ返す。
+            now = timezone.now()
+            dues = {m.pk: effective_minutes(m, help_request, now) * POINTS_PER_MINUTE
+                    for m in matches}
+            requester = User.objects.select_for_update().get(pk=help_request.requester_id)
+            available = help_request.points_cost + requester.points
+            paid_total = 0
+            for m in matches:
+                pay = min(dues[m.pk], max(0, available - paid_total))
+                awarded[m.pk] = pay
+                paid_total += pay
+            delta = paid_total - help_request.points_cost
+            if delta:
+                requester.points -= delta
+                requester.save(update_fields=['points'])
             help_request.points_settled = True
         else:
             for match in matches:

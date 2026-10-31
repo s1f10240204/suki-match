@@ -286,6 +286,11 @@ class Match(models.Model):
     canceled_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     cancel_reason = models.CharField('キャンセル理由', max_length=200, blank=True)
     penalized = models.BooleanField('ペナルティ対象', default=False)
+    # 作業時間の実測(タイマー)と申告。精算は effective_minutes で決める
+    work_started_at = models.DateTimeField('作業開始', null=True, blank=True)
+    work_ended_at = models.DateTimeField('作業終了', null=True, blank=True)
+    declared_minutes = models.PositiveIntegerField('申告時間(分)', null=True, blank=True)
+    declaration_approved = models.BooleanField('申告の承認', default=False)
 
     class Meta:
         verbose_name = verbose_name_plural = 'マッチング'

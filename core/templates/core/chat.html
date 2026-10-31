@@ -18,6 +18,10 @@
     {% endif %}
 </div>
 
+{% if chat_open and user.pk == match.helper_id %}
+{% include 'core/_work_helper.html' with wm=match %}
+{% endif %}
+
 <div class="chat-log" id="chat-log" data-chat-id="{{ match.pk }}" data-user-id="{{ user.pk }}"{% if is_group %} data-group="1"{% endif %}
      data-report-url="{% url 'core:report_user' other.username %}">
     <p class="chat-note">連絡先(LINE・電話番号など)の交換や、依頼と関係のない誘いはお控えください。やり取りは安全のため確認されることがあります。</p>

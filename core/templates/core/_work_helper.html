@@ -1,0 +1,27 @@
+<div class="work-panel">
+    <p class="work-title">⏱ 作業時間</p>
+    {% if not wm.work_started_at %}
+        <form method="post" action="{% url 'core:work_start' wm.pk %}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+            <button class="btn btn-primary btn-block">▶ 作業開始</button>
+        </form>
+        <p class="meta">作業を始める時に押してください。実際に掛かった時間でポイントが精算されます。</p>
+    {% elif not wm.work_ended_at %}
+        <p class="work-live">作業中…<span data-elapsed-since="{{ wm.work_started_at|date:'c' }}"></span></p>
+        <form method="post" action="{% url 'core:work_stop' wm.pk %}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+            <button class="btn btn-primary btn-block">⏹ 作業終了</button>
+        </form>
+    {% else %}
+        <p class="work-done">実測時間: 約{{ wm.work_basis }}分（この時間で精算されます）</p>
+    {% endif %}
+    {% if wm.declared_minutes %}
+        <p class="meta">申告: {{ wm.declared_minutes }}分{% if wm.work_started_at and not wm.declaration_approved %}（訂正申告・依頼者の確認待ち）{% elif wm.declaration_approved %}（申告どおり精算されます）{% endif %}</p>
+    {% endif %}
+    <form method="post" action="{% url 'core:work_declare' wm.pk %}" class="work-declare">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+        <label>{% if wm.work_started_at %}時間を訂正する{% else %}掛かった時間を申告する{% endif %}</label>
+        <input type="number" name="minutes" min="1" max="600" required placeholder="分">
+        <button class="btn btn-ghost btn-sm">申告する</button>
+    </form>
+</div>

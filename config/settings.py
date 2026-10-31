@@ -249,6 +249,7 @@ SITE_URL = os.environ.get('SITE_URL', f'https://{RENDER_EXTERNAL_HOSTNAME}' if R
                           else 'http://127.0.0.1:8000')
 # 定期処理(/tasks/run/)を外部(GitHub Actions)から呼ぶときの合言葉
 TASKS_TOKEN = os.environ.get('TASKS_TOKEN', '')
+PHOTO_REVIEW_TOKEN = os.environ.get('PHOTO_REVIEW_TOKEN', '')  # 顔写真の自動審査API用トークン
 
 # --- Suki-match ---
 # Google Maps JavaScript API(地図表示と住所検索)。未設定時は OpenStreetMap + 国土地理院の住所検索で代替する

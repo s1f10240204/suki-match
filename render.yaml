@@ -39,6 +39,8 @@ services:
         sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
+      - key: PHOTO_REVIEW_TOKEN   # 顔写真の自動審査API用トークン
+        sync: false
 
 databases:
   - name: suki-match-db

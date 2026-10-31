@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.templatetags.static import static
 
 from . import images, line_api, line_chat, services, skills
@@ -556,6 +556,74 @@ def area_label_api(request):
     except (KeyError, TypeError, ValueError):
         return JsonResponse({'label': ''})
     return JsonResponse({'label': area_label_for(lat, lng)})
+
+
+# ---------- 顔写真の自動審査API(Muse の見張り用、トークン認証) ----------
+
+def _photo_review_token_ok(request):
+    import hmac
+    expected = settings.PHOTO_REVIEW_TOKEN
+    provided = request.headers.get('X-Review-Token', '')
+    return bool(expected) and hmac.compare_digest(provided, expected)
+
+
+def _pending_photo_users():
+    return (User.objects.filter(avatar_status=User.PhotoStatus.PENDING)
+            .exclude(avatar='').order_by('pk'))
+
+
+def photo_review_digest(request):
+    """審査待ちの件数とフィンガープリント(公開)。見張りスクリプトが
+    トークンなしで「新しい審査待ちが出たか」だけを確認するために使う。"""
+    import hashlib
+    users = list(_pending_photo_users())
+    fingerprint = '|'.join(f'{u.pk}:{u.avatar.name}' for u in users)
+    digest = hashlib.sha256(fingerprint.encode()).hexdigest()
+    return JsonResponse({'count': len(users), 'digest': digest})
+
+
+@csrf_exempt
+@require_GET
+def photo_review_pending(request):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    return JsonResponse({'pending': [
+        {'user_id': u.pk, 'username': u.username, 'photo_name': u.avatar.name}
+        for u in _pending_photo_users()]})
+
+
+@csrf_exempt
+@require_GET
+def photo_review_photo(request, user_id):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    user = _pending_photo_users().filter(pk=user_id).first()
+    if user is None:
+        return JsonResponse({'error': 'not pending'}, status=404)
+    import mimetypes
+    content_type = mimetypes.guess_type(user.avatar.name)[0] or 'image/jpeg'
+    with user.avatar.open('rb') as fh:
+        data = fh.read()
+    return HttpResponse(data, content_type=content_type)
+
+
+@csrf_exempt
+@require_POST
+def photo_review_decision(request, user_id):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    user = _pending_photo_users().filter(pk=user_id).first()
+    if user is None:
+        return JsonResponse({'error': 'not pending'}, status=404)
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'bad json'}, status=400)
+    decision = payload.get('decision')
+    if decision not in ('approve', 'reject'):
+        return JsonResponse({'error': 'decision must be approve or reject'}, status=400)
+    services.review_photo(user, decision == 'approve', str(payload.get('reason', ''))[:200])
+    return JsonResponse({'ok': True, 'user_id': user.pk, 'decision': decision})
 
 
 @login_required

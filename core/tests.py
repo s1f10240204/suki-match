@@ -1447,3 +1447,72 @@ class PointHistoryTests(BaseTestCase):
     def test_history_requires_login(self):
         response = self.client.get(reverse('core:points_history'))
         self.assertEqual(response.status_code, 302)
+
+
+def _tiny_jpeg():
+    import io as _io
+    from PIL import Image
+    buf = _io.BytesIO()
+    Image.new('RGB', (10, 10), (200, 180, 160)).save(buf, 'JPEG')
+    return buf.getvalue()
+
+
+@override_settings(PHOTO_REVIEW_TOKEN='test-review-token')
+class PhotoReviewApiTests(BaseTestCase):
+    TOKEN = {'HTTP_X_REVIEW_TOKEN': 'test-review-token'}
+
+    def _pending_user(self, username):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        user = make_user(username)
+        services.set_photo(user, SimpleUploadedFile('face.jpg', _tiny_jpeg(), content_type='image/jpeg'))
+        return user
+
+    def test_digest_counts_pending(self):
+        resp = self.client.get(reverse('core:photo_review_digest'))
+        self.assertEqual(resp.json()['count'], 0)
+        self._pending_user('rev1')
+        resp = self.client.get(reverse('core:photo_review_digest'))
+        self.assertEqual(resp.json()['count'], 1)
+        self.assertEqual(len(resp.json()['digest']), 64)
+
+    def test_pending_requires_token(self):
+        self._pending_user('rev2')
+        self.assertEqual(self.client.get(reverse('core:photo_review_pending')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('core:photo_review_pending'),
+                                         HTTP_X_REVIEW_TOKEN='wrong').status_code, 403)
+        resp = self.client.get(reverse('core:photo_review_pending'), **self.TOKEN)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual([p['username'] for p in resp.json()['pending']], ['rev2'])
+
+    def test_photo_and_decisions(self):
+        user = self._pending_user('rev3')
+        photo_url = reverse('core:photo_review_photo', args=[user.pk])
+        self.assertEqual(self.client.get(photo_url).status_code, 403)
+        self.assertEqual(self.client.get(photo_url, **self.TOKEN).content, _tiny_jpeg())
+        decision_url = reverse('core:photo_review_decision', args=[user.pk])
+        bad = self.client.post(decision_url, data=json.dumps({'decision': 'maybe'}),
+                               content_type='application/json', **self.TOKEN)
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.post(decision_url, data=json.dumps({'decision': 'approve'}),
+                              content_type='application/json', **self.TOKEN)
+        self.assertEqual(ok.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.avatar_status, User.PhotoStatus.APPROVED)
+        self.assertEqual(self.client.get(photo_url, **self.TOKEN).status_code, 404)
+
+    def test_reject_with_reason(self):
+        user = self._pending_user('rev4')
+        resp = self.client.post(reverse('core:photo_review_decision', args=[user.pk]),
+                                data=json.dumps({'decision': 'reject', 'reason': '顔が写っていません'}),
+                                content_type='application/json', **self.TOKEN)
+        self.assertEqual(resp.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.avatar_status, User.PhotoStatus.REJECTED)
+        self.assertEqual(user.avatar_reject_reason, '顔が写っていません')
+
+    @override_settings(PHOTO_REVIEW_TOKEN='')
+    def test_disabled_without_configured_token(self):
+        self._pending_user('rev5')
+        resp = self.client.get(reverse('core:photo_review_pending'),
+                               HTTP_X_REVIEW_TOKEN='anything')
+        self.assertEqual(resp.status_code, 403)

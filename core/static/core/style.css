@@ -815,3 +815,5 @@ body.impersonating .toast-area { top: calc(var(--header-h) + 56px); }
 .chat-hint-close { margin-left: auto; background: none; border: none; font-size: 1.2rem; line-height: 1; color: var(--primary-dark); cursor: pointer; padding: 4px 8px; }
 .list-hint { margin: 0 2px 10px; }
 body.simple-ui .chat-hint { font-size: 1.08rem; }
+.inquiry-cta { text-align: center; }
+.faq-cta .btn { margin: 4px; }

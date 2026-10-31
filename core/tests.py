@@ -2447,6 +2447,15 @@ class SupportTests(BaseTestCase):
         resp = self.client.get(reverse('core:faq'))
         self.assertContains(resp, 'ポイントの仕組みを教えてください')
 
+    def test_inquiry_link_always_visible(self):
+        url = reverse('core:inquiry_create')
+        resp = self.client.get(reverse('core:support'))
+        self.assertContains(resp, url)
+        self.assertContains(resp, 'inquiry-cta')
+        self.client.logout()
+        resp = self.client.get(reverse('core:faq'))
+        self.assertContains(resp, url)
+
     def test_bot_answers_points_question(self):
         resp = self.client.post(reverse('core:support_ask'),
                                 data=json.dumps({'question': 'ポイントが足りなくて困ってます'}),

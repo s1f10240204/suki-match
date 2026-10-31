@@ -26,6 +26,12 @@
     </div>
 </div>
 
+<div class="card inquiry-cta">
+    <p><strong>運営へのお問い合わせ</strong></p>
+    <p class="help">botで解決しない場合や、個別のご相談はこちらから送れます。内容を確認して返信します。</p>
+    <a class="btn btn-primary" href="{% url 'core:inquiry_create' %}">お問い合わせフォームへ</a>
+</div>
+
 {% if inquiries %}
 <h2 class="section-title">あなたのお問い合わせ</h2>
 <div class="card">

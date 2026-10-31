@@ -315,8 +315,8 @@ details.more[open] > summary { margin-bottom: 8px; }
 .stepper-nav [data-step-back] { flex: 0 0 auto; }
 .stepper:not(.is-enhanced) [data-step-next], .stepper:not(.is-enhanced) [data-step-back] { display: none; }
 .summary { margin: 0 0 16px; display: grid; gap: 8px; }
-.summary > div { display: grid; grid-template-columns: 4.5em 1fr; gap: 8px; padding: 10px 12px; background: var(--surface-soft); border-radius: var(--radius-sm); }
-.summary dt { color: var(--muted); font-size: .82rem; font-weight: 700; }
+.summary > div { display: grid; grid-template-columns: 5.6em 1fr; gap: 8px; padding: 10px 12px; background: var(--surface-soft); border-radius: var(--radius-sm); }
+.summary dt { color: var(--muted); font-size: .82rem; font-weight: 700; white-space: nowrap; }
 .summary dd { margin: 0; font-size: .9rem; font-weight: 700; }
 
 /* スキルのタグ入力 */

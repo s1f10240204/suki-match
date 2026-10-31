@@ -714,7 +714,7 @@ def pwa_manifest(request):
         'start_url': '/',
         'scope': '/',
         'display': 'standalone',
-        'background_color': '#fbf8f3',
+        'background_color': '#4c8b6b',
         'theme_color': '#4c8b6b',
         'icons': [
             {'src': static('core/icons/icon-192.png'), 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},

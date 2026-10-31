@@ -17,12 +17,15 @@ from . import images, line_api, moderation
 from .geocoding import area_label_for
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, MessageReaction,
                      Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User,
-                     UserBlock)
+                     MissionClaim, UserBlock)
 
 RADIUS_METERS = 500
 HELPER_POINTS = 10
 POINTS_PER_MINUTE = 1  # 依頼ポイントは所要時間1分あたり1pt(依頼者→ヘルパーへ渡る)
 REVIEW_BONUS_POINTS = 2
+CREDIT_LIMIT = 50           # ツケ(マイナス残高)で依頼できる下限
+REFERRAL_REWARD_POINTS = 30  # 招待した友達が参加条件を満たしたら紹介者へ
+LOGIN_BONUS_POINTS = 2       # 1日1回のログインボーナス
 LOCATION_FRESH_HOURS = 24      # これより古い現在地は通知対象にしない
 RELABEL_DISTANCE_M = 200       # これ以上移動したらエリア名を取り直す
 
@@ -192,6 +195,7 @@ def review_photo(user, approve, reason=''):
     if approve:
         images.ensure_mosaic(user.avatar.name)
         notify(user, 'photo', '顔写真が承認されました。依頼・お手伝いができるようになりました', reverse('core:profile'))
+        grant_referral_reward(user)  # 招待で来た人なら、この瞬間に紹介者へボーナス
     else:
         notify(user, 'photo', '顔写真が承認されませんでした。プロフィールから別の写真を登録してください',
                reverse('core:profile_edit'))
@@ -369,10 +373,11 @@ def charge_for_request(help_request):
         if existing is not None:
             return -existing.amount  # 徴収済み(二重送信・再送でも二重徴収しない)
         requester = User.objects.select_for_update().get(pk=help_request.requester_id)
-        if requester.points < cost:
+        if requester.points - cost < -CREDIT_LIMIT:
             raise ServiceError(
                 f'ポイントが不足しています(必要 {cost}pt / 保有 {requester.points}pt)。'
-                'お手伝いをするとポイントが貯まります。')
+                f'ツケ(最大で-{CREDIT_LIMIT}ptまで)でも足りません。'
+                'ポイントページに、ポイントを貯める方法があります。')
         requester.points -= cost
         requester.save(update_fields=['points'])
         help_request.points_cost = cost
@@ -827,6 +832,111 @@ def _notify_schedule_reminder(help_request, now, day_before):
         notify(match.helper, 'schedule_reminder', text, url)
         count += 1
     return count
+
+
+def referral_gate_passed(user):
+    """招待ボーナスの参加条件：顔写真の承認済み、または写真免除(大学メール確認済み)。"""
+    return bool(user.photo_approved or photo_exempt(user))
+
+
+def grant_referral_reward(invitee):
+    """招待ボーナスの条件を満たしていれば紹介者へ付与する(冪等)。付与したら True。"""
+    if invitee.referred_by_id is None or invitee.referral_reward_at is not None:
+        return False
+    if not referral_gate_passed(invitee):
+        return False
+    with transaction.atomic():
+        locked = User.objects.select_for_update().get(pk=invitee.pk)
+        if locked.referral_reward_at is not None or locked.referred_by_id is None:
+            return False
+        locked.referral_reward_at = timezone.now()
+        locked.save(update_fields=['referral_reward_at'])
+        referrer_id = locked.referred_by_id
+    referrer = User.objects.get(pk=referrer_id)
+    referrer.add_points(REFERRAL_REWARD_POINTS)
+    record_points(referrer, REFERRAL_REWARD_POINTS, PointTransaction.Kind.REFERRAL, None,
+                  counterparty=invitee,
+                  description=f'{invitee.username}さんの招待ボーナス')
+    notify(referrer, 'points',
+           f'🎉 {invitee.username}さんが参加しました！招待ボーナス +{REFERRAL_REWARD_POINTS}pt を受け取りました。',
+           '/me/points/')
+    return True
+
+
+def process_referral_rewards():
+    """招待ボーナスの未付与分をまとめて処理する(定期処理から呼ぶ)。付与件数を返す。"""
+    granted = 0
+    invitees = (User.objects.filter(referred_by__isnull=False, referral_reward_at__isnull=True)
+                .select_related('referred_by')[:100])
+    for invitee in invitees:
+        if grant_referral_reward(invitee):
+            granted += 1
+    return granted
+
+
+# ---------- ポイントが貯まるミッション ----------
+
+def _mission_photo(user):
+    return referral_gate_passed(user)
+
+
+def _mission_profile(user):
+    return bool(user.bio.strip()) and user.skills.exists()
+
+
+def _mission_first_help(user):
+    return Match.objects.filter(helper=user, status=Match.Status.DONE).exists()
+
+
+def _mission_first_request(user):
+    return HelpRequest.objects.filter(requester=user, status=HelpRequest.Status.DONE).exists()
+
+
+MISSIONS = [
+    {'key': 'photo', 'title': '顔写真を登録して承認を受ける', 'points': 10, 'check': _mission_photo},
+    {'key': 'profile', 'title': 'プロフィールを完成させる(自己紹介＋できること)', 'points': 10,
+     'check': _mission_profile},
+    {'key': 'first_help', 'title': '初めてお手伝いを完了する', 'points': 10, 'check': _mission_first_help},
+    {'key': 'first_request', 'title': '初めて自分の依頼を完了する', 'points': 10,
+     'check': _mission_first_request},
+]
+
+
+def mission_states(user):
+    """ミッション一覧に達成/受け取り状態を付けて返す。"""
+    claimed = set(user.mission_claims.values_list('key', flat=True))
+    return [{**mission, 'achieved': mission['check'](user), 'claimed': mission['key'] in claimed}
+            for mission in MISSIONS]
+
+
+def claim_mission(user, key):
+    """達成済みミッションのボーナスを受け取る。付与ポイントを返す。"""
+    mission = next((m for m in MISSIONS if m['key'] == key), None)
+    if mission is None:
+        raise ServiceError('そのミッションはありません。')
+    if user.mission_claims.filter(key=key).exists():
+        raise ServiceError('このミッションは受け取り済みです。')
+    if not mission['check'](user):
+        raise ServiceError('まだ達成していません。')
+    MissionClaim.objects.create(user=user, key=key)
+    user.add_points(mission['points'])
+    record_points(user, mission['points'], PointTransaction.Kind.MISSION, None,
+                  description=f'ミッション達成：{mission["title"]}')
+    return mission['points']
+
+
+def grant_login_bonus(user):
+    """1日1回のログインボーナス。今日すでに付与済みなら False。"""
+    today = timezone.localdate()
+    updated = (User.objects.filter(pk=user.pk)
+               .exclude(last_login_bonus_date=today)
+               .update(last_login_bonus_date=today))
+    if not updated:
+        return False
+    user.add_points(LOGIN_BONUS_POINTS)
+    record_points(user, LOGIN_BONUS_POINTS, PointTransaction.Kind.LOGIN_BONUS, None,
+                  description='ログインボーナス')
+    return True
 
 
 def send_schedule_reminders(now=None):

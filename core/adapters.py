@@ -13,12 +13,26 @@ def site_info():
 STARTER_POINTS = 100
 
 
+def apply_referral(request, user):
+    """招待リンク(?ref=ユーザー名)経由の登録なら、紹介者をユーザーに記録する。"""
+    if request is None or user.referred_by_id:
+        return
+    ref = (request.session.get('ref_username') or '').strip()
+    if not ref or ref == user.username:
+        return
+    from .models import User
+    referrer = User.objects.filter(username=ref, is_active=True).first()
+    if referrer is not None:
+        user.referred_by = referrer
+
+
 class AccountAdapter(DefaultAccountAdapter):
     def save_user(self, request, user, form, commit=True):
         is_new = not user.pk
         user = super().save_user(request, user, form, commit=False)
         if is_new:
             user.points = STARTER_POINTS  # 新規登録のスターターポイント(最初の依頼に使える)
+            apply_referral(request, user)
         if commit:
             user.save()
             if is_new:

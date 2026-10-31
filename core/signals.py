@@ -33,6 +33,21 @@ def _on_social_updated(request, sociallogin, **kwargs):
 @receiver(user_logged_in)
 def _on_login(sender, request, user, **kwargs):
     _sync_line_user_id(user)
+    from . import services
+    from .adapters import apply_referral
+    # フォームなしのソーシャル登録など、アダプタを通らなかった紹介を取りこぼさない
+    # (登録から7日以内の初回ログインだけを対象にする)
+    if user.referred_by_id is None and request is not None:
+        from datetime import timedelta
+        from django.utils import timezone
+        if timezone.now() - user.date_joined < timedelta(days=7):
+            apply_referral(request, user)
+            if user.referred_by_id is not None:
+                user.save(update_fields=['referred_by'])
+    try:
+        services.grant_login_bonus(user)
+    except Exception:
+        pass  # ボーナス付与の失敗でログイン自体を止めない
 
 
 @receiver(social_account_removed)

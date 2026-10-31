@@ -5,10 +5,11 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles import finders
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg, Count, F, Q
+from django.db.models import Avg, Count, F, Q, Sum
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.crypto import constant_time_compare
@@ -21,8 +22,8 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from . import geocoding
 from .geocoding import area_label_for
-from .models import (Application, HelpRequest, Match, Message, PresetTag, PushSubscription, Review, Sanction,
-                     Skill, User, UserBlock)
+from .models import (Application, HelpRequest, Match, Message, PointTransaction, PresetTag, PushSubscription,
+                     Review, Sanction, Skill, User, UserBlock)
 from .services import ServiceError
 
 
@@ -450,11 +451,35 @@ def message_person(request, username):
 
 @login_required
 def points_history(request):
-    transactions = (request.user.point_transactions
+    user = request.user
+    transactions = (user.point_transactions
                     .select_related('help_request', 'counterparty')[:100])
+    referral_earned = (user.point_transactions.filter(kind=PointTransaction.Kind.REFERRAL)
+                       .aggregate(total=Sum('amount'))['total'] or 0)
     return render(request, 'core/points_history.html', {
-        'transactions': transactions, 'balance': request.user.points,
-        'total_earned': request.user.total_earned})
+        'transactions': transactions, 'balance': user.points,
+        'total_earned': user.total_earned,
+        'credit_limit': services.CREDIT_LIMIT,
+        'credit_available': user.points + services.CREDIT_LIMIT,
+        'referral_link': request.build_absolute_uri(reverse('account_signup')) + f'?ref={user.username}',
+        'referral_count': user.referrals.count(),
+        'referral_earned': referral_earned,
+        'referral_reward': services.REFERRAL_REWARD_POINTS,
+        'missions': services.mission_states(user),
+        'login_bonus_points': services.LOGIN_BONUS_POINTS,
+        'login_bonus_today': user.last_login_bonus_date == timezone.localdate()})
+
+
+@login_required
+@require_POST
+def claim_mission(request, key):
+    try:
+        gained = services.claim_mission(request.user, key)
+    except services.ServiceError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, f'ミッションボーナス +{gained}pt を受け取りました！')
+    return redirect('core:points_history')
 
 
 @login_required
@@ -786,7 +811,8 @@ def run_tasks(request):
         return HttpResponseForbidden('forbidden')
     return JsonResponse({'expired': services.expire_requests(),
                          'purged_messages': services.purge_expired_chat_messages(),
-                         'reminded': services.send_schedule_reminders()})
+                         'reminded': services.send_schedule_reminders(),
+                         'referral_rewards': services.process_referral_rewards()})
 
 
 def csrf_failure(request, reason=''):

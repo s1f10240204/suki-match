@@ -1,17 +1,62 @@
 {% extends 'core/base.html' %}
 
-{% block title %}ポイント履歴 - suki-match{% endblock %}
+{% block title %}ポイント - suki-match{% endblock %}
 
 {% block content %}
-<div class="page-head"><h1>ポイント履歴</h1></div>
+<div class="page-head"><h1>ポイント</h1></div>
 
 <div class="points-box">
     <div class="points-main">
         <span class="points-value">{{ balance }}<small>pt</small></span>
         <span class="meta">現在のポイント（累計獲得 {{ total_earned }}pt）</span>
     </div>
+    {% if balance < 0 %}
+    <p class="notice">いまツケで {{ balance }}pt になっています。あと {{ credit_available }}pt まで依頼できます（ツケ上限 −{{ credit_limit }}pt）。お手伝いや下の方法でポイントを貯めると返済できます。</p>
+    {% else %}
+    <p class="meta">ポイントが足りないときは、ツケ（最大 −{{ credit_limit }}pt）でも依頼できます。あと {{ credit_available }}pt まで使えます。</p>
+    {% endif %}
 </div>
 
+<section class="card">
+    <h2 class="section-title">ポイントを貯める</h2>
+
+    <div class="earn-row">
+        <div class="earn-body">
+            <p class="earn-title">🎁 ログインボーナス（毎日 +{{ login_bonus_points }}pt）</p>
+            <p class="meta">{% if login_bonus_today %}今日の分は受け取り済みです。また明日ログインすると貰えます。{% else %}ログインすると自動で貰えます（1日1回）。{% endif %}</p>
+        </div>
+    </div>
+
+    <div class="earn-row">
+        <div class="earn-body">
+            <p class="earn-title">👋 友達を招待する（1人 +{{ referral_reward }}pt）</p>
+            <p class="meta">下のリンクから友達が登録して、顔写真の承認（または大学メールの確認）まで終わると、あなたに +{{ referral_reward }}pt 入ります。これまで {{ referral_count }}人 がこのリンクから登録（獲得合計 {{ referral_earned }}pt）。</p>
+            <input type="text" readonly value="{{ referral_link }}" onclick="this.select()" aria-label="招待リンク">
+        </div>
+    </div>
+
+    <h3 class="earn-subtitle">ミッション</h3>
+    {% for m in missions %}
+    <div class="earn-row">
+        <div class="earn-body">
+            <p class="earn-title">{{ m.title }}</p>
+            <p class="meta">+{{ m.points }}pt</p>
+        </div>
+        {% if m.claimed %}
+            <span class="chip">受け取り済み</span>
+        {% elif m.achieved %}
+            <form method="post" action="{% url 'core:claim_mission' m.key %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary btn-sm">受け取る</button>
+            </form>
+        {% else %}
+            <span class="chip">未達成</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</section>
+
+<h2 class="section-title">履歴</h2>
 {% for t in transactions %}
 <div class="pt-row">
     <div class="pt-main">

@@ -108,7 +108,11 @@ class User(AbstractUser):
     location_updated_at = models.DateTimeField(null=True, blank=True)
     area_label = models.CharField('活動エリア', max_length=50, blank=True)
 
-    points = models.IntegerField('ポイント', default=0)  # 使える残高
+    points = models.IntegerField('ポイント', default=0)  # 使える残高(ツケ利用時はマイナス)
+    referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='referrals', verbose_name='紹介してくれた人')
+    referral_reward_at = models.DateTimeField('招待ボーナス付与日時', null=True, blank=True)
+    last_login_bonus_date = models.DateField('ログインボーナス受取日', null=True, blank=True)
     total_earned = models.IntegerField('累計獲得ポイント', default=0)  # レベルはこちらで決まる(使っても減らない)
     level = models.PositiveSmallIntegerField('レベル', default=1)
     skills = models.ManyToManyField(Skill, blank=True, related_name='users', verbose_name='できること')
@@ -153,8 +157,6 @@ class User(AbstractUser):
 
     class Meta(AbstractUser.Meta):
         constraints = [
-            models.CheckConstraint(condition=models.Q(points__gte=0),
-                                   name='user_points_non_negative'),
             models.CheckConstraint(condition=models.Q(total_earned__gte=0),
                                    name='user_total_earned_non_negative'),
         ]
@@ -492,6 +494,21 @@ class ActivityBase(models.Model):
         verbose_name = verbose_name_plural = '活動拠点'
 
 
+class MissionClaim(models.Model):
+    """ポイントが貯まるミッションの受け取り記録(1人1ミッション1回)。"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mission_claims',
+                             verbose_name='ユーザー')
+    key = models.CharField('ミッション', max_length=30)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'ミッション受け取り'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'key'], name='unique_mission_claim'),
+        ]
+
+
 class StoredFile(models.Model):
     """DatabaseStorage(core/storage.py)が使う、DB上のファイル。"""
     name = models.CharField(max_length=255, unique=True)
@@ -531,6 +548,9 @@ class PointTransaction(models.Model):
         REFUND = 'refund', '返金'
         TIP_SENT = 'tip_sent', 'お礼チップ(渡した)'
         TIP_RECEIVED = 'tip_received', 'お礼チップ(受け取った)'
+        REFERRAL = 'referral', '招待ボーナス'
+        MISSION = 'mission', 'ミッションボーナス'
+        LOGIN_BONUS = 'login_bonus', 'ログインボーナス'
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='point_transactions',
                              verbose_name='ユーザー')

@@ -2010,3 +2010,137 @@ class MessageGroupingTests(BaseTestCase):
         resp = self.client.get(reverse('core:message_list'))
         self.assertContains(resp, 'グループ（2人募集）')
         self.assertContains(resp, '引っ越し手伝い')
+class PointsEarnTests(BaseTestCase):
+    """ツケ・招待ボーナス・ミッション・ログインボーナス。"""
+
+    # ---- ツケ ----
+    def test_credit_allows_posting_below_zero(self):
+        user = make_user('crd1')
+        User.objects.filter(pk=user.pk).update(points=30)
+        user.refresh_from_db()
+        hr = make_request(user, duration_minutes=45)
+        services.publish_request(hr)  # 45pt 使って -15pt になる
+        user.refresh_from_db()
+        self.assertEqual(user.points, -15)
+
+    def test_credit_limit_blocks_beyond_minus_50(self):
+        user = make_user('crd2')
+        User.objects.filter(pk=user.pk).update(points=0)
+        user.refresh_from_db()
+        hr = make_request(user, duration_minutes=60)
+        with self.assertRaises(services.ServiceError):
+            services.publish_request(hr)  # -60 で上限超過
+        hr2 = make_request(user, duration_minutes=45)
+        services.publish_request(hr2)  # -45 は OK
+        user.refresh_from_db()
+        self.assertEqual(user.points, -45)
+        hr3 = make_request(user, duration_minutes=15)
+        with self.assertRaises(services.ServiceError):
+            services.publish_request(hr3)  # -60 になるので不可
+
+    # ---- 招待ボーナス ----
+    def _invitee(self, name, referrer):
+        invitee = make_user(name)
+        User.objects.filter(pk=invitee.pk).update(referred_by=referrer)
+        invitee.refresh_from_db()
+        return invitee
+
+    def test_referral_reward_after_photo_approval(self):
+        referrer = make_user('ref1src')
+        User.objects.filter(pk=referrer.pk).update(points=100)
+        referrer.refresh_from_db()
+        invitee = self._invitee('ref1dst', referrer)
+        # 写真が審査中(make_user の既定は承認済みなので明示的に戻す)では付与されない
+        User.objects.filter(pk=invitee.pk).update(avatar_status=User.PhotoStatus.PENDING)
+        invitee.refresh_from_db()
+        self.assertEqual(services.process_referral_rewards(), 0)
+        User.objects.filter(pk=invitee.pk).update(avatar='avatars/x.jpg',
+                                                  avatar_status=User.PhotoStatus.APPROVED)
+        invitee.refresh_from_db()
+        self.assertEqual(services.process_referral_rewards(), 1)
+        referrer.refresh_from_db()
+        self.assertEqual(referrer.points, 130)
+        tx = referrer.point_transactions.get(kind=PointTransaction.Kind.REFERRAL)
+        self.assertEqual(tx.counterparty, invitee)
+        # 二重付与なし
+        self.assertEqual(services.process_referral_rewards(), 0)
+
+    def test_referral_reward_for_exempt_user(self):
+        from allauth.account.models import EmailAddress
+        referrer = make_user('ref2src')
+        invitee = self._invitee('ref2dst', referrer)
+        EmailAddress.objects.create(user=invitee, email='s1f999999999@iniad.org',
+                                    verified=True, primary=True)
+        self.assertTrue(services.grant_referral_reward(invitee))
+        referrer.refresh_from_db()
+        self.assertEqual(referrer.points, 30)
+
+    def test_signup_records_referrer(self):
+        referrer = make_user('ref3src')
+        self.client.get(reverse('account_signup') + f'?ref={referrer.username}')
+        resp = self.client.post(reverse('account_signup'), {
+            'username': 'ref3new', 'email': 'ref3new@example.com',
+            'password1': 'V3ry-Str0ng-Pass!', 'password2': 'V3ry-Str0ng-Pass!',
+            'birth_date': '2000-01-01',
+        })
+        new_user = User.objects.get(username='ref3new')
+        self.assertEqual(new_user.referred_by, referrer)
+
+    # ---- ミッション ----
+    def test_profile_mission_claim(self):
+        user = make_user('mis1')
+        skill = Skill.objects.create(name='ミッション用スキル')
+        user.skills.add(skill)
+        User.objects.filter(pk=user.pk).update(bio='よろしくお願いします')
+        user.refresh_from_db()
+        self.assertEqual(services.claim_mission(user, 'profile'), 10)
+        user.refresh_from_db()
+        self.assertEqual(user.points, 10)
+        with self.assertRaises(services.ServiceError):
+            services.claim_mission(user, 'profile')  # 二重受け取り不可
+
+    def test_unachieved_mission_cannot_claim(self):
+        user = make_user('mis2')
+        with self.assertRaises(services.ServiceError):
+            services.claim_mission(user, 'first_help')
+
+    def test_first_help_mission_after_completion(self):
+        requester = make_user('mis3req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = make_user('mis3help')
+        match = services.accept_first_come(hr, helper)
+        services.complete(hr, requester)
+        self.assertEqual(services.claim_mission(helper, 'first_help'), 10)
+        self.assertEqual(services.claim_mission(requester, 'first_request'), 10)
+
+    # ---- ログインボーナス ----
+    def test_login_bonus_once_per_day(self):
+        user = make_user('lgb1')
+        self.assertTrue(services.grant_login_bonus(user))
+        self.assertFalse(services.grant_login_bonus(user))
+        user.refresh_from_db()
+        self.assertEqual(user.points, 2)
+
+    def test_login_signal_grants_bonus(self):
+        user = User.objects.create_user(username='lgb2', password='V3ry-Str0ng-Pass!')
+        self.assertTrue(self.client.login(username='lgb2', password='V3ry-Str0ng-Pass!'))
+        user.refresh_from_db()
+        self.assertEqual(user.points, 2)
+        self.assertEqual(user.last_login_bonus_date, timezone.localdate())
+        self.client.logout()
+        self.assertTrue(self.client.login(username='lgb2', password='V3ry-Str0ng-Pass!'))
+        user.refresh_from_db()
+        self.assertEqual(user.points, 2)  # 同日2回目は付与されない
+
+    # ---- ポイントページ ----
+    def test_points_page_shows_earn_hub(self):
+        user = make_user('hub1')
+        self.client.force_login(user)
+        resp = self.client.get(reverse('core:points_history'))
+        self.assertContains(resp, 'ポイントを貯める')
+        self.assertContains(resp, f'?ref={user.username}')
+        self.assertContains(resp, 'ミッション')
+        self.assertContains(resp, 'ログインボーナス')

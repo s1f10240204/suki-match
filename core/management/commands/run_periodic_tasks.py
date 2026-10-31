@@ -16,7 +16,8 @@ class Command(BaseCommand):
             expired = services.expire_requests()
             purged = services.purge_expired_chat_messages()
             reminded = services.send_schedule_reminders()
-            self.stdout.write(f'締め切り: {expired}件 / チャット履歴削除: {purged}件 / リマインダー: {reminded}件')
+            referrals = services.process_referral_rewards()
+            self.stdout.write(f'締め切り: {expired}件 / チャット履歴削除: {purged}件 / リマインダー: {reminded}件 / 招待ボーナス: {referrals}件')
             if not options['loop']:
                 break
             time.sleep(options['loop'])

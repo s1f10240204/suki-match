@@ -643,3 +643,10 @@ ul.socialaccount_providers li { list-style: none; }
 .crop-dialog input[type="range"] { width: 100%; }
 .crop-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 .push-setup { margin: 6px 0 12px; }
+.rating-chip { color: #b97f16; font-weight: 700; font-size: .85em; white-space: nowrap; }
+.tip-box { margin-top: 18px; border-top: 1px dashed #ddd3c0; padding-top: 12px; }
+.tip-form { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.tip-form select { padding: 6px 8px; border-radius: 8px; font-size: 16px; }
+.tip-to { font-weight: 600; }
+.draft-note { background: #fdf6e0; border: 1px solid #e8d48b; border-radius: 10px; padding: 8px 12px; font-size: .92em; margin: 10px 0; }
+.block-form { margin: 12px 0 4px; }

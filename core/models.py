@@ -202,6 +202,8 @@ class HelpRequest(models.Model):
     points_cost = models.PositiveIntegerField('依頼ポイント', default=0,
                                               help_text='投稿時に依頼者から預かったポイント。完了時にヘルパーへ渡る')
     points_settled = models.BooleanField('ポイント精算済み', default=False)
+    reminded_day_before_at = models.DateTimeField('前日リマインダー送信日時', null=True, blank=True)
+    reminded_hour_before_at = models.DateTimeField('1時間前リマインダー送信日時', null=True, blank=True)
     chat_retention_days = models.PositiveSmallIntegerField(
         'チャット履歴の保存期間', choices=ChatRetention.choices, default=ChatRetention.THREE_DAYS,
         help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ閲覧でき、過ぎると自動で削除されます。')
@@ -530,6 +532,8 @@ class PointTransaction(models.Model):
         EARNED = 'earned', 'お手伝い報酬'
         REVIEW_BONUS = 'review_bonus', 'レビューボーナス'
         REFUND = 'refund', '返金'
+        TIP_SENT = 'tip_sent', 'お礼チップ(渡した)'
+        TIP_RECEIVED = 'tip_received', 'お礼チップ(受け取った)'
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='point_transactions',
                              verbose_name='ユーザー')
@@ -546,3 +550,22 @@ class PointTransaction(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = 'ポイント履歴'
         ordering = ['-created_at', '-pk']
+
+
+class UserBlock(models.Model):
+    """ユーザー同士のブロック。ブロックした相手とは新規マッチングできず、相手の依頼は一覧に出ない。"""
+    blocker = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocking',
+                                verbose_name='ブロックした人')
+    blocked = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocked_by',
+                                verbose_name='ブロックされた人')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'ユーザーブロック'
+        constraints = [
+            models.UniqueConstraint(fields=['blocker', 'blocked'], name='one_block_per_pair'),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.blocker} -> {self.blocked}'

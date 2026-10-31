@@ -38,6 +38,11 @@
 </section>
 
 {% if user.is_authenticated and user != target %}
+    <form method="post" action="{% url 'core:block_toggle' target.username %}" class="block-form"
+          onsubmit="return confirm('{% if is_blocked %}{{ target.username }}さんのブロックを解除しますか?{% else %}{{ target.username }}さんをブロックしますか?今後お互いにマッチングできなくなり、このユーザーの依頼は一覧に出なくなります。{% endif %}');">
+        {% csrf_token %}
+        <button class="btn {% if is_blocked %}btn-outline{% else %}btn-danger{% endif %} btn-block">{% if is_blocked %}ブロックを解除する{% else %}このユーザーをブロックする{% endif %}</button>
+    </form>
     <p class="report-link"><a href="{% url 'core:report_user' target.username %}">このユーザーを通報する</a></p>
 {% endif %}
 {% endblock %}

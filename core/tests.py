@@ -1694,3 +1694,215 @@ class SecurityFixTests(BaseTestCase):
                                 {'next': '/\\evil.example'})
         self.assertEqual(resp.status_code, 302)
         self.assertNotIn('evil', resp.url)
+from .models import PointTransaction, UserBlock
+
+
+class ScheduleReminderTests(BaseTestCase):
+    """日時指定の依頼のリマインダー(前日・1時間前)。"""
+
+    def _setup(self, name, hours_ahead):
+        requester = make_user(f'{name}req')
+        helper = make_user(f'{name}help')
+        hr = make_request(requester, scheduled_for=timezone.now() + timedelta(hours=hours_ahead))
+        Match.objects.create(help_request=hr, helper=helper)
+        hr.status = HelpRequest.Status.IN_PROGRESS
+        hr.save(update_fields=['status'])
+        return requester, helper, hr
+
+    def test_day_before_reminder_sent_once(self):
+        requester, helper, hr = self._setup('rem1', 23)
+        sent = services.send_schedule_reminders()
+        self.assertEqual(sent, 2)
+        for user in (requester, helper):
+            self.assertEqual(
+                Notification.objects.filter(user=user, kind='schedule_reminder').count(), 1)
+        hr.refresh_from_db()
+        self.assertIsNotNone(hr.reminded_day_before_at)
+        self.assertIsNone(hr.reminded_hour_before_at)
+        # 2回目は送らない
+        self.assertEqual(services.send_schedule_reminders(), 0)
+        self.assertEqual(Notification.objects.filter(kind='schedule_reminder').count(), 2)
+
+    def test_hour_before_reminder(self):
+        requester, helper, hr = self._setup('rem2', 0.5)
+        sent = services.send_schedule_reminders()
+        self.assertEqual(sent, 2)
+        hr.refresh_from_db()
+        self.assertIsNotNone(hr.reminded_hour_before_at)
+        self.assertIsNone(hr.reminded_day_before_at)  # 1時間を切ったら前日分は送らない
+        note = Notification.objects.get(user=requester, kind='schedule_reminder')
+        self.assertIn('まもなく', note.text)
+
+    def test_no_reminder_for_immediate_or_canceled(self):
+        requester = make_user('rem3req')
+        make_request(requester)  # 日時指定なし
+        canceled = make_request(requester, scheduled_for=timezone.now() + timedelta(hours=5))
+        canceled.status = HelpRequest.Status.CANCELED
+        canceled.save(update_fields=['status'])
+        self.assertEqual(services.send_schedule_reminders(), 0)
+        self.assertEqual(Notification.objects.filter(kind='schedule_reminder').count(), 0)
+
+
+class TipTests(BaseTestCase):
+    """完了後のお礼チップ。"""
+
+    def _completed(self, name, requester_points=100):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=requester_points)
+        requester.refresh_from_db()
+        hr = make_request(requester, duration_minutes=15)
+        services.publish_request(hr)
+        helper = make_user(f'{name}help')
+        match = services.accept_first_come(hr, helper)
+        services.complete(hr, requester)
+        requester.refresh_from_db()
+        helper.refresh_from_db()
+        match.refresh_from_db()
+        return requester, hr, helper, match
+
+    def test_tip_moves_points_and_records(self):
+        requester, hr, helper, match = self._completed('tip1')
+        self.assertEqual((requester.points, helper.points), (85, 15))
+        services.tip_helper(match, requester, 10)
+        requester.refresh_from_db()
+        helper.refresh_from_db()
+        self.assertEqual((requester.points, helper.points), (75, 25))
+        sent = PointTransaction.objects.get(user=requester, kind='tip_sent')
+        self.assertEqual((sent.amount, sent.counterparty_id), (-10, helper.pk))
+        got = PointTransaction.objects.get(user=helper, kind='tip_received')
+        self.assertEqual((got.amount, got.counterparty_id), (10, requester.pk))
+        self.assertTrue(Notification.objects.filter(user=helper, kind='tip').exists())
+
+    def test_tip_rules(self):
+        requester, hr, helper, match = self._completed('tip2')
+        with self.assertRaises(services.ServiceError):
+            services.tip_helper(match, helper, 10)       # 依頼者以外は渡せない
+        with self.assertRaises(services.ServiceError):
+            services.tip_helper(match, requester, 0)     # 下限
+        with self.assertRaises(services.ServiceError):
+            services.tip_helper(match, requester, 201)   # 上限
+        User.objects.filter(pk=requester.pk).update(points=5)
+        with self.assertRaises(services.ServiceError):
+            services.tip_helper(match, requester, 10)    # 残高不足
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 15)              # 失敗時は動かない
+
+    def test_tip_view(self):
+        requester, hr, helper, match = self._completed('tip3')
+        self.client.force_login(helper)
+        self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '10'})
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 15)  # 他人のチップは無効
+        self.client.force_login(requester)
+        resp = self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '20'})
+        self.assertEqual(resp.status_code, 302)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 35)
+
+
+class BlockTests(BaseTestCase):
+    """ユーザーブロック: マッチング不可・一覧非表示・設定で管理。"""
+
+    def test_block_prevents_matching_both_directions(self):
+        requester = make_user('blk1req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        helper = make_user('blk1help')
+        hr = make_request(requester)
+        services.publish_request(hr)
+        services.block_user(requester, helper)
+        with self.assertRaises(services.ServiceError):
+            services.accept_first_come(hr, helper)
+        services.unblock_user(requester, helper)
+        services.block_user(helper, requester)  # 逆方向でも不可
+        with self.assertRaises(services.ServiceError):
+            services.accept_first_come(hr, helper)
+        services.unblock_user(helper, requester)
+        match = services.accept_first_come(hr, helper)  # 解除後は可能
+        self.assertIsNotNone(match.pk)
+
+    def test_block_hides_requests_from_list(self):
+        requester = make_user('blk2req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        hr = make_request(requester)
+        hr.title = 'ブロック確認タイトル'
+        hr.save(update_fields=['title'])
+        services.publish_request(hr)
+        viewer = make_user('blk2view')
+        self.client.force_login(viewer)
+        self.assertContains(self.client.get(reverse('core:help_request_list')), 'ブロック確認タイトル')
+        services.block_user(viewer, requester)
+        self.assertNotContains(self.client.get(reverse('core:help_request_list')), 'ブロック確認タイトル')
+
+    def test_block_ui_and_settings(self):
+        user = make_user('blk3me')
+        other = make_user('blk3you')
+        self.client.force_login(user)
+        resp = self.client.post(reverse('core:block_toggle', args=[other.username]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(UserBlock.objects.filter(blocker=user, blocked=other).exists())
+        profile = self.client.get(reverse('core:public_profile', args=[other.username]))
+        self.assertContains(profile, 'ブロックを解除する')
+        settings_page = self.client.get(reverse('core:account_settings'))
+        self.assertContains(settings_page, 'blk3you')
+        self.client.post(reverse('core:unblock_user', args=[other.username]))
+        self.assertFalse(UserBlock.objects.filter(blocker=user, blocked=other).exists())
+
+
+class RepostTests(BaseTestCase):
+    """過去の依頼の再投稿(内容プリフィル)と投稿フォームの下書き要素。"""
+
+    def test_repost_prefills_form(self):
+        user = make_user('repo1')
+        hr = make_request(user, duration_minutes=30)
+        hr.title = '再投稿テストタイトル'
+        hr.save(update_fields=['title'])
+        self.client.force_login(user)
+        resp = self.client.get(reverse('core:help_request_create') + f'?from={hr.pk}')
+        self.assertContains(resp, '再投稿テストタイトル')
+        self.assertContains(resp, '前回の依頼内容をコピーしました')
+        self.assertContains(resp, 'data-draft-note')
+
+    def test_repost_ignores_others_requests(self):
+        owner = make_user('repo2owner')
+        hr = make_request(owner)
+        hr.title = '他人の依頼タイトル'
+        hr.save(update_fields=['title'])
+        other = make_user('repo2other')
+        self.client.force_login(other)
+        resp = self.client.get(reverse('core:help_request_create') + f'?from={hr.pk}')
+        self.assertNotContains(resp, '他人の依頼タイトル')
+
+
+class RatingVisibilityTests(BaseTestCase):
+    """評価の平均・件数が一覧カードと詳細に出る。"""
+
+    def _reviewed(self, name):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        requester.refresh_from_db()
+        hr = make_request(requester, duration_minutes=15)
+        services.publish_request(hr)
+        helper = make_user(f'{name}help')
+        match = services.accept_first_come(hr, helper)
+        services.complete(hr, requester)
+        hr.refresh_from_db()
+        services.submit_review(hr, helper, 5)     # ヘルパー→依頼者 ★5
+        services.submit_review(hr, requester, 4)  # 依頼者→ヘルパー ★4
+        return requester, hr, helper
+
+    def test_rating_on_detail(self):
+        requester, hr, helper = self._reviewed('rate1')
+        viewer = make_user('rate1view')
+        self.client.force_login(viewer)
+        resp = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(resp, '★5.0（1件の評価）')  # 依頼者
+        self.assertContains(resp, '★4.0（1件）')        # ヘルパー
+
+    def test_rating_on_list_card(self):
+        requester, hr, helper = self._reviewed('rate2')
+        new_hr = make_request(requester)
+        services.publish_request(new_hr)
+        viewer = make_user('rate2view')
+        self.client.force_login(viewer)
+        resp = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(resp, '★5.0(1)')

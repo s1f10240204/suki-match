@@ -411,6 +411,89 @@
         stepper.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && e.target.tagName === 'INPUT' && current < steps.length - 1) { e.preventDefault(); }
         });
+        // ---------- 下書きの自動保存(この端末の localStorage に保存) ----------
+        var DRAFT_KEY = 'sukiMatchRequestDraft:v1';
+        var draftSubmitted = false;
+        var draftFields = ['title', 'description', 'scheduled_for', 'address_detail',
+                           'latitude', 'longitude', 'skill_names', 'headcount_custom'];
+        var draftRadios = ['duration_minutes', 'mode', 'headcount_choice', 'chat_retention_days'];
+        var saveDraft = function () {
+            if (draftSubmitted) { return; }
+            try {
+                var data = {};
+                draftFields.forEach(function (name) {
+                    var el = stepper.querySelector('[name=' + name + ']');
+                    if (el) { data[name] = el.value; }
+                });
+                draftRadios.forEach(function (name) {
+                    var checked = stepper.querySelector('[name=' + name + ']:checked');
+                    if (checked) { data[name] = checked.value; }
+                });
+                var when = stepper.querySelector('[data-when]:checked');
+                if (when) { data.when = when.value; }
+                data.preset_tags = Array.prototype.map.call(
+                    stepper.querySelectorAll('[name=preset_tags]:checked'), function (c) { return c.value; });
+                var picker = stepper.querySelector('[data-location-picker]');
+                if (picker) { data.place_label = picker.dataset.placeLabel || ''; }
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+            } catch (e) { /* 保存できなくてもフォームは使える */ }
+        };
+        var draftTimer = null;
+        var queueSaveDraft = function () {
+            clearTimeout(draftTimer);
+            draftTimer = setTimeout(saveDraft, 600);
+        };
+        stepper.addEventListener('input', queueSaveDraft);
+        stepper.addEventListener('change', queueSaveDraft);
+        window.addEventListener('pagehide', saveDraft);
+        stepper.addEventListener('submit', function () {
+            draftSubmitted = true;
+            try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+        });
+
+        var draftNote = stepper.querySelector('[data-draft-note]');
+        var hasServerValues = Boolean(val('[name=title]')) || Boolean(stepper.querySelector('.error, .has-error'));
+        var isRepost = /[?&]from=/.test(window.location.search);
+        if (!hasServerValues && !isRepost) {
+            try {
+                var draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+                if (draft && (draft.title || draft.description || draft.latitude)) {
+                    draftFields.forEach(function (name) {
+                        var el = stepper.querySelector('[name=' + name + ']');
+                        if (el && draft[name]) { el.value = draft[name]; }
+                    });
+                    draftRadios.forEach(function (name) {
+                        if (!draft[name]) { return; }
+                        var radio = stepper.querySelector('[name=' + name + '][value="' + draft[name] + '"]');
+                        if (radio) { radio.checked = true; }
+                    });
+                    if (draft.when) {
+                        var whenRadio = stepper.querySelector('[data-when][value="' + draft.when + '"]');
+                        if (whenRadio) { whenRadio.checked = true; syncWhen(); }
+                    }
+                    if (draft.preset_tags) {
+                        stepper.querySelectorAll('[name=preset_tags]').forEach(function (c) {
+                            c.checked = draft.preset_tags.indexOf(c.value) !== -1;
+                        });
+                    }
+                    var draftPicker = stepper.querySelector('[data-location-picker]');
+                    if (draftPicker && draft.place_label) { draftPicker.dataset.placeLabel = draft.place_label; }
+                    if (draftNote) { draftNote.hidden = false; }
+                    fillSummary();
+                }
+            } catch (e) { /* 下書きが壊れていても無視する */ }
+        }
+        if (draftNote) {
+            var draftClear = draftNote.querySelector('[data-draft-clear]');
+            if (draftClear) {
+                draftClear.addEventListener('click', function () {
+                    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+                    draftNote.hidden = true;
+                    toast('保存していた下書きを消しました。今の入力はそのまま残っています。', '', 'info');
+                });
+            }
+        }
+
         stepper.classList.add('is-enhanced');
         show(current);
     }

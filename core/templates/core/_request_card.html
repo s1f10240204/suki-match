@@ -22,6 +22,7 @@
         {% avatar hr.requester 'xs' %}
         <span>{{ hr.requester.username }}</span>
         <span class="rank-badge">{{ hr.requester.rank }}</span>
+        {% if hr.rating_count %}<span class="rating-chip">★{{ hr.rating_avg|floatformat:1 }}({{ hr.rating_count }})</span>{% endif %}
         {% if hr.area_label %}<span class="meta">{{ hr.area_label }}</span>{% endif %}
     </div>
 </a>

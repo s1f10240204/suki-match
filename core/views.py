@@ -22,7 +22,7 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
 from . import geocoding
 from .geocoding import area_label_for
 from .models import (Application, HelpRequest, Match, Message, PresetTag, PushSubscription, Review, Sanction,
-                     Skill, User)
+                     Skill, User, UserBlock)
 from .services import ServiceError
 
 
@@ -61,6 +61,10 @@ def help_request_list(request):
           .annotate(joined_active=Count('matches', filter=Q(matches__status=Match.Status.IN_PROGRESS)))
           .filter(headcount__gt=F('joined_active'))
           .select_related('requester').prefetch_related('required_skills', 'preset_tags'))
+    if request.user.is_authenticated:
+        blocked_ids = services.blocked_user_ids(request.user)
+        if blocked_ids:
+            qs = qs.exclude(requester_id__in=blocked_ids)
     q = request.GET.get('q', '').strip()
     tag_id = request.GET.get('tag', '')
     skill_id = request.GET.get('skill', '')
@@ -75,6 +79,9 @@ def help_request_list(request):
     help_requests = list(qs.order_by('scheduled_for' if tab == 'scheduled' else 'expires_at'))
     for hr in help_requests:
         hr.remaining = hr.headcount - hr.joined_active
+    ratings = services.rating_map({hr.requester_id for hr in help_requests})
+    for hr in help_requests:
+        hr.rating_avg, hr.rating_count = ratings.get(hr.requester_id, (None, 0))
 
     user = request.user
     points = _viewpoints(user) if user.is_authenticated else []
@@ -110,6 +117,22 @@ def help_request_create(request):
         messages.error(request, reason)
         return redirect('core:profile')
     initial = {'latitude': request.user.latitude, 'longitude': request.user.longitude}
+    if request.method == 'GET':
+        src_pk = request.GET.get('from', '')
+        source = request.user.requests.filter(pk=int(src_pk)).first() if src_pk.isdigit() else None
+        if source is not None:
+            initial.update({
+                'title': source.title, 'description': source.description,
+                'duration_minutes': source.duration_minutes,
+                'latitude': source.latitude, 'longitude': source.longitude,
+                'address_detail': source.address_detail, 'mode': source.mode,
+                'chat_retention_days': source.chat_retention_days,
+                'preset_tags': list(source.preset_tags.all()),
+                'headcount_choice': source.headcount if source.headcount <= 4 else 'custom',
+                'headcount_custom': source.headcount if source.headcount > 4 else None,
+                'skill_names': ', '.join(s.name for s in source.required_skills.all()),
+            })
+            messages.info(request, '前回の依頼内容をコピーしました。場所と内容を確認して投稿してください。')
     form = HelpRequestForm(request.POST or None, initial=initial, user=request.user)
     if request.method == 'POST' and form.is_valid():
         help_request = form.save()
@@ -139,6 +162,8 @@ def help_request_detail(request, pk):
     is_helper = user.is_authenticated and help_request.matches.filter(
         helper=user, status=Match.Status.IN_PROGRESS).exists()
 
+    help_request.requester.rating_avg, help_request.requester.rating_count = services.rating_summary(
+        help_request.requester)
     participants = list(help_request.active_matches)
     my_match = None
     if is_requester or is_helper:
@@ -148,6 +173,10 @@ def help_request_detail(request, pk):
             participant.work_measured = services.measured_minutes(participant, help_request, now)
             if is_helper and participant.helper_id == user.pk:
                 my_match = participant
+    for participant in participants:
+        participant.helper.rating_avg, participant.helper.rating_count = services.rating_summary(participant.helper)
+    if match is not None:
+        match.helper.rating_avg, match.helper.rating_count = services.rating_summary(match.helper)
     context = {
         'help_request': help_request, 'match': match, 'my_match': my_match,
         'is_requester': is_requester, 'is_helper': is_helper,
@@ -173,6 +202,13 @@ def help_request_detail(request, pk):
         context['applications'] = (help_request.applications.filter(status=Application.Status.APPLIED)
                                    .exclude(applicant__is_shadow_banned=True)
                                    .select_related('applicant'))
+        for app in context['applications']:
+            app.applicant.rating_avg, app.applicant.rating_count = services.rating_summary(app.applicant)
+    if is_requester and help_request.status == HelpRequest.Status.DONE:
+        context['done_matches'] = list(
+            help_request.matches.filter(status=Match.Status.DONE).select_related('helper'))
+    context['can_repost'] = is_requester and help_request.status in (
+        HelpRequest.Status.DONE, HelpRequest.Status.CANCELED, HelpRequest.Status.EXPIRED)
     if match is not None and (is_requester or is_helper):
         context['chat_open'] = services.chat_is_open(match)
         context['chat_history_visible'] = services.chat_history_visible(match)
@@ -263,6 +299,16 @@ def work_declaration_review(request, pk):
     _run(request, lambda: services.review_declaration(match, request.user, approve),
          '申告を承認しました。' if approve else '申告を却下しました。')
     return _work_back(request, match)
+
+
+@login_required
+@require_POST
+def tip_match(request, pk):
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    amount = _run(request, lambda: services.tip_helper(match, request.user, request.POST.get('amount', '')))
+    if amount is not None:
+        messages.success(request, f'{match.helper.username}さんに{amount}ptのチップを渡しました。')
+    return redirect('core:help_request_detail', pk=match.help_request_id)
 
 
 @login_required
@@ -433,6 +479,7 @@ def account_settings(request):
                        if settings.LINE_OFFICIAL_ACCOUNT_ID else '')
     return render(request, 'core/account_settings.html', {
         'account_form': account_form, 'notify_form': notify_form,
+        'blocked_users': UserBlock.objects.filter(blocker=request.user).select_related('blocked'),
         'line_login_enabled': bool(settings.LINE_LOGIN_CHANNEL_ID),
         'line_linked': bool(request.user.line_user_id),
         'line_friend_url': line_friend_url})
@@ -494,12 +541,38 @@ def public_profile(request, username):
     target = get_object_or_404(User, username=username, is_active=True)
     return render(request, 'core/public_profile.html', {
         'target': target,
+        'is_blocked': request.user.is_authenticated and UserBlock.objects.filter(
+            blocker=request.user, blocked=target).exists(),
         'skills': target.skills.all(),
         'avg_rating': target.received_reviews.aggregate(a=Avg('rating'))['a'],
         'review_count': target.received_reviews.count(),
         'help_count': target.helps.filter(status=Match.Status.DONE).count(),
         'reviews': target.received_reviews.select_related('reviewer').order_by('-created_at')[:5],
     })
+
+
+@login_required
+@require_POST
+def block_toggle(request, username):
+    target = get_object_or_404(User, username=username, is_active=True)
+    if target.pk == request.user.pk:
+        messages.error(request, '自分自身はブロックできません。')
+    elif UserBlock.objects.filter(blocker=request.user, blocked=target).exists():
+        services.unblock_user(request.user, target)
+        messages.success(request, f'{target.username}さんのブロックを解除しました。')
+    else:
+        services.block_user(request.user, target)
+        messages.success(request, f'{target.username}さんをブロックしました。今後お互いにマッチングできなくなります。')
+    return redirect('core:public_profile', username=username)
+
+
+@login_required
+@require_POST
+def unblock_user(request, username):
+    target = get_object_or_404(User, username=username)
+    services.unblock_user(request.user, target)
+    messages.success(request, f'{target.username}さんのブロックを解除しました。')
+    return redirect('core:account_settings')
 
 
 @login_required
@@ -683,7 +756,8 @@ def run_tasks(request):
     if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
         return HttpResponseForbidden('forbidden')
     return JsonResponse({'expired': services.expire_requests(), 'mailed': services.send_email_digests(),
-                         'purged_messages': services.purge_expired_chat_messages()})
+                         'purged_messages': services.purge_expired_chat_messages(),
+                         'reminded': services.send_schedule_reminders()})
 
 
 def csrf_failure(request, reason=''):

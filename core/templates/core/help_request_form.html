@@ -13,6 +13,7 @@
         </ol>
     </div>
     {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+    <p class="draft-note" data-draft-note hidden>📝 前回の下書きを復元しました。入力内容はこの端末に自動で保存されます。<button type="button" class="btn-text" data-draft-clear>下書きを消す</button></p>
 
     <section class="card step" data-step data-title="何を手伝ってほしいですか?">
         <h2 class="step-title">何を手伝ってほしいですか?</h2>

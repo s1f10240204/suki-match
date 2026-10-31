@@ -54,4 +54,20 @@
     {% endif %}
     <button name="save_notify" class="btn btn-primary btn-block">通知設定を保存</button>
 </form>
+
+<section class="card">
+    <h2 class="section-title">ブロック中のユーザー</h2>
+    <p class="help">ブロックしたユーザーの依頼は一覧に出なくなり、お互いにマッチングできなくなります（進行中のやり取りには影響しません）。</p>
+    {% for b in blocked_users %}
+        <div class="list-row">
+            <a href="{% url 'core:public_profile' b.blocked.username %}">{{ b.blocked.username }}</a>
+            <form method="post" action="{% url 'core:unblock_user' b.blocked.username %}">
+                {% csrf_token %}
+                <button class="btn btn-ghost btn-sm">解除する</button>
+            </form>
+        </div>
+    {% empty %}
+        <p class="meta">ブロック中のユーザーはいません。ブロックは各ユーザーのプロフィールからできます。</p>
+    {% endfor %}
+</section>
 {% endblock %}

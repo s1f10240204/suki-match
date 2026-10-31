@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from . import services, skills
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting, PointTransaction,
+from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting, PointTransaction, UserBlock,
                      PresetTag, Report, Review, Sanction, Skill, User)
 
 
@@ -233,6 +233,7 @@ class ReportAdmin(PasswordConfirmMixin, admin.ModelAdmin):
 
 
 admin.site.register(Review)
+admin.site.register(UserBlock)
 admin.site.register(Application)
 admin.site.register(PresetTag)
 admin.site.register(Notification)

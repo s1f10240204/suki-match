@@ -45,7 +45,7 @@
         {% avatar help_request.requester %}
         <div>
             <p class="person-name">{{ help_request.requester.username }} <span class="rank-badge">{{ help_request.requester.rank }} Lv.{{ help_request.requester.level }}</span></p>
-            <p class="meta">依頼者{% if help_request.requester.area_label %} · {{ help_request.requester.area_label }}{% endif %}</p>
+            <p class="meta">依頼者{% if help_request.requester.area_label %} · {{ help_request.requester.area_label }}{% endif %}{% if help_request.requester.rating_count %} · ★{{ help_request.requester.rating_avg|floatformat:1 }}（{{ help_request.requester.rating_count }}件の評価）{% endif %}</p>
             {% if help_request.requester.motivation %}<p class="person-quote">{{ help_request.requester.motivation }}</p>{% endif %}
         </div>
     </a>
@@ -56,7 +56,7 @@
             {% avatar pm.helper %}
             <div>
                 <p class="person-name">{{ pm.helper.username }} <span class="rank-badge">{{ pm.helper.rank }} Lv.{{ pm.helper.level }}</span></p>
-                <p class="meta">ヘルパー</p>
+                <p class="meta">ヘルパー{% if pm.helper.rating_count %} · ★{{ pm.helper.rating_avg|floatformat:1 }}（{{ pm.helper.rating_count }}件）{% endif %}</p>
                 {% if pm.helper.motivation %}<p class="person-quote">「{{ pm.helper.motivation }}」</p>{% endif %}
             </div>
         </a>
@@ -66,7 +66,7 @@
             {% avatar match.helper %}
             <div>
                 <p class="person-name">{{ match.helper.username }} <span class="rank-badge">{{ match.helper.rank }} Lv.{{ match.helper.level }}</span></p>
-                <p class="meta">ヘルパー</p>
+                <p class="meta">ヘルパー{% if match.helper.rating_count %} · ★{{ match.helper.rating_avg|floatformat:1 }}（{{ match.helper.rating_count }}件）{% endif %}</p>
                 {% if match.helper.motivation %}<p class="person-quote">「{{ match.helper.motivation }}」</p>{% endif %}
             </div>
         </a>
@@ -86,7 +86,7 @@
                         <a href="{% url 'core:public_profile' app.applicant.username %}" class="person person-compact">
                             {% avatar app.applicant 'sm' %}
                             <div>
-                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>
+                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>{% if app.applicant.rating_count %}<p class="meta">★{{ app.applicant.rating_avg|floatformat:1 }}（{{ app.applicant.rating_count }}件の評価）</p>{% endif %}
                                 {% if app.message %}<p class="person-quote">{{ app.message }}</p>{% endif %}
                                 {% if app.applicant.motivation %}<p class="meta">理由: {{ app.applicant.motivation }}</p>{% endif %}
                             </div>
@@ -110,7 +110,7 @@
                         <a href="{% url 'core:public_profile' app.applicant.username %}" class="person person-compact">
                             {% avatar app.applicant 'sm' %}
                             <div>
-                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>
+                                <p class="person-name">{{ app.applicant.username }} <span class="rank-badge">{{ app.applicant.rank }} Lv.{{ app.applicant.level }}</span></p>{% if app.applicant.rating_count %}<p class="meta">★{{ app.applicant.rating_avg|floatformat:1 }}（{{ app.applicant.rating_count }}件の評価）</p>{% endif %}
                                 {% if app.message %}<p class="person-quote">{{ app.message }}</p>{% endif %}
                             </div>
                         </a>
@@ -185,6 +185,26 @@
         <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャット履歴を見る{% if retention_deadline %}({{ retention_deadline|date:"n/j" }}まで保存){% endif %}</a>
     {% endif %}
 
+    {% if is_requester and help_request.status == 'done' and done_matches %}
+        <div class="tip-box">
+            <h2 class="section-title">お礼のチップ</h2>
+            <p class="meta">感謝の気持ちをポイントで伝えられます（あなたの残高 {{ user.points }}pt）。</p>
+            {% for dm in done_matches %}
+            <form method="post" action="{% url 'core:tip_match' dm.pk %}" class="tip-form">
+                {% csrf_token %}
+                <span class="tip-to">{{ dm.helper.username }}さんへ</span>
+                <select name="amount" aria-label="チップのポイント">
+                    <option value="5">5pt</option>
+                    <option value="10" selected>10pt</option>
+                    <option value="20">20pt</option>
+                    <option value="50">50pt</option>
+                </select>
+                <button class="btn btn-ghost btn-sm">チップを渡す</button>
+            </form>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     {% if review_form %}
         <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form">
             {% csrf_token %}
@@ -212,6 +232,13 @@
         </details>
     {% endif %}
 </section>
+
+{% if can_repost %}
+<section class="card">
+    <a href="{% url 'core:help_request_create' %}?from={{ help_request.pk }}" class="btn btn-outline btn-block">この内容でもう一度依頼する</a>
+    <p class="meta">タイトル・内容・場所などが入力された状態で投稿フォームが開きます。</p>
+</section>
+{% endif %}
 
 {% if user.is_authenticated and not is_requester %}
     <p class="report-link"><a href="{% url 'core:report_user' help_request.requester.username %}?request={{ help_request.pk }}">この依頼を通報する</a></p>

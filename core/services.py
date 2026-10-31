@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Avg, Count, F, Q
 from django.db.models.functions import ExtractHour
 from django.urls import reverse
 from django.utils import timezone
@@ -18,7 +18,8 @@ from django.utils import timezone
 from . import images, line_api, moderation
 from .geocoding import area_label_for
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, MessageReaction,
-                     Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User)
+                     Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User,
+                     UserBlock)
 
 RADIUS_METERS = 500
 HELPER_POINTS = 10
@@ -273,6 +274,45 @@ def notification_setting(user):
 def detail_url(help_request):
     return reverse('core:help_request_detail', args=[help_request.pk])
 
+def rating_summary(user):
+    """受け取ったレビューの (平均, 件数)。レビューがなければ (None, 0)。"""
+    agg = user.received_reviews.aggregate(avg=Avg('rating'), count=Count('id'))
+    return agg['avg'], agg['count']
+
+
+def rating_map(user_ids):
+    """一覧表示用に複数ユーザーの評価をまとめて集計する。{user_id: (平均, 件数)}"""
+    rows = (Review.objects.filter(reviewee_id__in=list(user_ids))
+            .values('reviewee_id').annotate(avg=Avg('rating'), count=Count('id')))
+    return {row['reviewee_id']: (row['avg'], row['count']) for row in rows}
+
+
+def is_blocked_pair(user_a_id, user_b_id):
+    """どちらか一方がもう一方をブロックしていれば True(新規マッチング不可)。"""
+    return UserBlock.objects.filter(
+        Q(blocker_id=user_a_id, blocked_id=user_b_id)
+        | Q(blocker_id=user_b_id, blocked_id=user_a_id)).exists()
+
+
+def blocked_user_ids(user):
+    """一覧で非表示にすべき相手(自分がブロックした人 + 自分をブロックした人)のID集合。"""
+    ids = set(UserBlock.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+    ids |= set(UserBlock.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+    return ids
+
+
+def block_user(blocker, blocked):
+    if blocker.pk == blocked.pk:
+        raise ServiceError('自分自身はブロックできません。')
+    obj, _created = UserBlock.objects.get_or_create(blocker=blocker, blocked=blocked)
+    return obj
+
+
+def unblock_user(blocker, blocked):
+    UserBlock.objects.filter(blocker=blocker, blocked=blocked).delete()
+
+
+
 
 def nearby_helpers(help_request):
     """依頼の半径500m以内(現在地または活動拠点)にいて、スキル条件を満たし、受付制限のないユーザー。"""
@@ -398,6 +438,9 @@ def _check_can_help(help_request, user):
     if user.is_shadow_banned:
         # ゴーストBan中は締め切られたように見せて静かに止める(マッチングさせない)
         raise ServiceError('この依頼はすでに締め切られました。')
+    if is_blocked_pair(help_request.requester_id, user.pk):
+        # ブロック関係がある相手とはマッチングさせない(締め切られたように見せる)
+        raise ServiceError('この依頼はすでに締め切られました。')
     reason = accept_block_reason(user)
     if reason:
         raise ServiceError(reason)
@@ -446,6 +489,8 @@ def approve(application, user):
     if application.status != Application.Status.APPLIED:
         raise ServiceError('この応募は承認できません。')
     if application.applicant.is_shadow_banned:
+        raise ServiceError('この応募は承認できません。')
+    if is_blocked_pair(user.pk, application.applicant_id):
         raise ServiceError('この応募は承認できません。')
     reason = accept_block_reason(application.applicant)
     if reason:
@@ -725,6 +770,93 @@ def submit_review(help_request, user, rating, comment=''):
         record_points(reviewee, REVIEW_BONUS_POINTS, PointTransaction.Kind.REVIEW_BONUS,
                       help_request, counterparty=user, description='高評価レビューのボーナス')
     return review
+
+
+TIP_MAX_POINTS = 200
+
+
+def tip_helper(match, tipper, amount):
+    """完了したお手伝いへのお礼チップ。依頼者の残高からヘルパーへ移す。"""
+    help_request = match.help_request
+    if help_request.requester_id != tipper.pk:
+        raise ServiceError('チップを渡せるのは依頼者だけです。')
+    if help_request.status != HelpRequest.Status.DONE or match.status != Match.Status.DONE:
+        raise ServiceError('完了したお手伝いにだけチップを渡せます。')
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        raise ServiceError('チップのポイント数が不正です。')
+    if not 1 <= amount <= TIP_MAX_POINTS:
+        raise ServiceError(f'チップは1〜{TIP_MAX_POINTS}ptで指定してください。')
+    with transaction.atomic():
+        payer = User.objects.select_for_update().get(pk=tipper.pk)
+        if payer.points < amount:
+            raise ServiceError(f'ポイントが不足しています(必要 {amount}pt / 保有 {payer.points}pt)。')
+        payer.points -= amount
+        payer.save(update_fields=['points'])
+        helper = User.objects.get(pk=match.helper_id)
+        record_points(payer, -amount, PointTransaction.Kind.TIP_SENT, help_request,
+                      counterparty=helper,
+                      description=f'「{help_request.title}」のお礼チップ')
+        helper.add_points(amount)
+        record_points(helper, amount, PointTransaction.Kind.TIP_RECEIVED, help_request,
+                      counterparty=payer,
+                      description=f'「{help_request.title}」のお礼チップ')
+    notify(match.helper, 'tip',
+           f'{tipper.username}さんから「{help_request.title}」のお礼に{amount}ptのチップが届きました',
+           detail_url(help_request))
+    return amount
+
+
+def _notify_schedule_reminder(help_request, now, day_before):
+    local = timezone.localtime(help_request.scheduled_for)
+    local_now = timezone.localtime(now)
+    if local.date() == local_now.date() + timedelta(days=1):
+        when_label = f'明日{local:%H:%M}'
+    elif local.date() == local_now.date():
+        when_label = f'今日{local:%H:%M}'
+    else:
+        when_label = f'{local.month}/{local.day} {local:%H:%M}'
+    if day_before:
+        text = f'{when_label}〜「{help_request.title}」の予定です'
+    else:
+        text = f'まもなく{when_label}〜「{help_request.title}」の開始です'
+    url = detail_url(help_request)
+    count = 0
+    notify(help_request.requester, 'schedule_reminder', text, url)
+    count += 1
+    for match in help_request.active_matches:
+        notify(match.helper, 'schedule_reminder', text, url)
+        count += 1
+    return count
+
+
+def send_schedule_reminders(now=None):
+    """日時指定の依頼について、前日(24時間前)と1時間前に依頼者と参加中のヘルパーへ知らせる。"""
+    now = now or timezone.now()
+    sent = 0
+    base = HelpRequest.objects.filter(
+        scheduled_for__isnull=False, scheduled_for__gt=now,
+        status__in=(HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS))
+    # 前日分: 開始まで24時間以内。ただし1時間を切ったものは1時間前リマインダーに任せる
+    day_qs = base.filter(scheduled_for__lte=now + timedelta(hours=24),
+                         scheduled_for__gt=now + timedelta(hours=1),
+                         reminded_day_before_at__isnull=True)
+    for help_request in day_qs:
+        claimed = HelpRequest.objects.filter(
+            pk=help_request.pk, reminded_day_before_at__isnull=True).update(
+            reminded_day_before_at=now)
+        if claimed:
+            sent += _notify_schedule_reminder(help_request, now, day_before=True)
+    hour_qs = base.filter(scheduled_for__lte=now + timedelta(hours=1),
+                          reminded_hour_before_at__isnull=True)
+    for help_request in hour_qs:
+        claimed = HelpRequest.objects.filter(
+            pk=help_request.pk, reminded_hour_before_at__isnull=True).update(
+            reminded_hour_before_at=now)
+        if claimed:
+            sent += _notify_schedule_reminder(help_request, now, day_before=False)
+    return sent
 
 
 def expire_requests():

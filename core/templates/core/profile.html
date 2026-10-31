@@ -102,11 +102,11 @@
 <section class="card">
     <h2 class="section-title">自分の依頼</h2>
     {% for r in my_requests %}
-        <a class="list-row" href="{% url 'core:help_request_detail' r.pk %}"><span>{{ r.title }}</span><span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></a>
+        <a class="list-row history-row" href="{% url 'core:help_request_detail' r.pk %}"><span class="history-main"><span class="history-title">{{ r.title }}</span><span class="history-meta">{{ r.created_at|date:"Y/n/j" }} ・ {{ r.area_label }}{% if r.points_cost %} ・ {{ r.points_cost }}pt{% endif %}</span></span><span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></a>
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
     <h2 class="section-title">お手伝い履歴</h2>
     {% for m in my_helps %}
-        <a class="list-row" href="{% url 'core:help_request_detail' m.help_request.pk %}"><span>{{ m.help_request.title }}</span><span class="status status-{{ m.status }}">{{ m.get_status_display }}</span></a>
+        <a class="list-row history-row" href="{% url 'core:help_request_detail' m.help_request.pk %}"><span class="history-main"><span class="history-title">{{ m.help_request.title }}</span><span class="history-meta">依頼者：{{ m.help_request.requester.username }} ・ {{ m.help_request.created_at|date:"Y/n/j" }} ・ {{ m.help_request.area_label }}</span></span><span class="status status-{{ m.status }}">{{ m.get_status_display }}</span></a>
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
 </section>
 

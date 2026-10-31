@@ -6,13 +6,38 @@
 {% block content %}
 <div class="page-head"><h1>メッセージ</h1></div>
 <section class="card">
-    {% for match in chats %}
+    {% for group in person_groups %}
+        {% if group.chats|length == 1 %}
+            {% with match=group.chats.0 %}
+            <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
+                {% avatar group.person 'md' %}
+                <span class="chat-row-body">
+                    <span class="person-name">{{ group.person.username }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>
+                    <span class="meta">{{ match.help_request.title }}</span>
+                    <span class="chat-row-last{% if match.unread_count %} is-unread{% endif %}">{% if match.last_preview %}{{ match.last_preview|truncatechars:40 }}{% else %}まだメッセージはありません{% endif %}</span>
+                </span>
+                <span class="status status-{{ match.status }}">{{ match.get_status_display }}</span>
+            </a>
+            {% endwith %}
+        {% else %}
+            <a class="list-row chat-row" href="{% url 'core:message_person' group.person.username %}">
+                {% avatar group.person 'md' %}
+                <span class="chat-row-body">
+                    <span class="person-name">{{ group.person.username }}{% if group.unread_total %} <span class="unread-badge">{{ group.unread_total }}</span>{% endif %}</span>
+                    <span class="meta">{{ group.chats|length }}件のトーク{% if group.active_count %}（進行中{{ group.active_count }}件）{% endif %}</span>
+                    <span class="chat-row-last{% if group.unread_total %} is-unread{% endif %}">{{ group.latest.help_request.title }}：{{ group.latest.last_preview|truncatechars:32 }}</span>
+                </span>
+                <span class="chip">{{ group.chats|length }}件</span>
+            </a>
+        {% endif %}
+    {% endfor %}
+    {% for match in group_chats %}
         <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
-            {% avatar match.other 'md' %}
+            <span class="group-avatar" aria-hidden="true">👥</span>
             <span class="chat-row-body">
-                <span class="person-name">{{ match.other.username }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>
-                <span class="meta">{{ match.help_request.title }}</span>
-                <span class="chat-row-last{% if match.unread_count %} is-unread{% endif %}">{% if match.last_message %}{{ match.last_message.body|truncatechars:40 }}{% else %}まだメッセージはありません{% endif %}</span>
+                <span class="person-name">{{ match.help_request.title }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>
+                <span class="meta">グループ（{{ match.help_request.headcount }}人募集）</span>
+                <span class="chat-row-last{% if match.unread_count %} is-unread{% endif %}">{% if match.last_preview %}{{ match.last_preview|truncatechars:40 }}{% else %}まだメッセージはありません{% endif %}</span>
             </span>
             <span class="status status-{{ match.status }}">{{ match.get_status_display }}</span>
         </a>

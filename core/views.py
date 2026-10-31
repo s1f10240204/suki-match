@@ -405,6 +405,15 @@ def chat(request, pk):
     })
 
 
+def _annotate_chats(user, chats):
+    for match in chats:
+        match.other = match.other_user(user)
+        match.last_message = match.help_request.messages.exclude(is_hidden=True).order_by('-created_at').first()
+        match.last_preview = services.reply_excerpt(match.last_message) if match.last_message else ''
+        match.unread_count = (match.help_request.messages.filter(is_hidden=False)
+                              .exclude(sender=user).exclude(reads__user=user).count())
+
+
 @login_required
 def message_list(request):
     chats = services.open_chats(request.user)
@@ -413,12 +422,28 @@ def message_list(request):
         return redirect('core:help_request_list')
     if len(chats) == 1:
         return redirect('core:chat', pk=chats[0].pk)
-    for match in chats:
-        match.other = match.other_user(request.user)
-        match.last_message = match.help_request.messages.exclude(is_hidden=True).order_by('-created_at').first()
-        match.unread_count = (match.help_request.messages.filter(is_hidden=False)
-                              .exclude(sender=request.user).exclude(reads__user=request.user).count())
-    return render(request, 'core/message_list.html', {'chats': chats})
+    _annotate_chats(request.user, chats)
+    person_groups, group_chats = services.group_chats_by_person(request.user, chats)
+    return render(request, 'core/message_list.html', {
+        'person_groups': person_groups, 'group_chats': group_chats})
+
+
+@login_required
+def message_person(request, username):
+    """同じ相手とのトークを依頼ごとに並べるページ。"""
+    person = get_object_or_404(User, username=username, is_active=True)
+    chats = services.open_chats(request.user)
+    _annotate_chats(request.user, chats)
+    person_groups, _group_chats = services.group_chats_by_person(request.user, chats)
+    group = next((g for g in person_groups if g['person'].pk == person.pk), None)
+    if group is None:
+        raise Http404
+    if len(group['chats']) == 1:
+        return redirect('core:chat', pk=group['chats'][0].pk)
+    chats_sorted = sorted(
+        group['chats'],
+        key=lambda c: c.last_message.created_at if c.last_message else c.created_at, reverse=True)
+    return render(request, 'core/message_person.html', {'person': person, 'chats': chats_sorted})
 
 
 # ---------- マイページ・アカウント ----------

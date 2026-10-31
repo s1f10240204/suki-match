@@ -661,3 +661,4 @@ ul.socialaccount_providers li { list-style: none; }
 .stamp-item:active { background: #f3ecdd; }
 .stamp-item-emoji { font-size: 38px; line-height: 1.15; }
 .stamp-item-label { font-size: .72rem; color: var(--muted); }
+.group-avatar { width: 48px; height: 48px; border-radius: 50%; background: #e9dfd2; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }

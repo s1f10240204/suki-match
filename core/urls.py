@@ -23,6 +23,7 @@ urlpatterns = [
     path('matches/<int:pk>/work/declaration/', views.work_declaration_review, name='work_declaration_review'),
     path('matches/<int:pk>/tip/', views.tip_match, name='tip_match'),
     path('messages/', views.message_list, name='message_list'),
+    path('messages/person/<str:username>/', views.message_person, name='message_person'),
     path('photos/<int:pk>/', views.user_photo, name='user_photo'),
     path('line/webhook/', views.line_webhook, name='line_webhook'),
     path('line/richmenu/setup/', views.line_richmenu_setup, name='line_richmenu_setup'),

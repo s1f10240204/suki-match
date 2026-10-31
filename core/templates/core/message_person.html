@@ -1,0 +1,31 @@
+{% extends 'core/base.html' %}
+{% load suki %}
+
+{% block title %}{{ person.username }}さんとのトーク - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>メッセージ</h1></div>
+<section class="card">
+    <a href="{% url 'core:public_profile' person.username %}" class="person">
+        {% avatar person %}
+        <div>
+            <p class="person-name">{{ person.username }}</p>
+            <p class="meta">{{ chats|length }}件のトーク</p>
+        </div>
+    </a>
+</section>
+<section class="card">
+    <h2 class="section-title">依頼ごとのトーク</h2>
+    {% for match in chats %}
+        <a class="list-row chat-row" href="{% url 'core:chat' match.pk %}">
+            <span class="chat-row-body">
+                <span class="person-name">{{ match.help_request.title }}{% if match.unread_count %} <span class="unread-badge">{{ match.unread_count }}</span>{% endif %}</span>
+                <span class="meta">{% if match.help_request.scheduled_for %}{{ match.help_request.scheduled_for|date:"n/j(D) H:i" }}〜 · {% endif %}{{ match.help_request.area_label }}</span>
+                <span class="chat-row-last{% if match.unread_count %} is-unread{% endif %}">{% if match.last_preview %}{{ match.last_preview|truncatechars:40 }}{% else %}まだメッセージはありません{% endif %}</span>
+            </span>
+            <span class="status status-{{ match.status }}">{{ match.get_status_display }}</span>
+        </a>
+    {% endfor %}
+</section>
+<p class="meta"><a href="{% url 'core:message_list' %}">← メッセージ一覧に戻る</a></p>
+{% endblock %}

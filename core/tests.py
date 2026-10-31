@@ -1930,3 +1930,83 @@ class StampTests(BaseTestCase):
         self.assertContains(page, 'data-stamp="thanks"')   # スタンプパネル
         self.assertContains(page, '🎉')                    # 送信済みスタンプの描画
         self.assertContains(page, 'おめでとう')
+class MessageGroupingTests(BaseTestCase):
+    """メッセージ一覧を相手ごとにまとめる(案A)。"""
+
+    def _two_chats(self, name):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr1 = make_request(requester)
+        hr1.title = '買い物代行'
+        hr1.save(update_fields=['title'])
+        services.publish_request(hr1)
+        hr2 = make_request(requester)
+        hr2.title = '水戸に一緒に行きたい'
+        hr2.save(update_fields=['title'])
+        services.publish_request(hr2)
+        helper = make_user(f'{name}help')
+        m1 = services.accept_first_come(hr1, helper)
+        m2 = services.accept_first_come(hr2, helper)
+        return requester, hr1, hr2, helper, m1, m2
+
+    def test_list_groups_by_person(self):
+        requester, hr1, hr2, helper, m1, m2 = self._two_chats('grp1')
+        services.post_message(m1, requester, 'よろしくお願いします')
+        self.client.force_login(helper)
+        resp = self.client.get(reverse('core:message_list'))
+        self.assertContains(resp, '2件のトーク')
+        self.assertContains(resp, reverse('core:message_person', args=[requester.username]))
+        self.assertContains(resp, '<span class="unread-badge">1</span>')
+        # 相手別ページに依頼ごとのトークが並ぶ
+        page = self.client.get(reverse('core:message_person', args=[requester.username]))
+        self.assertContains(page, '買い物代行')
+        self.assertContains(page, '水戸に一緒に行きたい')
+        self.assertContains(page, reverse('core:chat', args=[m1.pk]))
+        self.assertContains(page, reverse('core:chat', args=[m2.pk]))
+
+    def test_requester_side_also_grouped(self):
+        requester, hr1, hr2, helper, m1, m2 = self._two_chats('grp2')
+        self.client.force_login(requester)
+        resp = self.client.get(reverse('core:message_list'))
+        self.assertContains(resp, '2件のトーク')
+        page = self.client.get(reverse('core:message_person', args=[helper.username]))
+        self.assertContains(page, '買い物代行')
+
+    def test_person_page_404_without_chats(self):
+        requester, hr1, hr2, helper, m1, m2 = self._two_chats('grp3')
+        stranger = make_user('grp3stranger')
+        self.client.force_login(helper)
+        resp = self.client.get(reverse('core:message_person', args=[stranger.username]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_single_chat_redirects_straight_to_chat(self):
+        requester = make_user('grp4req')
+        User.objects.filter(pk=requester.pk).update(points=100)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = make_user('grp4help')
+        match = services.accept_first_come(hr, helper)
+        self.client.force_login(helper)
+        resp = self.client.get(reverse('core:message_list'))
+        self.assertRedirects(resp, reverse('core:chat', args=[match.pk]), fetch_redirect_response=False)
+
+    def test_group_chat_stays_as_request_row(self):
+        requester = make_user('grp5req')
+        User.objects.filter(pk=requester.pk).update(points=300)
+        requester.refresh_from_db()
+        group_hr = make_request(requester, headcount=2)
+        group_hr.title = '引っ越し手伝い'
+        group_hr.save(update_fields=['title'])
+        services.publish_request(group_hr)
+        solo_hr = make_request(requester)
+        services.publish_request(solo_hr)
+        h1, h2 = make_user('grp5h1'), make_user('grp5h2')
+        services.accept_first_come(group_hr, h1)
+        services.accept_first_come(group_hr, h2)
+        services.accept_first_come(solo_hr, h1)
+        self.client.force_login(requester)
+        resp = self.client.get(reverse('core:message_list'))
+        self.assertContains(resp, 'グループ（2人募集）')
+        self.assertContains(resp, '引っ越し手伝い')

@@ -963,6 +963,46 @@ def open_chats(user):
     return result
 
 
+def chat_counterpart(match, user):
+    """そのチャットの「相手」を返す。1対1なら相手ユーザー、依頼者側で複数ヘルパーが
+    参加しているグループチャットなら None(人にまとめられない)。"""
+    help_request = match.help_request
+    if help_request.requester_id != user.pk:
+        return help_request.requester
+    helpers = {m.helper_id: m.helper for m in help_request.matches.select_related('helper')
+               if m.status in (Match.Status.IN_PROGRESS, Match.Status.DONE)}
+    if len(helpers) == 1:
+        return next(iter(helpers.values()))
+    return None
+
+
+def group_chats_by_person(user, chats):
+    """メッセージ一覧用に、開けるチャットを相手ごとにまとめる。
+    戻り値: (person_groups, group_chats)
+      person_groups: [{'person': User, 'chats': [match...]}] (相手1人とのチャット群)
+      group_chats: [match...] (複数ヘルパーのグループチャット。依頼単位でそのまま出す)
+    各 match には呼び出し側で other / last_message / unread_count を付けておくこと。"""
+    by_person, group_chats = {}, []
+    for match in chats:
+        person = chat_counterpart(match, user)
+        if person is None:
+            group_chats.append(match)
+        else:
+            by_person.setdefault(person.pk, {'person': person, 'chats': []})['chats'].append(match)
+    person_groups = list(by_person.values())
+    for group in person_groups:
+        group['unread_total'] = sum(c.unread_count for c in group['chats'])
+        group['active_count'] = sum(1 for c in group['chats'] if c.status == Match.Status.IN_PROGRESS)
+        latest = max(group['chats'],
+                     key=lambda c: c.last_message.created_at if c.last_message else c.created_at)
+        group['latest'] = latest
+        group['last_at'] = latest.last_message.created_at if latest.last_message else latest.created_at
+    person_groups.sort(key=lambda g: g['last_at'], reverse=True)
+    group_chats.sort(
+        key=lambda c: c.last_message.created_at if c.last_message else c.created_at, reverse=True)
+    return person_groups, group_chats
+
+
 def purge_expired_chat_messages():
     """保存期間を過ぎた完了・キャンセル済み依頼のメッセージを削除する。定期処理から呼ぶ。"""
     now = timezone.now()

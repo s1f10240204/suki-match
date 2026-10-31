@@ -58,24 +58,120 @@ def area_label_for(lat, lng):
 
 
 SEARCH_URL = 'https://msearch.gsi.go.jp/address-search/AddressSearch'
+ZIP_URL = 'https://zipcloud.ibsnet.co.jp/api/search'
+NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
+SEARCH_CACHE_SECONDS = 300
+_FULLWIDTH = str.maketrans('０１２３４５６７８９－ー―', '0123456789---')
+_ZIP_PART = re.compile(r'^〒?\d{3}-\d{4}$')
 
 
-def search_area(query):
-    """地名・住所・駅名などから候補を最大10件返す（国土地理院 住所検索API）。
+def _normalize_query(query):
+    text = (query or '').translate(_FULLWIDTH).replace('〒', ' ').replace('　', ' ')
+    return re.sub(r'\s+', ' ', text).strip()
 
-    各候補は {'name', 'lat', 'lng'}。取得できなければ空リスト。
+
+def _haversine_m(lat1, lng1, lat2, lng2):
+    from math import asin, cos, radians, sin, sqrt
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return 2 * 6371000 * asin(sqrt(a))
+
+
+def _gsi_candidates(query):
+    data = json.loads(_fetch(f'{SEARCH_URL}?{urlencode({"q": query})}'))
+    results = []
+    for feature in data[:10]:
+        coords = (feature.get('geometry') or {}).get('coordinates') or []
+        title = (feature.get('properties') or {}).get('title', '')
+        if len(coords) == 2 and title:
+            results.append({'name': title, 'lat': coords[1], 'lng': coords[0]})
+    return results
+
+
+def _zip_candidates(digits):
+    """郵便番号7桁 → 住所候補。zipcloud で住所を引き、国土地理院で座標を付ける。"""
+    data = json.loads(_fetch(f'{ZIP_URL}?{urlencode({"zipcode": digits})}'))
+    results = []
+    for item in (data.get('results') or [])[:3]:
+        address = ''.join(item.get(k, '') for k in ('address1', 'address2', 'address3'))
+        if not address:
+            continue
+        for cand in _gsi_candidates(address)[:1]:
+            results.append({'name': f'〒{digits[:3]}-{digits[3:]} {address}',
+                            'lat': cand['lat'], 'lng': cand['lng']})
+    return results
+
+
+def _nominatim_label(display_name):
+    parts = [p.strip() for p in (display_name or '').split(',')]
+    parts = [p for p in parts if p and p != '日本' and not _ZIP_PART.match(p)]
+    return ' '.join(parts)
+
+
+def _nominatim_candidates(query):
+    """駅名・施設名など、住所ではない地名の候補(OpenStreetMap / Nominatim)。"""
+    params = urlencode({'q': query, 'format': 'jsonv2', 'countrycodes': 'jp', 'limit': 8})
+    data = json.loads(_fetch(f'{NOMINATIM_URL}?{params}'))
+    results = []
+    for item in data:
+        try:
+            lat, lng = float(item['lat']), float(item['lon'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        label = _nominatim_label(item.get('display_name', ''))
+        if label:
+            results.append({'name': label, 'lat': lat, 'lng': lng})
+    return results
+
+
+def _merged_candidates(normalized):
+    digits = re.sub(r'[\s-]', '', normalized)
+    if re.fullmatch(r'\d{7}', digits):
+        return _zip_candidates(digits)
+    try:
+        results = _gsi_candidates(normalized)
+    except Exception:
+        logger.warning('gsi search failed', exc_info=True)
+        results = []
+    seen = {(round(r['lat'], 4), round(r['lng'], 4)) for r in results}
+    try:
+        for cand in _nominatim_candidates(normalized):
+            key = (round(cand['lat'], 4), round(cand['lng'], 4))
+            if key not in seen:
+                seen.add(key)
+                results.append(cand)
+    except Exception:
+        logger.warning('nominatim search failed', exc_info=True)
+    return results
+
+
+def search_places(query, base_lat=None, base_lng=None, limit=8):
+    """住所・地名・駅名・郵便番号から候補 {'name','lat','lng'} を返す。
+
+    国土地理院(住所)と Nominatim(駅名・施設名等)を併用し、郵便番号も引ける。
+    base_lat/base_lng があれば近い順に並べる。取得できなければ空リスト。
     """
     if not settings.GEOCODER_ENABLED or not query:
         return []
-    try:
-        data = json.loads(_fetch(f'{SEARCH_URL}?{urlencode({"q": query})}'))
-        results = []
-        for feature in data[:10]:
-            coords = (feature.get('geometry') or {}).get('coordinates') or []
-            title = (feature.get('properties') or {}).get('title', '')
-            if len(coords) == 2 and title:
-                results.append({'name': title, 'lat': coords[1], 'lng': coords[0]})
-        return results
-    except Exception:  # ネットワーク障害等で操作を止めない
-        logger.warning('forward geocoding failed', exc_info=True)
+    normalized = _normalize_query(query)
+    if not normalized:
         return []
+    cache_key = f'place_search:{normalized}'
+    results = cache.get(cache_key)
+    if results is None:
+        try:
+            results = _merged_candidates(normalized)
+        except Exception:  # ネットワーク障害等で操作を止めない
+            logger.warning('place search failed', exc_info=True)
+            return []
+        cache.set(cache_key, results, SEARCH_CACHE_SECONDS)
+    results = list(results)
+    if base_lat is not None and base_lng is not None:
+        results.sort(key=lambda r: _haversine_m(base_lat, base_lng, r['lat'], r['lng']))
+    return results[:limit]
+
+
+def search_area(query):
+    """地名・住所・駅名・郵便番号から候補を返す(LINE のエリア指定用)。"""
+    return search_places(query)

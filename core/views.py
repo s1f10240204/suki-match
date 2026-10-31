@@ -18,6 +18,7 @@ from django.templatetags.static import static
 from . import images, line_api, line_chat, services, skills
 from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, HelpRequestForm, MessageForm,
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
+from . import geocoding
 from .geocoding import area_label_for
 from .models import (Application, HelpRequest, Match, Message, PresetTag, PushSubscription, Review, Sanction,
                      Skill, User)
@@ -487,6 +488,21 @@ def area_label_api(request):
     except (KeyError, TypeError, ValueError):
         return JsonResponse({'label': ''})
     return JsonResponse({'label': area_label_for(lat, lng)})
+
+
+@login_required
+def place_search_api(request):
+    """住所・地名・駅名・郵便番号 → 場所候補(近い順)。場所ピッカー用。"""
+    query = request.GET.get('q', '').strip()
+    if not query:
+        return JsonResponse({'results': []})
+    try:
+        base_lat = float(request.GET['lat'])
+        base_lng = float(request.GET['lng'])
+    except (KeyError, TypeError, ValueError):
+        base_lat = base_lng = None
+    results = geocoding.search_places(query, base_lat, base_lng)
+    return JsonResponse({'results': results})
 
 
 def skill_search(request):

@@ -148,23 +148,24 @@
         return null;
     }
 
-    // 住所 → 座標。Google があれば Geocoding API、なければ国土地理院の住所検索
-    function geocode(query) {
+    // 住所・地名・駅名・郵便番号 → 候補リスト。サーバー側で国土地理院(住所)と
+    // Nominatim(駅名・施設名)を併用し、郵便番号にも対応する。base があれば近い順。
+    function searchPlaces(query, baseLat, baseLng) {
         if (MAPS.provider === 'google' && window.google && google.maps) {
             return new google.maps.Geocoder().geocode({ address: query, region: 'jp' }).then(function (res) {
-                var r = res.results[0];
-                return {
-                    lat: r.geometry.location.lat(), lng: r.geometry.location.lng(),
-                    label: r.formatted_address.replace(/^日本、(〒\d{3}-\d{4} )?/, '')
-                };
+                return res.results.slice(0, 8).map(function (r) {
+                    return {
+                        name: r.formatted_address.replace(/^日本、(〒\d{3}-\d{4} )?/, ''),
+                        lat: r.geometry.location.lat(), lng: r.geometry.location.lng()
+                    };
+                });
             });
         }
-        return fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(query))
+        var url = '/api/place-search/?q=' + encodeURIComponent(query);
+        if (baseLat !== null && baseLng !== null) { url += '&lat=' + baseLat + '&lng=' + baseLng; }
+        return fetch(url)
             .then(function (r) { return r.json(); })
-            .then(function (list) {
-                if (!list.length) { throw new Error('not found'); }
-                return { lat: list[0].geometry.coordinates[1], lng: list[0].geometry.coordinates[0], label: list[0].properties.title };
-            });
+            .then(function (d) { return d.results || []; });
     }
 
     function setupLocationPicker(root) {
@@ -180,6 +181,8 @@
             status.className = 'geo-status' + (cls ? ' ' + cls : '');
         }
         function setPoint(lat, lng, label, focus, place) {
+            var rl = root.querySelector('[data-place-results]');
+            if (rl) { rl.hidden = true; rl.innerHTML = ''; }
             latInput.value = Number(lat).toFixed(6);
             lngInput.value = Number(lng).toFixed(6);
             setStatus(label, 'is-ok');
@@ -189,12 +192,43 @@
             if (err) { err.remove(); }
         }
 
+        var resultsList = root.querySelector('[data-place-results]');
+        function hideResults() {
+            if (resultsList) { resultsList.hidden = true; resultsList.innerHTML = ''; }
+        }
+        function showResults(cands) {
+            if (!resultsList) { return; }
+            resultsList.innerHTML = '';
+            cands.forEach(function (c) {
+                var li = document.createElement('li');
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = c.name;
+                btn.addEventListener('click', function () {
+                    hideResults();
+                    setPoint(c.lat, c.lng, '「' + c.name + '」にピンを置きました。ずれていたらピンを動かしてください。', true, c.name);
+                });
+                li.appendChild(btn);
+                resultsList.appendChild(li);
+            });
+            resultsList.hidden = false;
+        }
         function search() {
             var q = addressInput.value.trim();
             if (!q) { addressInput.focus(); return; }
             setStatus('「' + q + '」を検索しています…');
-            geocode(q).then(function (r) {
-                setPoint(r.lat, r.lng, '「' + r.label + '」にピンを置きました。ずれていたらピンを動かしてください。', true, r.label);
+            hideResults();
+            var baseLat = parseFloat(latInput.value);
+            var baseLng = parseFloat(lngInput.value);
+            searchPlaces(q, isNaN(baseLat) ? null : baseLat, isNaN(baseLng) ? null : baseLng).then(function (cands) {
+                if (!cands.length) {
+                    setStatus('「' + q + '」が見つかりませんでした。市区町村から入力するか、地図をタップしてください。', 'is-error');
+                } else if (cands.length === 1) {
+                    setPoint(cands[0].lat, cands[0].lng, '「' + cands[0].name + '」にピンを置きました。ずれていたらピンを動かしてください。', true, cands[0].name);
+                } else {
+                    setStatus('候補が ' + cands.length + ' 件見つかりました。下から選んでください。');
+                    showResults(cands);
+                }
             }).catch(function () {
                 setStatus('「' + q + '」が見つかりませんでした。市区町村から入力するか、地図をタップしてください。', 'is-error');
             });

@@ -1150,3 +1150,74 @@ class PointsEconomyTests(BaseTestCase):
             'latitude': LAT, 'longitude': LNG, 'skill_names': ''})
         self.assertContains(response, 'ポイントが不足しています')
         self.assertEqual(HelpRequest.objects.count(), 0)
+
+
+@override_settings(GEOCODER_ENABLED=True)
+class PlaceSearchTests(BaseTestCase):
+    """場所検索の統合エンジン: 郵便番号・住所・駅名が引けて、近い順に並ぶこと。"""
+
+    GSI_AKABANE = [
+        {'geometry': {'coordinates': [142.522018, 43.617619]},
+         'properties': {'title': '北海道美瑛町赤羽'}},
+        {'geometry': {'coordinates': [139.720612, 35.780739]},
+         'properties': {'title': '東京都北区赤羽'}},
+    ]
+    GSI_SHIMO = [
+        {'geometry': {'coordinates': [139.748, 35.795]},
+         'properties': {'title': '東京都北区志茂'}},
+    ]
+
+    def _fake_fetch(self, url):
+        from urllib.parse import unquote
+        url = unquote(url)
+        if 'zipcloud' in url:
+            return json.dumps({'status': 200, 'results': [
+                {'address1': '東京都', 'address2': '北区', 'address3': '志茂'}]})
+        if 'nominatim' in url:
+            if '赤羽' in url:
+                return json.dumps([{'lat': '35.778926', 'lon': '139.720245',
+                                    'display_name': '赤羽駅, 赤羽一丁目, 北区, 東京都, 115-0045, 日本'}])
+            return '[]'
+        if 'AddressSearch' in url:
+            if '志茂' in url:
+                return json.dumps(self.GSI_SHIMO)
+            if '赤羽' in url:
+                return json.dumps(self.GSI_AKABANE)
+            return '[]'
+        raise AssertionError(f'unexpected url: {url}')
+
+    def setUp(self):
+        cache.clear()
+        patcher = mock.patch.object(geocoding, '_fetch', side_effect=self._fake_fetch)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_zipcode_with_hyphen(self):
+        results = geocoding.search_places('115-0042')
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['name'], '〒115-0042 東京都北区志茂')
+        self.assertAlmostEqual(results[0]['lat'], 35.795)
+
+    def test_zipcode_fullwidth_digits(self):
+        results = geocoding.search_places('１１５００４２')
+        self.assertEqual(len(results), 1)
+        self.assertIn('志茂', results[0]['name'])
+
+    def test_akabane_sorted_by_distance_and_includes_station(self):
+        # 基準点は北区赤羽のすぐ近く: 北海道の赤羽より北区が先頭に来ること
+        results = geocoding.search_places('赤羽', base_lat=35.779, base_lng=139.721)
+        names = [r['name'] for r in results]
+        # 同名の遠方候補(北海道)より、基準点に近い北区の赤羽が先に来ること
+        self.assertLess(names.index('東京都北区赤羽'), names.index('北海道美瑛町赤羽'))
+        self.assertEqual(names[-1], '北海道美瑛町赤羽')
+        self.assertTrue(any('赤羽駅' in n for n in names))
+
+    def test_place_search_api(self):
+        user = make_user('searcher')
+        response = self.client.get(reverse('core:place_search_api'), {'q': '赤羽'})
+        self.assertEqual(response.status_code, 302)  # 未ログインはログイン画面へ
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:place_search_api'), {'q': '115-0042'})
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(body['results'][0]['name'], '〒115-0042 東京都北区志茂')

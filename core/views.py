@@ -461,13 +461,26 @@ def points_history(request):
         'total_earned': user.total_earned,
         'credit_limit': services.CREDIT_LIMIT,
         'credit_available': user.points + services.CREDIT_LIMIT,
-        'referral_link': request.build_absolute_uri(reverse('account_signup')) + f'?ref={user.username}',
+        'invite_code': services.ensure_invite_code(user),
+        'referral_link': request.build_absolute_uri(reverse('account_signup')) + f'?ref={services.ensure_invite_code(user)}',
         'referral_count': user.referrals.count(),
         'referral_earned': referral_earned,
         'referral_reward': services.REFERRAL_REWARD_POINTS,
         'missions': services.mission_states(user),
         'login_bonus_points': services.LOGIN_BONUS_POINTS,
         'login_bonus_today': user.last_login_bonus_date == timezone.localdate()})
+
+
+@login_required
+@require_POST
+def register_invite_code(request):
+    try:
+        referrer = services.register_invite_code(request.user, request.POST.get('code', ''))
+    except services.ServiceError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, f'{referrer.username}さんの招待を登録しました！')
+    return redirect('core:profile')
 
 
 @login_required
@@ -488,7 +501,13 @@ def profile(request):
     next_level_points = user.level ** 2  # level = floor(sqrt(points)) + 1 の逆算
     prev_level_points = (user.level - 1) ** 2
     span = max(next_level_points - prev_level_points, 1)
+    invite_code = services.ensure_invite_code(user)
     return render(request, 'core/profile.html', {
+        'invite_code': invite_code,
+        'invite_link': request.build_absolute_uri(reverse('account_signup')) + f'?ref={invite_code}',
+        'can_register_invite': services.referral_window_open(user),
+        'referral_reward': services.REFERRAL_REWARD_POINTS,
+        'referral_count': user.referrals.count(),
         'sanctions': Sanction.objects.filter(user=user).active().order_by('-starts_at'),
         'reviews': user.received_reviews.select_related('reviewer').order_by('-created_at')[:10],
         'avg_rating': user.received_reviews.aggregate(a=Avg('rating'))['a'],

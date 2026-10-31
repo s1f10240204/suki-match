@@ -111,6 +111,8 @@ class User(AbstractUser):
     points = models.IntegerField('ポイント', default=0)  # 使える残高(ツケ利用時はマイナス)
     referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='referrals', verbose_name='紹介してくれた人')
+    invite_code = models.CharField('招待コード', max_length=12, unique=True, null=True, blank=True,
+                                   default=None, help_text='1アカウントに1つのランダムなコード')
     referral_reward_at = models.DateTimeField('招待ボーナス付与日時', null=True, blank=True)
     last_login_bonus_date = models.DateField('ログインボーナス受取日', null=True, blank=True)
     total_earned = models.IntegerField('累計獲得ポイント', default=0)  # レベルはこちらで決まる(使っても減らない)

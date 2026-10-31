@@ -1401,3 +1401,33 @@
         });
     }
 })();
+// コピーボタン(data-copy="<コピー元要素のセレクタ>")
+document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var el = document.querySelector(btn.getAttribute('data-copy'));
+        if (!el) return;
+        var text = (el.value !== undefined && el.value !== '') ? el.value : el.textContent.trim();
+        var done = function () {
+            var original = btn.textContent;
+            btn.textContent = 'コピーしました ✓';
+            btn.disabled = true;
+            setTimeout(function () { btn.textContent = original; btn.disabled = false; }, 2000);
+        };
+        var fallback = function () {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            ta.remove();
+            done();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(fallback);
+        } else {
+            fallback();
+        }
+    });
+});

@@ -834,6 +834,60 @@ def _notify_schedule_reminder(help_request, now, day_before):
     return count
 
 
+INVITE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'  # 紛らわしい 0/O/1/I/L を除く
+INVITE_CODE_LENGTH = 8
+REFERRAL_REGISTER_HOURS = 48  # 招待コードを登録できるのはアカウント作成から48時間以内
+
+
+def ensure_invite_code(user):
+    """そのユーザーの招待コードを返す(未生成なら作る)。"""
+    if user.invite_code:
+        return user.invite_code
+    from django.utils.crypto import get_random_string
+    for _ in range(20):
+        code = get_random_string(INVITE_CODE_LENGTH, INVITE_CODE_ALPHABET)
+        if not User.objects.filter(invite_code=code).exists():
+            User.objects.filter(pk=user.pk).update(invite_code=code)
+            user.invite_code = code
+            return code
+    raise ServiceError('招待コードを生成できませんでした。')
+
+
+def find_referrer_by_ref(ref):
+    """招待リンクの ref(コード優先、旧リンク互換でユーザー名も可)から紹介者を引く。"""
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    return (User.objects.filter(invite_code=ref.upper(), is_active=True).first()
+            or User.objects.filter(username=ref, is_active=True).first())
+
+
+def referral_window_open(user):
+    """招待コードをまだ登録できるか(未登録かつ作成から48時間以内)。"""
+    return (user.referred_by_id is None
+            and timezone.now() - user.date_joined <= timedelta(hours=REFERRAL_REGISTER_HOURS))
+
+
+def register_invite_code(user, code):
+    """招待コードの入力で紹介者を登録する。登録できたら紹介者を返す。"""
+    code = (code or '').strip().upper()
+    if not code:
+        raise ServiceError('招待コードを入力してください。')
+    if user.referred_by_id is not None:
+        raise ServiceError('すでに招待が登録されています。')
+    if timezone.now() - user.date_joined > timedelta(hours=REFERRAL_REGISTER_HOURS):
+        raise ServiceError('招待コードの登録は、アカウント作成から48時間以内です。')
+    referrer = User.objects.filter(invite_code=code, is_active=True).first()
+    if referrer is None:
+        raise ServiceError('その招待コードは見つかりませんでした。')
+    if referrer.pk == user.pk:
+        raise ServiceError('自分の招待コードは登録できません。')
+    user.referred_by = referrer
+    user.save(update_fields=['referred_by'])
+    grant_referral_reward(user)  # 参加条件を満たしていればその場で紹介者へ付与
+    return referrer
+
+
 def referral_gate_passed(user):
     """招待ボーナスの参加条件：顔写真の承認済み、または写真免除(大学メール確認済み)。"""
     return bool(user.photo_approved or photo_exempt(user))

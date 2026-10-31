@@ -20,9 +20,9 @@ def apply_referral(request, user):
     ref = (request.session.get('ref_username') or '').strip()
     if not ref or ref == user.username:
         return
-    from .models import User
-    referrer = User.objects.filter(username=ref, is_active=True).first()
-    if referrer is not None:
+    from .services import find_referrer_by_ref
+    referrer = find_referrer_by_ref(ref)
+    if referrer is not None and referrer.pk != user.pk:
         user.referred_by = referrer
 
 

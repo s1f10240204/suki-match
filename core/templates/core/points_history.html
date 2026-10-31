@@ -31,7 +31,12 @@
         <div class="earn-body">
             <p class="earn-title">👋 友達を招待する（1人 +{{ referral_reward }}pt）</p>
             <p class="meta">下のリンクから友達が登録して、顔写真の承認（または大学メールの確認）まで終わると、あなたに +{{ referral_reward }}pt 入ります。これまで {{ referral_count }}人 がこのリンクから登録（獲得合計 {{ referral_earned }}pt）。</p>
-            <input type="text" readonly value="{{ referral_link }}" onclick="this.select()" aria-label="招待リンク">
+            <p class="meta">招待コード：<strong id="pt-invite-code">{{ invite_code }}</strong></p>
+            <div class="copy-row">
+                <button type="button" class="btn btn-outline btn-sm" data-copy="#pt-invite-code">コードをコピー</button>
+                <button type="button" class="btn btn-primary btn-sm" data-copy="#pt-invite-link">リンクをコピー</button>
+            </div>
+            <input type="text" readonly value="{{ referral_link }}" id="pt-invite-link" onclick="this.select()" aria-label="招待リンク">
         </div>
     </div>
 

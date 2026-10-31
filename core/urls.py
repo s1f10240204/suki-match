@@ -30,6 +30,7 @@ urlpatterns = [
     path('me/', views.profile, name='profile'),
     path('me/points/', views.points_history, name='points_history'),
     path('me/missions/<str:key>/claim/', views.claim_mission, name='claim_mission'),
+    path('me/invite-code/', views.register_invite_code, name='register_invite_code'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),
     path('me/notifications/', views.notifications, name='notifications'),

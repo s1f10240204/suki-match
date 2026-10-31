@@ -1089,14 +1089,19 @@ class PointsEconomyTests(BaseTestCase):
         self.assertEqual((h1.points, h2.points), (31, 31))
         self.assertEqual(requester.points, 100 - 31 - 31)
 
-    def test_insufficient_points_blocks_publish(self):
+    def test_publish_blocked_beyond_credit_limit(self):
+        # ツケ導入後は「残高不足」ではなく「ツケ上限(-50pt)を超える」ときだけ弾く
         requester = self._funded('breq', 10)
         hr = make_request(requester, duration_minutes=30)
-        with self.assertRaises(services.ServiceError):
-            services.publish_request(hr)
+        services.publish_request(hr)  # 10 - 30 = -20 はツケの範囲内
         requester.refresh_from_db()
-        hr.refresh_from_db()
-        self.assertEqual((requester.points, hr.points_cost), (10, 0))
+        self.assertEqual(requester.points, -20)
+        hr2 = make_request(requester, duration_minutes=45)
+        with self.assertRaises(services.ServiceError):
+            services.publish_request(hr2)  # -20 - 45 = -65 で上限超過
+        requester.refresh_from_db()
+        hr2.refresh_from_db()
+        self.assertEqual((requester.points, hr2.points_cost), (-20, 0))
 
     def test_refund_on_requester_cancel(self):
         requester = self._funded('creq', 100)
@@ -1770,15 +1775,15 @@ class TipTests(BaseTestCase):
 
     def test_tip_view(self):
         requester, hr, helper, match = self._completed('tip3')
-        self.client.force_login(helper)
+        self.client.force_login(helper)  # ログインでログインボーナス +2 が入る
         self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '10'})
         helper.refresh_from_db()
-        self.assertEqual(helper.points, 15)  # 他人のチップは無効
+        self.assertEqual(helper.points, 17)  # 他人のチップは無効(15 + ボーナス2)
         self.client.force_login(requester)
         resp = self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '20'})
         self.assertEqual(resp.status_code, 302)
         helper.refresh_from_db()
-        self.assertEqual(helper.points, 35)
+        self.assertEqual(helper.points, 37)  # 17 + チップ20
 
 
 class BlockTests(BaseTestCase):
@@ -2141,6 +2146,79 @@ class PointsEarnTests(BaseTestCase):
         self.client.force_login(user)
         resp = self.client.get(reverse('core:points_history'))
         self.assertContains(resp, 'ポイントを貯める')
-        self.assertContains(resp, f'?ref={user.username}')
+        user.refresh_from_db()
+        self.assertContains(resp, f'?ref={user.invite_code}')
         self.assertContains(resp, 'ミッション')
         self.assertContains(resp, 'ログインボーナス')
+class InviteCodeTests(BaseTestCase):
+    """招待コード(1人1コード、登録から48時間以内に入力で紹介成立)。"""
+
+    def test_code_generated_once_and_unique(self):
+        u1, u2 = make_user('inv1a'), make_user('inv1b')
+        c1 = services.ensure_invite_code(u1)
+        self.assertEqual(len(c1), 8)
+        self.assertEqual(services.ensure_invite_code(u1), c1)  # 変わらない
+        self.assertNotEqual(services.ensure_invite_code(u2), c1)
+
+    def test_register_within_48h_grants_when_gate_passed(self):
+        referrer = make_user('inv2src')
+        code = services.ensure_invite_code(referrer)
+        invitee = make_user('inv2dst')  # make_user は写真承認済み＝参加条件クリア
+        got = services.register_invite_code(invitee, code.lower())  # 小文字でもOK
+        self.assertEqual(got, referrer)
+        invitee.refresh_from_db()
+        self.assertEqual(invitee.referred_by, referrer)
+        referrer.refresh_from_db()
+        self.assertEqual(referrer.points, 30)  # その場で +30
+
+    def test_register_after_48h_rejected(self):
+        referrer = make_user('inv3src')
+        code = services.ensure_invite_code(referrer)
+        invitee = make_user('inv3dst')
+        User.objects.filter(pk=invitee.pk).update(
+            date_joined=timezone.now() - timedelta(days=3))
+        invitee.refresh_from_db()
+        with self.assertRaises(services.ServiceError):
+            services.register_invite_code(invitee, code)
+
+    def test_register_rejects_own_unknown_and_duplicate(self):
+        referrer = make_user('inv4src')
+        code = services.ensure_invite_code(referrer)
+        with self.assertRaises(services.ServiceError):
+            services.register_invite_code(referrer, code)       # 自分のコード
+        invitee = make_user('inv4dst')
+        with self.assertRaises(services.ServiceError):
+            services.register_invite_code(invitee, 'ZZZZ9999')  # 存在しない
+        services.register_invite_code(invitee, code)
+        other = make_user('inv4oth')
+        services.ensure_invite_code(other)
+        with self.assertRaises(services.ServiceError):
+            services.register_invite_code(invitee, other.invite_code)  # 二重登録
+
+    def test_signup_link_with_code_records_referrer(self):
+        referrer = make_user('inv5src')
+        code = services.ensure_invite_code(referrer)
+        self.client.get(reverse('account_signup') + f'?ref={code}')
+        self.client.post(reverse('account_signup'), {
+            'username': 'inv5new', 'email': 'inv5new@example.com',
+            'password1': 'V3ry-Str0ng-Pass!', 'password2': 'V3ry-Str0ng-Pass!',
+            'birth_date': '2000-01-01',
+        })
+        new_user = User.objects.get(username='inv5new')
+        self.assertEqual(new_user.referred_by, referrer)
+
+    def test_profile_shows_code_and_entry_form(self):
+        referrer = make_user('inv6src')
+        code = services.ensure_invite_code(referrer)
+        invitee = make_user('inv6dst')
+        self.client.force_login(invitee)
+        resp = self.client.get(reverse('core:profile'))
+        self.assertContains(resp, '友達を招待して')
+        self.assertContains(resp, '招待コードをお持ちの方はこちら')
+        resp = self.client.post(reverse('core:register_invite_code'), {'code': code})
+        self.assertEqual(resp.status_code, 302)
+        invitee.refresh_from_db()
+        self.assertEqual(invitee.referred_by, referrer)
+        resp = self.client.get(reverse('core:profile'))
+        self.assertNotContains(resp, '招待コードをお持ちの方はこちら')
+        self.assertContains(resp, 'さんの招待で参加しました')

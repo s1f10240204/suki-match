@@ -668,3 +668,11 @@ ul.socialaccount_providers li { list-style: none; }
 .earn-title { font-weight: 700; margin: 0 0 2px; }
 .earn-body input[type="text"] { width: 100%; margin-top: 6px; font-size: .82rem; }
 .earn-subtitle { margin: 14px 0 2px; font-size: .95rem; }
+.invite-card .invite-label { font-weight: 700; font-size: .85rem; margin: 12px 0 4px; }
+.invite-code { font-size: 1.45rem; font-weight: 800; letter-spacing: .16em; flex: 1; }
+.copy-row { display: flex; gap: 8px; align-items: center; }
+.copy-row input[type="text"] { flex: 1; min-width: 0; }
+.copy-row .btn { flex: none; }
+.invite-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eee; }
+.invite-form label { display: block; font-size: .85rem; font-weight: 700; margin-bottom: 6px; }
+.invite-form input[name="code"] { text-transform: uppercase; letter-spacing: .1em; }

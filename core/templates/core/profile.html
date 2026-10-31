@@ -30,6 +30,32 @@
         <p class="points-desc">依頼するときに使えます(お手伝い1分あたり1pt)。お手伝いを完了するとポイントが貯まります。</p>
         <p class="points-history-link">ポイント履歴を見る ›</p>
     </a>
+    <section class="card invite-card">
+        <h2 class="section-title">👋 友達を招待して +{{ referral_reward }}pt</h2>
+        <p class="meta">友達が登録して、顔写真の承認（または大学メールの確認）まで終わると、あなたに +{{ referral_reward }}pt 入ります。これまで {{ referral_count }}人 があなた経由で登録しました。</p>
+        <p class="invite-label">あなたの招待コード</p>
+        <div class="copy-row">
+            <span class="invite-code" id="invite-code-text">{{ invite_code }}</span>
+            <button type="button" class="btn btn-primary btn-sm" data-copy="#invite-code-text">コピー</button>
+        </div>
+        <p class="invite-label">招待リンク</p>
+        <div class="copy-row">
+            <input type="text" readonly value="{{ invite_link }}" id="invite-link-text" onclick="this.select()" aria-label="招待リンク">
+            <button type="button" class="btn btn-outline btn-sm" data-copy="#invite-link-text">コピー</button>
+        </div>
+        {% if user.referred_by %}
+        <p class="meta">あなたは {{ user.referred_by.username }} さんの招待で参加しました。</p>
+        {% elif can_register_invite %}
+        <form method="post" action="{% url 'core:register_invite_code' %}" class="invite-form">
+            {% csrf_token %}
+            <label for="invite-code-input">招待コードをお持ちの方はこちら（登録から48時間以内に登録できます）</label>
+            <div class="copy-row">
+                <input type="text" name="code" id="invite-code-input" placeholder="例: AB3K9XYZ" autocomplete="off">
+                <button type="submit" class="btn btn-primary btn-sm">登録する</button>
+            </div>
+        </form>
+        {% endif %}
+    </section>
     <div class="stats-row">
         <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">平均評価</p></div>
         <div><p class="stat-value">{{ help_count }}</p><p class="meta">お手伝い完了</p></div>

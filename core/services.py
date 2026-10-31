@@ -18,7 +18,7 @@ from django.utils import timezone
 from . import images, line_api, moderation
 from .geocoding import area_label_for
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, MessageReaction,
-                     Notification, NotificationSetting, PushSubscription, Report, Review, Sanction, User)
+                     Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User)
 
 RADIUS_METERS = 500
 HELPER_POINTS = 10
@@ -313,6 +313,15 @@ def cost_for_duration(duration_minutes):
     return int(duration_minutes) * POINTS_PER_MINUTE
 
 
+def record_points(user, amount, kind, help_request=None, counterparty=None, description=''):
+    """ポイント増減を台帳に記録する。呼び出し前に user.points を増減後の値にしておくこと。"""
+    if not amount:
+        return None
+    return PointTransaction.objects.create(
+        user=user, amount=amount, balance_after=user.points, kind=kind,
+        help_request=help_request, counterparty=counterparty, description=description)
+
+
 def charge_for_request(help_request):
     """投稿時に依頼ポイントを残高から預かる。残高不足なら ServiceError。"""
     cost = cost_for_duration(help_request.duration_minutes)
@@ -326,6 +335,8 @@ def charge_for_request(help_request):
         requester.save(update_fields=['points'])
         help_request.points_cost = cost
         help_request.save(update_fields=['points_cost'])
+        record_points(requester, -cost, PointTransaction.Kind.ESCROW, help_request,
+                      description=f'「{help_request.title}」のポイント預かり')
     return cost
 
 
@@ -335,6 +346,12 @@ def _refund_escrow(help_request):
         User.objects.filter(pk=help_request.requester_id).update(
             points=F('points') + help_request.points_cost)
         help_request.points_settled = True
+        balance = User.objects.values_list('points', flat=True).get(pk=help_request.requester_id)
+        PointTransaction.objects.create(
+            user_id=help_request.requester_id, amount=help_request.points_cost,
+            balance_after=balance, kind=PointTransaction.Kind.REFUND,
+            help_request=help_request,
+            description=f'「{help_request.title}」の預かり分返金')
 
 
 def publish_request(help_request):
@@ -561,6 +578,11 @@ def complete(help_request, user):
             if delta:
                 requester.points -= delta
                 requester.save(update_fields=['points'])
+                record_points(
+                    requester, -delta,
+                    PointTransaction.Kind.SETTLE_EXTRA if delta > 0 else PointTransaction.Kind.SETTLE_REFUND,
+                    help_request,
+                    description=f'「{help_request.title}」の実績精算' + ('の追加分' if delta > 0 else 'の返金'))
             help_request.points_settled = True
         else:
             for match in matches:
@@ -569,6 +591,9 @@ def complete(help_request, user):
             match.status, match.completed_at = Match.Status.DONE, timezone.now()
             match.save(update_fields=['status', 'completed_at'])
             match.helper.add_points(awarded[match.pk])
+            record_points(match.helper, awarded[match.pk], PointTransaction.Kind.EARNED,
+                          help_request, counterparty=help_request.requester,
+                          description=f'「{help_request.title}」のお手伝い報酬')
         help_request.status = HelpRequest.Status.DONE
         help_request.save(update_fields=['status', 'points_settled'])
     for match in matches:
@@ -668,6 +693,8 @@ def submit_review(help_request, user, rating, comment=''):
                                    rating=rating, comment=comment)
     if rating >= 4:
         reviewee.add_points(REVIEW_BONUS_POINTS)
+        record_points(reviewee, REVIEW_BONUS_POINTS, PointTransaction.Kind.REVIEW_BONUS,
+                      help_request, counterparty=user, description='高評価レビューのボーナス')
     return review
 
 

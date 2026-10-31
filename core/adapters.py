@@ -21,6 +21,11 @@ class AccountAdapter(DefaultAccountAdapter):
             user.points = STARTER_POINTS  # 新規登録のスターターポイント(最初の依頼に使える)
         if commit:
             user.save()
+            if is_new:
+                from .models import PointTransaction
+                PointTransaction.objects.create(
+                    user=user, amount=STARTER_POINTS, balance_after=user.points,
+                    kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
         return user
 
     def send_mail(self, template_prefix, email, context):

@@ -505,3 +505,32 @@ class LineChatState(models.Model):
 
     class Meta:
         verbose_name = verbose_name_plural = 'LINEチャット状態'
+
+
+class PointTransaction(models.Model):
+    """ポイント増減の台帳。マイページの残高タップで履歴を表示するために記録する。"""
+
+    class Kind(models.TextChoices):
+        STARTER = 'starter', 'スターターポイント'
+        ESCROW = 'escrow', '依頼の預かり'
+        SETTLE_EXTRA = 'settle_extra', '実績精算の追加支払い'
+        SETTLE_REFUND = 'settle_refund', '実績精算の返金'
+        EARNED = 'earned', 'お手伝い報酬'
+        REVIEW_BONUS = 'review_bonus', 'レビューボーナス'
+        REFUND = 'refund', '返金'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='point_transactions',
+                             verbose_name='ユーザー')
+    amount = models.IntegerField('増減')
+    balance_after = models.IntegerField('増減後の残高')
+    kind = models.CharField('種別', max_length=20, choices=Kind.choices)
+    help_request = models.ForeignKey(HelpRequest, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='point_transactions', verbose_name='依頼')
+    counterparty = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+', verbose_name='相手')
+    description = models.CharField('内容', max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'ポイント履歴'
+        ordering = ['-created_at', '-pk']

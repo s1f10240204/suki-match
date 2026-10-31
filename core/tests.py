@@ -1397,3 +1397,53 @@ class WorkTimerTests(BaseTestCase):
         match.refresh_from_db()
         self.assertIsNone(match.declared_minutes)
         self.assertEqual(services.effective_minutes(match, hr), 30)
+
+
+class PointHistoryTests(BaseTestCase):
+    """ポイント台帳: 主要な増減が記録され、履歴ページで自分の分だけ見えること。"""
+
+    def _funded(self, name, points):
+        user = make_user(name)
+        User.objects.filter(pk=user.pk).update(points=points)
+        user.refresh_from_db()
+        return user
+
+    def test_escrow_earned_and_settle_extra_recorded(self):
+        from .models import PointTransaction
+        requester = self._funded('hreq', 100)
+        hr = make_request(requester, duration_minutes=15)
+        services.publish_request(hr)
+        escrow = PointTransaction.objects.get(user=requester, kind='escrow')
+        self.assertEqual((escrow.amount, escrow.balance_after), (-15, 85))
+        helper = make_user('hhelp')
+        match = services.accept_first_come(hr, helper)
+        now = timezone.now()
+        Match.objects.filter(pk=match.pk).update(
+            work_started_at=now - timedelta(minutes=27), work_ended_at=now)
+        services.complete(hr, requester)
+        earned = PointTransaction.objects.get(user=helper, kind='earned')
+        self.assertEqual((earned.amount, earned.counterparty), (30, requester))
+        extra = PointTransaction.objects.get(user=requester, kind='settle_extra')
+        self.assertEqual(extra.amount, -15)
+        # 履歴ページ: 自分の分が見え、他人の分は見えない
+        self.client.force_login(requester)
+        response = self.client.get(reverse('core:points_history'))
+        self.assertContains(response, 'ポイント預かり')
+        self.assertNotContains(response, 'お手伝い報酬')
+        self.client.force_login(helper)
+        response = self.client.get(reverse('core:points_history'))
+        self.assertContains(response, 'お手伝い報酬')
+        self.assertContains(response, 'hreq')
+
+    def test_refund_recorded_on_cancel(self):
+        from .models import PointTransaction
+        requester = self._funded('rreq', 50)
+        hr = make_request(requester, duration_minutes=20)
+        services.publish_request(hr)
+        services.cancel(hr, requester)
+        refund = PointTransaction.objects.get(user=requester, kind='refund')
+        self.assertEqual((refund.amount, refund.balance_after), (20, 50))
+
+    def test_history_requires_login(self):
+        response = self.client.get(reverse('core:points_history'))
+        self.assertEqual(response.status_code, 302)

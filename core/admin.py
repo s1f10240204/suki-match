@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from . import services, skills
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting,
+from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting, PointTransaction,
                      PresetTag, Report, Review, Sanction, Skill, User)
 
 
@@ -241,3 +241,10 @@ admin.site.register(ActivityBase)
 admin.site.site_header = 'suki-match 管理'
 admin.site.site_title = 'suki-match 管理'
 admin.site.index_title = '管理メニュー（詳しい操作はここから）'
+
+
+@admin.register(PointTransaction)
+class PointTransactionAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'user', 'kind', 'amount', 'balance_after', 'description')
+    list_filter = ('kind',)
+    search_fields = ('user__username', 'description')

@@ -373,6 +373,15 @@ def message_list(request):
 # ---------- マイページ・アカウント ----------
 
 @login_required
+def points_history(request):
+    transactions = (request.user.point_transactions
+                    .select_related('help_request', 'counterparty')[:100])
+    return render(request, 'core/points_history.html', {
+        'transactions': transactions, 'balance': request.user.points,
+        'total_earned': request.user.total_earned})
+
+
+@login_required
 def profile(request):
     user = request.user
     next_level_points = user.level ** 2  # level = floor(sqrt(points)) + 1 の逆算

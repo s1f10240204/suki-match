@@ -1,0 +1,28 @@
+{% extends 'core/base.html' %}
+
+{% block title %}ポイント履歴 - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>ポイント履歴</h1></div>
+
+<div class="points-box">
+    <div class="points-main">
+        <span class="points-value">{{ balance }}<small>pt</small></span>
+        <span class="meta">現在のポイント（累計獲得 {{ total_earned }}pt）</span>
+    </div>
+</div>
+
+{% for t in transactions %}
+<div class="pt-row">
+    <div class="pt-main">
+        {% if t.help_request_id %}<a class="pt-desc" href="{% url 'core:help_request_detail' t.help_request_id %}">{{ t.description|default:t.get_kind_display }}</a>{% else %}<span class="pt-desc">{{ t.description|default:t.get_kind_display }}</span>{% endif %}
+        <span class="pt-meta">{{ t.created_at|date:"Y/n/j H:i" }}{% if t.counterparty %} · 相手: {{ t.counterparty.username }}さん{% endif %} · 残高 {{ t.balance_after }}pt</span>
+    </div>
+    <span class="pt-amount {% if t.amount >= 0 %}plus{% else %}minus{% endif %}">{% if t.amount >= 0 %}+{% endif %}{{ t.amount }}pt</span>
+</div>
+{% empty %}
+<p class="notice">まだ履歴がありません。ポイントの増減はこれから記録されていきます。</p>
+{% endfor %}
+
+<p class="meta">履歴は直近100件まで表示されます。</p>
+{% endblock %}

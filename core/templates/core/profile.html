@@ -22,13 +22,14 @@
         </div>
         <div class="progress"><span style="width: {{ level_progress }}%"></span></div>
     </div>
-    <div class="points-box">
+    <a class="points-box" href="{% url 'core:points_history' %}">
         <div class="points-main">
             <span class="points-value">{{ user.points }}<small>pt</small></span>
             <span class="meta">現在のポイント</span>
         </div>
         <p class="points-desc">依頼するときに使えます(お手伝い1分あたり1pt)。お手伝いを完了するとポイントが貯まります。</p>
-    </div>
+        <p class="points-history-link">ポイント履歴を見る ›</p>
+    </a>
     <div class="stats-row">
         <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">平均評価</p></div>
         <div><p class="stat-value">{{ help_count }}</p><p class="meta">お手伝い完了</p></div>

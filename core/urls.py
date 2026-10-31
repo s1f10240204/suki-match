@@ -26,6 +26,7 @@ urlpatterns = [
     path('line/webhook/', views.line_webhook, name='line_webhook'),
     path('line/richmenu/setup/', views.line_richmenu_setup, name='line_richmenu_setup'),
     path('me/', views.profile, name='profile'),
+    path('me/points/', views.points_history, name='points_history'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),
     path('me/notifications/', views.notifications, name='notifications'),

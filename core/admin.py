@@ -11,7 +11,7 @@ from django.utils.html import format_html
 
 from . import services, skills
 from .models import (ActivityBase, Application, HelpRequest, Match, Message, Notification, NotificationSetting, PointTransaction, UserBlock,
-                     PresetTag, Report, Review, Sanction, Skill, User)
+                     PresetTag, Report, Review, Sanction, Skill, User, DuplicatePhotoFlag)
 
 
 PHOTO_REJECT_REASON = '顔がはっきり写った本人の写真を登録してください'
@@ -230,6 +230,13 @@ class ReportAdmin(PasswordConfirmMixin, admin.ModelAdmin):
             title='対象ユーザーを利用停止(BAN)にしますか？',
             warning='選択した通報の対象ユーザーが利用停止(BAN)になります。通報は「対応済み」になります。',
             execute=lambda: self._sanction(request, queryset, Sanction.Level.BANNED, None))
+
+
+@admin.register(DuplicatePhotoFlag)
+class DuplicatePhotoFlagAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'user', 'matched_user', 'distance', 'acknowledged_at')
+    list_filter = ('acknowledged_at',)
+    readonly_fields = ('user', 'matched_user', 'distance', 'created_at')
 
 
 admin.site.register(Review)

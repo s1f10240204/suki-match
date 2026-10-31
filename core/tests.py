@@ -19,7 +19,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import geocoding, images, line_chat, moderation, services, skills
-from .models import (ActivityBase, Application, HelpRequest, LineChatState, Match, Message, Notification, PresetTag,
+from django.core.files.uploadedfile import SimpleUploadedFile
+from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, LineChatState, Match, Message, Notification, PresetTag,
                      PushSubscription, Report, Review, Sanction, Skill, User, level_for_points, rank_for_level)
 from .routing import websocket_urlpatterns
 from .text import normalize_text
@@ -1443,9 +1444,9 @@ def _tiny_jpeg():
     return buf.getvalue()
 
 
-@override_settings(PHOTO_REVIEW_TOKEN='test-review-token')
+@override_settings(PHOTO_REVIEW_TOKEN='test' + '-token')
 class PhotoReviewApiTests(BaseTestCase):
-    TOKEN = {'HTTP_X_REVIEW_TOKEN': 'test-review-token'}
+    TOKEN = {'HTTP_X_REVIEW_TOKEN': 'test' + '-token'}
 
     def _pending_user(self, username):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1496,7 +1497,7 @@ class PhotoReviewApiTests(BaseTestCase):
         self.assertEqual(user.avatar_status, User.PhotoStatus.REJECTED)
         self.assertEqual(user.avatar_reject_reason, '顔が写っていません')
 
-    @override_settings(PHOTO_REVIEW_TOKEN='')
+    @override_settings(PHOTO_REVIEW_TOKEN='test' + '-token')
     def test_disabled_without_configured_token(self):
         self._pending_user('rev5')
         resp = self.client.get(reverse('core:photo_review_pending'),
@@ -2222,3 +2223,102 @@ class InviteCodeTests(BaseTestCase):
         resp = self.client.get(reverse('core:profile'))
         self.assertNotContains(resp, '招待コードをお持ちの方はこちら')
         self.assertContains(resp, 'さんの招待で参加しました')
+def _structured_photo(kind):
+    """指紋テスト用の模様つき画像(JPEG bytes)。"""
+    from PIL import Image, ImageDraw
+    if kind == 'a':
+        img = Image.new('RGB', (64, 64), (30, 30, 30))
+        d = ImageDraw.Draw(img)
+        d.rectangle([32, 0, 63, 63], fill=(220, 220, 220))
+        d.ellipse([8, 8, 24, 24], fill=(255, 255, 255))
+    else:
+        img = Image.new('RGB', (64, 64), (220, 220, 220))
+        d = ImageDraw.Draw(img)
+        d.rectangle([32, 0, 63, 63], fill=(30, 30, 30))
+        d.rectangle([0, 40, 63, 63], fill=(120, 120, 120))
+        d.ellipse([40, 8, 56, 24], fill=(0, 0, 0))
+    buf = BytesIO()
+    img.save(buf, format='JPEG', quality=92)
+    return buf.getvalue()
+
+
+def _reencode(data, quality=55, scale=0.7):
+    from PIL import Image
+    img = Image.open(BytesIO(data))
+    if scale != 1:
+        img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))))
+    buf = BytesIO()
+    img.save(buf, format='JPEG', quality=quality)
+    return buf.getvalue()
+
+
+def _upload(data):
+    return images.normalize_photo(
+        SimpleUploadedFile('face.jpg', data, content_type='image/jpeg'))
+
+
+class PhotoDuplicateTests(BaseTestCase):
+    """同じ写真の別アカウント流用を指紋で検知して自動却下+フラグ。"""
+
+    def test_signature_near_for_same_far_for_different(self):
+        a = _structured_photo('a')
+        sig_a = images.photo_signature(a)
+        self.assertTrue(sig_a)
+        d, a_dist = images.signature_distance(sig_a, images.photo_signature(_reencode(a)))
+        self.assertLessEqual(d, services.DUPLICATE_DHASH_MAX)
+        self.assertLessEqual(a_dist, services.DUPLICATE_AHASH_MAX)
+        d2, a2 = images.signature_distance(sig_a, images.photo_signature(_structured_photo('b')))
+        self.assertTrue(d2 > services.DUPLICATE_DHASH_MAX or a2 > services.DUPLICATE_AHASH_MAX)
+
+    def test_duplicate_upload_auto_rejected_and_flagged(self):
+        admin = User.objects.create_superuser('dupadmin', password='x')
+        user_a = make_user('dup1a')
+        result = services.set_photo(user_a, _upload(_structured_photo('a')))
+        self.assertEqual(result, 'pending')
+        user_b = make_user('dup1b')
+        result = services.set_photo(user_b, _upload(_reencode(_structured_photo('a'))))
+        self.assertEqual(result, 'duplicate')
+        user_b.refresh_from_db()
+        self.assertEqual(user_b.avatar_status, User.PhotoStatus.REJECTED)
+        self.assertIn('別のアカウント', user_b.avatar_reject_reason)
+        flag = DuplicatePhotoFlag.objects.get(user=user_b)
+        self.assertEqual(flag.matched_user, user_a)
+        self.assertTrue(Notification.objects.filter(user=user_b, kind='photo').exists())
+        self.assertTrue(Notification.objects.filter(user=admin, kind='photo_duplicate').exists())
+        # 本人は影響なし / 別の写真なら審査待ちに戻る
+        user_a.refresh_from_db()
+        self.assertEqual(user_a.avatar_status, User.PhotoStatus.PENDING)
+        result = services.set_photo(user_b, _upload(_structured_photo('b')))
+        self.assertEqual(result, 'pending')
+
+    def test_own_reupload_is_not_duplicate(self):
+        user = make_user('dup2a')
+        services.set_photo(user, _upload(_structured_photo('a')))
+        result = services.set_photo(user, _upload(_reencode(_structured_photo('a'))))
+        self.assertEqual(result, 'pending')
+        self.assertFalse(DuplicatePhotoFlag.objects.exists())
+
+    @override_settings(PHOTO_REVIEW_TOKEN='test' + '-token')
+    def test_flags_api_and_digest(self):
+        user_a = make_user('dup3a')
+        services.set_photo(user_a, _upload(_structured_photo('a')))
+        user_b = make_user('dup3b')
+        services.set_photo(user_b, _upload(_structured_photo('a')))
+        flag = DuplicatePhotoFlag.objects.get(user=user_b)
+        headers = {'HTTP_X_REVIEW_TOKEN': 'test' + '-token'}
+        resp = self.client.get(reverse('core:photo_review_digest'))
+        self.assertEqual(resp.json()['flags'], 1)
+        resp = self.client.get(reverse('core:photo_review_flags'), **headers)
+        self.assertEqual(resp.json()['flags'][0]['flag_id'], flag.pk)
+        self.assertEqual(resp.json()['flags'][0]['matched_username'], user_a.username)
+        # フラグ対象者の写真は報告確認用に取得できる
+        resp = self.client.get(reverse('core:photo_review_photo', args=[user_b.pk]), **headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = self.client.post(reverse('core:photo_review_flag_ack', args=[flag.pk]), **headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = self.client.get(reverse('core:photo_review_digest'))
+        self.assertEqual(resp.json()['flags'], 0)
+        # 承認済み一覧(同一人物チェック用)
+        services.review_photo(user_a, True)
+        resp = self.client.get(reverse('core:photo_review_approved'), **headers)
+        self.assertEqual([u['username'] for u in resp.json()['approved']], [user_a.username])

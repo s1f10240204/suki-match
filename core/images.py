@@ -40,6 +40,41 @@ def normalize_photo(uploaded):
     return ContentFile(_to_jpeg(image), name='photo.jpg')
 
 
+def photo_signature(data):
+    """写真の近似指紋(128bit: dHash64 + aHash64)を32桁の16進文字列で返す。
+    同じ写真の再圧縮・リサイズでは近い値になり、別アカウントでの使い回し検知に使う。
+    真っ平らな画像(指紋が全部0)や読み込めない画像は ''(判定対象外)。"""
+    try:
+        image = Image.open(BytesIO(data)).convert('L')
+    except Exception:
+        return ''
+    small = image.resize((9, 8), Image.BILINEAR)
+    px = list(small.getdata())
+    d_bits = []
+    for row in range(8):
+        base = row * 9
+        for col in range(8):
+            d_bits.append(1 if px[base + col] > px[base + col + 1] else 0)
+    avg_img = image.resize((8, 8), Image.BILINEAR)
+    vals = list(avg_img.getdata())
+    mean = sum(vals) / len(vals)
+    a_bits = [1 if v > mean else 0 for v in vals]
+    if not any(d_bits) and not any(a_bits):
+        return ''
+    value = 0
+    for bit in d_bits + a_bits:
+        value = (value << 1) | bit
+    return f'{value:032x}'
+
+
+def signature_distance(sig_a, sig_b):
+    """指紋同士の距離を (dHash距離, aHash距離) で返す。比較不能なら (999, 999)。"""
+    if not sig_a or not sig_b or len(sig_a) != len(sig_b):
+        return (999, 999)
+    xor = int(sig_a, 16) ^ int(sig_b, 16)
+    return (bin(xor >> 64).count('1'), bin(xor & ((1 << 64) - 1)).count('1'))
+
+
 def mosaic_path(photo_name):
     path = PurePosixPath(photo_name)
     return str(path.parent / 'mosaic' / path.name)

@@ -109,6 +109,7 @@ class User(AbstractUser):
     area_label = models.CharField('活動エリア', max_length=50, blank=True)
 
     points = models.IntegerField('ポイント', default=0)  # 使える残高(ツケ利用時はマイナス)
+    avatar_phash = models.CharField('写真の指紋', max_length=32, blank=True, default='', db_index=True)
     referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='referrals', verbose_name='紹介してくれた人')
     invite_code = models.CharField('招待コード', max_length=12, unique=True, null=True, blank=True,
@@ -494,6 +495,22 @@ class ActivityBase(models.Model):
 
     class Meta:
         verbose_name = verbose_name_plural = '活動拠点'
+
+
+class DuplicatePhotoFlag(models.Model):
+    """別のアカウントと同じ写真が登録されたため自動却下した記録(運営への報告用)。"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='duplicate_photo_flags',
+                             verbose_name='アップロードした人')
+    matched_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='+',
+                                     verbose_name='一致した既存ユーザー')
+    distance = models.PositiveSmallIntegerField('指紋の距離', default=0)
+    acknowledged_at = models.DateTimeField('報告確認日時', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '写真の重複フラグ'
+        ordering = ['-created_at']
 
 
 class MissionClaim(models.Model):

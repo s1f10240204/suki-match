@@ -22,7 +22,8 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
                     NotificationSettingForm, ProfileForm, ReportForm, ReviewForm)
 from . import geocoding
 from .geocoding import area_label_for
-from .models import (Application, HelpRequest, Match, Message, PointTransaction, PresetTag, PushSubscription,
+from .models import (Application, DuplicatePhotoFlag, HelpRequest, Match, Message, PointTransaction, PresetTag,
+                     PushSubscription,
                      Review, Sanction, Skill, User, UserBlock)
 from .services import ServiceError
 
@@ -528,6 +529,9 @@ def profile_edit(request):
     form = ProfileForm(request.POST or None, request.FILES or None, instance=request.user)
     if request.method == 'POST' and form.is_valid():
         user = form.save()
+        if (form.cleaned_data.get('photo')
+                and user.avatar_status == User.PhotoStatus.REJECTED and user.avatar_reject_reason):
+            messages.error(request, f'顔写真は承認されませんでした。{user.avatar_reject_reason}')
         lat, lng = form.cleaned_data.get('latitude'), form.cleaned_data.get('longitude')
         if lat is not None and lng is not None and (
                 (lat, lng) != (user.latitude, user.longitude) or user.location_updated_at is None):
@@ -746,7 +750,12 @@ def photo_review_digest(request):
     users = list(_pending_photo_users())
     fingerprint = '|'.join(f'{u.pk}:{u.avatar.name}' for u in users)
     digest = hashlib.sha256(fingerprint.encode()).hexdigest()
-    return JsonResponse({'count': len(users), 'digest': digest})
+    flags = list(DuplicatePhotoFlag.objects.filter(acknowledged_at__isnull=True)
+                 .values_list('pk', 'user_id', 'matched_user_id'))
+    flags_fingerprint = '|'.join(f'{pk}:{uid}:{mid}' for pk, uid, mid in flags)
+    return JsonResponse({'count': len(users), 'digest': digest,
+                         'flags': len(flags),
+                         'flags_digest': hashlib.sha256(flags_fingerprint.encode()).hexdigest()})
 
 
 @csrf_exempt
@@ -764,9 +773,12 @@ def photo_review_pending(request):
 def photo_review_photo(request, user_id):
     if not _photo_review_token_ok(request):
         return JsonResponse({'error': 'unauthorized'}, status=403)
-    user = _pending_photo_users().filter(pk=user_id).first()
+    visible = (User.objects.exclude(avatar='')
+               .filter(Q(avatar_status__in=(User.PhotoStatus.PENDING, User.PhotoStatus.APPROVED))
+                       | Q(duplicate_photo_flags__acknowledged_at__isnull=True)))
+    user = visible.filter(pk=user_id).first()
     if user is None:
-        return JsonResponse({'error': 'not pending'}, status=404)
+        return JsonResponse({'error': 'not available'}, status=404)
     import mimetypes
     content_type = mimetypes.guess_type(user.avatar.name)[0] or 'image/jpeg'
     with user.avatar.open('rb') as fh:
@@ -791,6 +803,45 @@ def photo_review_decision(request, user_id):
         return JsonResponse({'error': 'decision must be approve or reject'}, status=400)
     services.review_photo(user, decision == 'approve', str(payload.get('reason', ''))[:200])
     return JsonResponse({'ok': True, 'user_id': user.pk, 'decision': decision})
+
+
+@csrf_exempt
+@require_GET
+def photo_review_flags(request):
+    """未確認の写真重複フラグ(見張りが Matsushita へ報告するために使う)。"""
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    flags = (DuplicatePhotoFlag.objects.filter(acknowledged_at__isnull=True)
+             .select_related('user', 'matched_user').order_by('pk'))
+    return JsonResponse({'flags': [
+        {'flag_id': f.pk, 'user_id': f.user_id, 'username': f.user.username,
+         'matched_user_id': f.matched_user_id, 'matched_username': f.matched_user.username,
+         'distance': f.distance, 'created_at': f.created_at.isoformat()}
+        for f in flags]})
+
+
+@csrf_exempt
+@require_POST
+def photo_review_flag_ack(request, flag_id):
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    updated = (DuplicatePhotoFlag.objects.filter(pk=flag_id, acknowledged_at__isnull=True)
+               .update(acknowledged_at=timezone.now()))
+    if not updated:
+        return JsonResponse({'error': 'not found'}, status=404)
+    return JsonResponse({'ok': True, 'flag_id': flag_id})
+
+
+@csrf_exempt
+@require_GET
+def photo_review_approved(request):
+    """承認済みユーザーの一覧(審査時の同一人物チェック用)。"""
+    if not _photo_review_token_ok(request):
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+    users = (User.objects.filter(avatar_status=User.PhotoStatus.APPROVED)
+             .exclude(avatar='').order_by('pk'))
+    return JsonResponse({'approved': [
+        {'user_id': u.pk, 'username': u.username} for u in users]})
 
 
 @login_required

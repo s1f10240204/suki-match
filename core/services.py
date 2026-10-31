@@ -15,7 +15,8 @@ from django.utils import timezone
 
 from . import images, line_api, moderation
 from .geocoding import area_label_for
-from .models import (ActivityBase, Application, HelpRequest, Match, Message, MessageRead, MessageReaction,
+from .models import (ActivityBase, Application, DuplicatePhotoFlag, HelpRequest, Match, Message, MessageRead,
+                     MessageReaction,
                      Notification, NotificationSetting, PointTransaction, PushSubscription, Report, Review, Sanction, User,
                      MissionClaim, UserBlock)
 
@@ -177,14 +178,62 @@ def post_block_reason(user):
 
 # ---------- 顔写真 ----------
 
+DUPLICATE_DHASH_MAX = 6    # これ以下なら「同じ写真」とみなす(dHash距離)
+DUPLICATE_AHASH_MAX = 12   # (aHash距離)
+DUPLICATE_PHOTO_REASON = 'この写真は別のアカウントで使われています。ご本人の別の写真をアップロードしてください。'
+
+
+def find_duplicate_photo(user, signature):
+    """別アカウントの承認済み/審査待ちの写真と近似するものがあれば (相手, d距離, a距離)。"""
+    if not signature:
+        return None
+    candidates = (User.objects.exclude(pk=user.pk)
+                  .filter(avatar_status__in=(User.PhotoStatus.APPROVED, User.PhotoStatus.PENDING))
+                  .exclude(avatar='').exclude(avatar_phash=''))
+    best = None
+    for other in candidates:
+        d_dist, a_dist = images.signature_distance(signature, other.avatar_phash)
+        if d_dist <= DUPLICATE_DHASH_MAX and a_dist <= DUPLICATE_AHASH_MAX:
+            if best is None or d_dist + a_dist < best[1] + best[2]:
+                best = (other, d_dist, a_dist)
+    return best
+
+
 def set_photo(user, photo):
-    """images.normalize_photo 済みの顔写真を保存して審査待ちにする。"""
+    """顔写真を保存する。別アカウントと同じ写真なら審査に出さず自動却下+運営へフラグ。
+    戻り値: 'pending'(審査待ち) / 'duplicate'(重複で自動却下)。"""
     old = user.avatar.name if user.avatar else ''
+    photo.seek(0)
+    signature = images.photo_signature(photo.read())
+    photo.seek(0)
     user.avatar.save(photo.name, photo, save=False)
-    user.avatar_status, user.avatar_reject_reason, user.avatar_reviewed_at = User.PhotoStatus.PENDING, '', None
-    user.save(update_fields=['avatar', 'avatar_status', 'avatar_reject_reason', 'avatar_reviewed_at'])
+    user.avatar_phash = signature
+    duplicate = find_duplicate_photo(user, signature)
+    if duplicate is not None:
+        other, d_dist, a_dist = duplicate
+        user.avatar_status = User.PhotoStatus.REJECTED
+        user.avatar_reject_reason = DUPLICATE_PHOTO_REASON
+        user.avatar_reviewed_at = timezone.now()
+        user.save(update_fields=['avatar', 'avatar_phash', 'avatar_status',
+                                 'avatar_reject_reason', 'avatar_reviewed_at'])
+        DuplicatePhotoFlag.objects.create(user=user, matched_user=other,
+                                          distance=d_dist + a_dist)
+        notify(user, 'photo',
+               f'顔写真が承認されませんでした。{DUPLICATE_PHOTO_REASON}',
+               reverse('core:profile_edit'))
+        for admin_user in User.objects.filter(is_superuser=True, is_active=True):
+            notify(admin_user, 'photo_duplicate',
+                   f'⚠️ {user.username}さんが{other.username}さんと同じ写真を登録したため、自動で却下しました。',
+                   reverse('admin:core_duplicatephotoflag_changelist'))
+        result = 'duplicate'
+    else:
+        user.avatar_status, user.avatar_reject_reason, user.avatar_reviewed_at = User.PhotoStatus.PENDING, '', None
+        user.save(update_fields=['avatar', 'avatar_phash', 'avatar_status',
+                                 'avatar_reject_reason', 'avatar_reviewed_at'])
+        result = 'pending'
     if old:
         images.delete_photo(old)
+    return result
 
 
 def review_photo(user, approve, reason=''):

@@ -708,6 +708,15 @@ def work_qr_scan(request, token):
     if phase == 'end' and user.pk != match.help_request.requester_id:
         return render(request, 'core/work_qr_scan.html',
                       {'error': 'この終了用QRコードは、依頼者の方が読み取るものです。'})
+    if phase == 'end' and request.method == 'GET':
+        # 終了は確認ボタンを挟まず、読み取りだけで即完了する
+        try:
+            services.qr_stop_work(match, user)
+            messages.success(request, '作業を終了しました。お疲れさまでした。')
+            return redirect('core:chat', pk=match.pk)
+        except services.ServiceError as e:
+            return render(request, 'core/work_qr_scan.html',
+                          {'error': e.message if hasattr(e, 'message') else str(e)})
     if request.method == 'POST':
         try:
             if phase == 'start':

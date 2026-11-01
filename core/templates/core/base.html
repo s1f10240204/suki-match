@@ -149,7 +149,16 @@
         </a>
     </nav>
     {% endwith %}
-    <script src="{% static 'core/app.js' %}"></script>
+    <div class="qr-scanner" data-qr-scanner hidden>
+    <video data-qr-video playsinline muted autoplay></video>
+    <div class="qr-scanner-top">
+        <span class="qr-scanner-title">QRコードを読み取り中</span>
+        <button type="button" class="qr-scanner-close" data-qr-scan-close>✕ 閉じる</button>
+    </div>
+    <div class="qr-scanner-frame"></div>
+    <p class="qr-scanner-status" data-qr-status>カメラを起動しています…</p>
+</div>
+<script src="{% static 'core/app.js' %}"></script>
     {% block extra_body %}{% endblock %}
 </body>
 </html>

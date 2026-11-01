@@ -1659,3 +1659,86 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         }
     });
 })();
+
+// サイト内QR読み取り: 相手の画面のQRをカメラで読み取り、確認画面へ進む。
+(function () {
+    var overlay = document.querySelector('[data-qr-scanner]');
+    if (!overlay) return;
+    var video = overlay.querySelector('[data-qr-video]');
+    var status = overlay.querySelector('[data-qr-status]');
+    var stream = null, timer = null, libPromise = null, badCodeAt = 0;
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    function setStatus(t) { status.textContent = t; }
+    function loadLib(url) {
+        if (window.jsQR) return Promise.resolve();
+        if (libPromise) return libPromise;
+        libPromise = new Promise(function (res, rej) {
+            var s = document.createElement('script');
+            s.src = url;
+            s.onload = res;
+            s.onerror = rej;
+            document.head.appendChild(s);
+        });
+        return libPromise;
+    }
+    function stopCamera() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    }
+    function close() {
+        stopCamera();
+        overlay.hidden = true;
+        document.body.style.overflow = '';
+    }
+    function tick() {
+        if (!window.jsQR || !video.videoWidth) return;
+        var w = Math.min(video.videoWidth, 640);
+        var h = Math.max(1, Math.round(video.videoHeight * (w / video.videoWidth)));
+        canvas.width = w;
+        canvas.height = h;
+        var img;
+        try {
+            ctx.drawImage(video, 0, 0, w, h);
+            img = ctx.getImageData(0, 0, w, h);
+        } catch (e) { return; }
+        var code = null;
+        try { code = window.jsQR(img.data, w, h); } catch (e) { return; }
+        if (!code || !code.data) return;
+        var m = String(code.data).match(/\/work-qr\/[A-Za-z0-9_:\-.=]+\//);
+        if (m) {
+            close();
+            location.assign(m[0]);
+        } else if (Date.now() - badCodeAt > 3000) {
+            badCodeAt = Date.now();
+            setStatus('suki-matchのQRコードではありません。相手の画面に表示されたQRコードを映してください。');
+        }
+    }
+    function open(libUrl) {
+        overlay.hidden = false;
+        document.body.style.overflow = 'hidden';
+        setStatus('カメラを起動しています…');
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setStatus('このブラウザではカメラ読み取りが使えませんでした。');
+            return;
+        }
+        loadLib(libUrl).then(function () {
+            return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        }).then(function (s) {
+            stream = s;
+            video.srcObject = s;
+            var p = video.play();
+            if (p && p.catch) p.catch(function () {});
+            setStatus('QRコードを枠内に映してください');
+            timer = setInterval(tick, 250);
+        }).catch(function () {
+            setStatus('カメラを使えませんでした。ブラウザのカメラ許可を確認してください。');
+        });
+    }
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-qr-scan-open]') : null;
+        if (btn) open(btn.getAttribute('data-jsqr-url'));
+    });
+    overlay.querySelector('[data-qr-scan-close]').addEventListener('click', close);
+})();

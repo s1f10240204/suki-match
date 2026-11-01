@@ -3104,6 +3104,24 @@ class WorkQRTests(BaseTestCase):
         response = self.client.get(reverse('core:work_qr_scan', args=['invalid-token']))
         self.assertContains(response, '有効期限が切れています')
 
+    def test_scan_end_completes_without_button(self):
+        requester, hr, helper, match = self._qr_match()
+        services.qr_start_work(match, helper)
+        token = services.make_work_qr_token(match, 'end')
+        url = reverse('core:work_qr_scan', args=[token])
+        # ヘルパー(表示側)が開くと役割エラーで、終了しない
+        self.client.force_login(helper)
+        response = self.client.get(url)
+        self.assertContains(response, '依頼者の方が読み取るものです')
+        match.refresh_from_db()
+        self.assertIsNone(match.work_ended_at)
+        # 依頼者: 読み取り(GET)だけで即終了し、チャットへ戻る
+        self.client.force_login(requester)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        match.refresh_from_db()
+        self.assertIsNotNone(match.work_ended_at)
+
     def test_requester_pref_overrides_helper_choice(self):
         # 対面のみ指定:ヘルパーが remote を選んでも qr になる
         requester = make_user('pref_req')

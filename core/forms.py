@@ -93,7 +93,9 @@ class AccountForm(forms.ModelForm):
         fields = ('username', 'birth_date', 'simple_ui', 'leave_footprints')
         labels = {'username': 'ユーザー名', 'simple_ui': 'シンプルUI（大きな文字・ボタン）',
                   'leave_footprints': 'プロフィールを見たときに足あとを残す'}
-        widgets = {'birth_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')}
+        widgets = {'birth_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+                   'simple_ui': forms.CheckboxInput(attrs={'class': 'switch'}),
+                   'leave_footprints': forms.CheckboxInput(attrs={'class': 'switch'})}
 
 
 class CustomSignupForm(_AllauthSignupForm):
@@ -255,6 +257,9 @@ class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
         fields = ('line_activity', 'line_nearby', 'push_activity')
+        widgets = {'line_activity': forms.CheckboxInput(attrs={'class': 'switch'}),
+                   'line_nearby': forms.CheckboxInput(attrs={'class': 'switch'}),
+                   'push_activity': forms.CheckboxInput(attrs={'class': 'switch'})}
 
 
 class ActivityBaseForm(forms.ModelForm):

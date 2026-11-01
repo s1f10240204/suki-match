@@ -3170,6 +3170,25 @@ class WorkQRTests(BaseTestCase):
         self.assertContains(page, 'data-celebrate')
         self.assertContains(page, 'お仕事が完了しました！')
 
+    def test_qr_code_json_reports_state(self):
+        import json as jsonlib
+        requester, hr, helper, match = self._qr_match()
+        url = reverse('core:work_qr_code', args=[match.pk])
+        self.client.force_login(requester)
+        data = jsonlib.loads(self.client.get(url).content)
+        self.assertTrue(data['svg'])
+        self.assertFalse(data['ended'])
+        self.assertFalse(data['completed'])
+        services.qr_start_work(match, helper)
+        services.qr_stop_work(match, requester)
+        self.client.force_login(helper)
+        data = jsonlib.loads(self.client.get(url).content)
+        self.assertTrue(data['ended'])
+        self.assertFalse(data['completed'])
+        services.complete(hr, requester)
+        data = jsonlib.loads(self.client.get(url).content)
+        self.assertTrue(data['completed'])
+
     def test_scan_end_waits_for_other_helpers(self):
         requester = make_user('qr_req_m')
         User.objects.filter(pk=requester.pk).update(points=300)

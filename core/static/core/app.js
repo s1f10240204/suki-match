@@ -1567,14 +1567,25 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
     document.querySelectorAll('[data-qr-box]').forEach(function (box) {
         var url = box.getAttribute('data-qr-url');
         if (!url) { return; }
+        var chatUrl = box.getAttribute('data-chat-url');
+        var moved = false;
         function refresh() {
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) { if (d && d.svg) { box.innerHTML = d.svg; } })
+                .then(function (d) {
+                    if (!d) { return; }
+                    // 相手が読み取った/状態が進んだら、チャット(完了表示)へ自動で進む
+                    if (chatUrl && !moved && (d.completed || d.ended || !d.svg)) {
+                        moved = true;
+                        location.assign(chatUrl);
+                        return;
+                    }
+                    if (d.svg) { box.innerHTML = d.svg; }
+                })
                 .catch(function () {});
         }
         refresh();
-        setInterval(refresh, 25000);
+        setInterval(refresh, 5000);
     });
 })();
 

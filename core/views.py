@@ -727,13 +727,19 @@ def account_break(request):
 
 @login_required
 def work_qr_code(request, pk):
-    """QR表示側:現在のフェーズのQRコード(SVG)を JSON で返す(30秒ごとに更新)。"""
+    """QR表示側:現在のフェーズのQRコード(SVG)を JSON で返す(数秒ごとに更新)。
+
+    ended / completed も一緒に返し、表示側の画面が「読み取られた瞬間」に
+    反応してチャット(完了表示)へ進めるようにする。
+    """
     match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    state = {'ended': bool(match.work_ended_at),
+             'completed': match.status == Match.Status.DONE}
     phase = services.qr_phase_for(match, request.user)
     if phase is None:
-        return JsonResponse({'svg': ''})
+        return JsonResponse({'svg': '', **state})
     base = request.build_absolute_uri('/')[:-1]
-    return JsonResponse({'svg': services.work_qr_svg(match, phase, base), 'phase': phase})
+    return JsonResponse({'svg': services.work_qr_svg(match, phase, base), 'phase': phase, **state})
 
 
 @login_required

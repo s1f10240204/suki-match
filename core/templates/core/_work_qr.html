@@ -10,9 +10,9 @@
         {% if user.pk == wm.help_request.requester_id %}
         <div class="qr-stage">
             <p class="qr-turn"><span class="qr-turn-badge">あなたの番</span>このQRを相手に見せてね</p>
-            <div class="qr-frame"><div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div></div>
+            <div class="qr-frame"><div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}" data-chat-url="{% url 'core:chat' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div></div>
             <p class="qr-who"><b>{{ wm.helper.username }}さん</b>が読み取ると<br>タイマーがスタートします</p>
-            <p class="meta">QRコードは30秒ごとに切り替わります（スクリーンショットでは使えません）</p>
+            <p class="meta">QRコードは自動で切り替わります（スクリーンショットでは使えません）</p>
         </div>
         {% else %}
         <div class="qr-stage">
@@ -27,9 +27,9 @@
         {% if user.pk == wm.helper_id %}
         <div class="qr-stage">
             <p class="qr-turn"><span class="qr-turn-badge">あなたの番</span>終わったら、このQRを相手に見せてね</p>
-            <div class="qr-frame"><div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div></div>
+            <div class="qr-frame"><div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}" data-chat-url="{% url 'core:chat' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div></div>
             <p class="qr-who"><b>{{ wm.help_request.requester.username }}さん</b>が読み取ると<br>自動でお仕事が完了します</p>
-            <p class="meta">QRコードは30秒ごとに切り替わります</p>
+            <p class="meta">QRコードは自動で切り替わります</p>
         </div>
         {% else %}
         <div class="qr-stage">

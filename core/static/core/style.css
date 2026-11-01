@@ -593,6 +593,10 @@ body.simple-ui .time-chip { font-size: .98rem; padding: 6px 12px; font-weight: 7
 body.simple-ui .segmented { padding: 5px; }
 body.simple-ui .segmented a { font-size: 1.1rem; font-weight: 700; padding: 14px; min-height: 56px; display: flex; align-items: center; justify-content: center; }
 body.simple-ui .search-form, body.simple-ui .filter-bar, body.simple-ui .page-head .btn { display: none; }
+body.simple-ui .search-details { display: none; }
+.search-details { margin-bottom: 14px; }
+.search-details > summary { padding: 10px 2px; font-size: .95rem; }
+.search-details .search-form { margin-bottom: 0; }
 body.simple-ui .page-head h1 { font-size: 1.55rem; }
 
 /* 一覧の行(メッセージ・通知など) */

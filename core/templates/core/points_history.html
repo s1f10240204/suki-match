@@ -13,9 +13,24 @@
     {% if balance < 0 %}
     <p class="notice">いまツケで {{ balance }}pt になっています。あと {{ credit_available }}pt まで依頼できます（ツケ上限 −{{ credit_limit }}pt）。お手伝いや下の方法でポイントを貯めると返済できます。</p>
     {% else %}
-    <p class="meta">ポイントが足りないときは、ツケ（最大 −{{ credit_limit }}pt）でも依頼できます。あと {{ credit_available }}pt まで使えます。</p>
+    <p class="meta">ポイントが足りないときは、ツケ（最大 −{{ credit_limit }}pt）でも依頼できます。あと {{ credit_available }}pt まで使えます（残高とツケ枠の合計）。</p>
     {% endif %}
 </div>
+
+<h2 class="section-title">履歴</h2>
+{% for t in transactions %}
+<div class="pt-row">
+    <div class="pt-main">
+        {% if t.help_request_id %}<a class="pt-desc" href="{% url 'core:help_request_detail' t.help_request_id %}">{{ t.description|default:t.get_kind_display }}</a>{% else %}<span class="pt-desc">{{ t.description|default:t.get_kind_display }}</span>{% endif %}
+        <span class="pt-meta">{{ t.created_at|date:"Y/n/j H:i" }}{% if t.counterparty %} · 相手: {{ t.counterparty.username }}さん{% endif %} · 残高 {{ t.balance_after }}pt</span>
+    </div>
+    <span class="pt-amount {% if t.amount >= 0 %}plus{% else %}minus{% endif %}">{% if t.amount >= 0 %}+{% endif %}{{ t.amount }}pt</span>
+</div>
+{% empty %}
+<p class="notice">まだ履歴がありません。ポイントの増減はこれから記録されていきます。</p>
+{% endfor %}
+
+<p class="meta">履歴は直近100件まで表示されます。</p>
 
 <section class="card">
     <h2 class="section-title">ポイントを貯める</h2>
@@ -73,18 +88,5 @@
     {% endfor %}
 </section>
 
-<h2 class="section-title">履歴</h2>
-{% for t in transactions %}
-<div class="pt-row">
-    <div class="pt-main">
-        {% if t.help_request_id %}<a class="pt-desc" href="{% url 'core:help_request_detail' t.help_request_id %}">{{ t.description|default:t.get_kind_display }}</a>{% else %}<span class="pt-desc">{{ t.description|default:t.get_kind_display }}</span>{% endif %}
-        <span class="pt-meta">{{ t.created_at|date:"Y/n/j H:i" }}{% if t.counterparty %} · 相手: {{ t.counterparty.username }}さん{% endif %} · 残高 {{ t.balance_after }}pt</span>
-    </div>
-    <span class="pt-amount {% if t.amount >= 0 %}plus{% else %}minus{% endif %}">{% if t.amount >= 0 %}+{% endif %}{{ t.amount }}pt</span>
-</div>
-{% empty %}
-<p class="notice">まだ履歴がありません。ポイントの増減はこれから記録されていきます。</p>
-{% endfor %}
 
-<p class="meta">履歴は直近100件まで表示されます。</p>
 {% endblock %}

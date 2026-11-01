@@ -54,6 +54,8 @@
 {% if not located %}<p class="meta">※ 現在地が未設定のため、500m以内では絞り込めません。<a href="{% url 'core:profile_edit' %}" class="link">現在地を設定する</a></p>{% endif %}
 {% endif %}
 
+<details class="more search-details"{% if filtering %} open{% endif %}>
+<summary>🔍 キーワード・タグ・スキルで絞り込む{% if filtering %}（適用中）{% endif %}</summary>
 <form method="get" class="search-form" role="search">
     <input type="hidden" name="tab" value="{{ tab }}">
     {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
@@ -75,6 +77,7 @@
     </div>
     {% if filtering %}<p class="meta">{{ help_requests|length }}件の依頼が見つかりました</p>{% endif %}
 </form>
+</details>
 
 {% if user.is_authenticated %}
     <div class="filter-bar">

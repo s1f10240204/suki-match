@@ -2943,6 +2943,22 @@ class ServicePolishTests(BaseTestCase):
         helper.refresh_from_db()
         self.assertFalse(helper.is_on_break)
 
+    def test_mfa_activate_qr_page_renders(self):
+        """再認証を通った先のQRコード画面が表示されること(ライブラリ不足で500になった回帰防止)。"""
+        import re
+        user = User.objects.create_user('mfa_qr', email='qr@example.jp', password=self.PW)
+        self.assertTrue(self.client.login(username='mfa_qr', password=self.PW))
+        response = self.client.get(reverse('mfa_activate_totp'), follow=True)
+        text = response.content.decode('utf-8', 'ignore')
+        if 'reauthenticate' in text or 'アクセス確認' in text:
+            fields = dict(re.findall(r'<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"', text))
+            fields = {k: v for k, v in fields.items() if k != 'password'}
+            fields['password'] = self.PW
+            response = self.client.post('/accounts/reauthenticate/', fields, follow=True)
+            text = response.content.decode('utf-8', 'ignore')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('authenticator_secret', text)
+
     # ---- 二段階認証の導線 ----
     def test_mfa_pages_render(self):
         user = self._user('mfa1')

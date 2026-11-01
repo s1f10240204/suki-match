@@ -139,9 +139,11 @@ class HelpRequestForm(forms.ModelForm):
     class Meta:
         model = HelpRequest
         fields = ('title', 'mode', 'preset_tags', 'description', 'image', 'duration_minutes',
-                  'scheduled_for', 'address_detail', 'latitude', 'longitude', 'chat_retention_days')
+                  'scheduled_for', 'address_detail', 'latitude', 'longitude', 'chat_retention_days',
+                  'work_mode_pref')
         widgets = {
             'mode': forms.RadioSelect,
+            'work_mode_pref': forms.RadioSelect,
             'preset_tags': forms.CheckboxSelectMultiple,
             'description': forms.Textarea(attrs={'rows': 3, 'placeholder': '定型タグだけでもOKです'}),
             'scheduled_for': forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),

@@ -219,6 +219,13 @@ class HelpRequest(models.Model):
     chat_retention_days = models.PositiveSmallIntegerField(
         'チャット履歴の保存期間', choices=ChatRetention.choices, default=ChatRetention.THREE_DAYS,
         help_text='完了・キャンセル後はチャットに送信できなくなります。履歴はこの期間だけ閲覧でき、過ぎると自動で削除されます。')
+    work_mode_pref = models.CharField(
+        'お手伝いの形式', max_length=10,
+        choices=[('any', 'おまかせ（お手伝いする人が選ぶ）'),
+                 ('qr', '対面のみ（QRで開始・終了）'),
+                 ('remote', '会わないのみ（ボタンで開始・終了）')],
+        default='any',
+        help_text='「対面のみ」「会わないのみ」を選ぶと、その依頼の形式が固定されます。')
     status = models.CharField('状況', max_length=20, choices=Status.choices, default=Status.OPEN, db_index=True)
 
     # 正確な位置はマッチ参加者にのみ開示する

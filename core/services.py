@@ -548,12 +548,19 @@ def _check_can_help(help_request, user):
         raise ServiceError('この依頼は募集を締め切りました。')
 
 
+def resolve_work_mode(help_request, chosen, default='remote'):
+    """依頼者が形式を指定していればそれを優先し、そうでなければ選択値を使う。"""
+    pref = getattr(help_request, 'work_mode_pref', 'any')
+    if pref in ('qr', 'remote'):
+        return pref
+    return chosen if chosen in ('qr', 'remote') else default
+
+
 def accept_first_come(help_request, user, work_mode='remote'):
     if help_request.mode != HelpRequest.Mode.FIRST_COME:
         raise ServiceError('この依頼は承認制です。応募してください。')
     _check_can_help(help_request, user)
-    if work_mode not in ('qr', 'remote'):
-        work_mode = 'remote'
+    work_mode = resolve_work_mode(help_request, work_mode, 'remote')
     with transaction.atomic():
         match = _claim(help_request, user, work_mode=work_mode)
     notify(help_request.requester, 'matched',
@@ -565,8 +572,7 @@ def apply(help_request, user, message='', work_mode='qr'):
     if help_request.mode != HelpRequest.Mode.APPROVAL:
         raise ServiceError('この依頼は先着順です。')
     _check_can_help(help_request, user)
-    if work_mode not in ('qr', 'remote'):
-        work_mode = 'qr'
+    work_mode = resolve_work_mode(help_request, work_mode, 'qr')
     application, created = Application.objects.get_or_create(
         help_request=help_request, applicant=user,
         defaults={'message': message, 'work_mode': work_mode})

@@ -134,6 +134,7 @@ def help_request_create(request):
                 'latitude': source.latitude, 'longitude': source.longitude,
                 'address_detail': source.address_detail, 'mode': source.mode,
                 'chat_retention_days': source.chat_retention_days,
+                'work_mode_pref': source.work_mode_pref,
                 'preset_tags': list(source.preset_tags.all()),
                 'headcount_choice': source.headcount if source.headcount <= 4 else 'custom',
                 'headcount_custom': source.headcount if source.headcount > 4 else None,

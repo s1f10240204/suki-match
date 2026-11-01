@@ -3060,6 +3060,53 @@ class WorkQRTests(BaseTestCase):
         response = self.client.get(reverse('core:work_qr_scan', args=['invalid-token']))
         self.assertContains(response, '有効期限が切れています')
 
+    def test_requester_pref_overrides_helper_choice(self):
+        # 対面のみ指定:ヘルパーが remote を選んでも qr になる
+        requester = make_user('pref_req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        hr.work_mode_pref = 'qr'
+        hr.save(update_fields=['work_mode_pref'])
+        helper = make_user('pref_help')
+        match = services.accept_first_come(hr, helper, work_mode='remote')
+        self.assertEqual(match.work_mode, 'qr')
+        # 会わないのみ指定 + 応募経由
+        requester2 = make_user('pref_req2')
+        hr2 = make_request(requester2)
+        hr2.mode = HelpRequest.Mode.APPROVAL
+        hr2.work_mode_pref = 'remote'
+        hr2.save(update_fields=['mode', 'work_mode_pref'])
+        helper2 = make_user('pref_help2')
+        application = services.apply(hr2, helper2, '', work_mode='qr')
+        self.assertEqual(application.work_mode, 'remote')
+        match2 = services.approve(application, requester2)
+        self.assertEqual(match2.work_mode, 'remote')
+        # おまかせなら選択どおり
+        requester3 = make_user('pref_req3')
+        hr3 = make_request(requester3)
+        helper3 = make_user('pref_help3')
+        match3 = services.accept_first_come(hr3, helper3, work_mode='remote')
+        self.assertEqual(match3.work_mode, 'remote')
+
+    def test_post_form_has_pref_field(self):
+        user = make_user('pref_form')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_create'))
+        self.assertContains(response, 'お手伝いの形式')
+        self.assertContains(response, '対面のみ（QRで開始・終了）')
+
+    def test_detail_fixed_pref_shows_note(self):
+        requester = make_user('pref_note_req')
+        hr = make_request(requester)
+        hr.work_mode_pref = 'qr'
+        hr.save(update_fields=['work_mode_pref'])
+        helper = make_user('pref_note_help')
+        self.client.force_login(helper)
+        response = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(response, '形式は依頼者が指定しています')
+        self.assertContains(response, '対面形式（QR）')
+
     def test_detail_shows_mode_choice(self):
         requester = make_user('qr_show_req')
         hr = make_request(requester)

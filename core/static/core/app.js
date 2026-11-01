@@ -1365,7 +1365,23 @@
             modal.hidden = true;
             var preview = document.querySelector('.photo-edit .avatar-img, .photo-edit img');
             if (preview) { preview.src = canvas.toDataURL('image/jpeg', 0.85); }
+            // 写真は選んだ時点で自動保存する(保存ボタンの押し忘れ防止)
+            var form = input.closest('form');
+            if (form) {
+                if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+            }
         }, 'image/jpeg', 0.9);
+    });
+})();
+
+/* 固定保存バー: フォームに変更があったら、下部に保存ボタンを出し続ける */
+(function () {
+    document.querySelectorAll('[data-sticky-save]').forEach(function (bar) {
+        var form = bar.closest('form');
+        if (!form) { return; }
+        var show = function () { bar.hidden = false; requestAnimationFrame(function () { bar.classList.add('show'); }); };
+        form.addEventListener('input', show);
+        form.addEventListener('change', show);
     });
 })();
 

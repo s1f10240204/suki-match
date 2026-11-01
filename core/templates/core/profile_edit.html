@@ -41,6 +41,9 @@
     {% endif %}
     <p class="help">他の人には「{{ user.area_label|default:'東京都北区赤羽' }}」のような大まかなエリアだけが表示されます。</p>
 
-    <button type="submit" class="btn btn-primary btn-block">保存</button>
+    <button type="submit" class="btn btn-primary btn-block">変更を保存する</button>
+    <div class="sticky-save" data-sticky-save hidden>
+        <button type="submit" class="btn btn-primary btn-block">変更を保存する</button>
+    </div>
 </form>
 {% endblock %}

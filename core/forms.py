@@ -93,6 +93,7 @@ class AccountForm(forms.ModelForm):
         fields = ('username', 'birth_date', 'simple_ui', 'leave_footprints')
         labels = {'username': 'ユーザー名', 'simple_ui': 'シンプルUI（大きな文字・ボタン）',
                   'leave_footprints': 'プロフィールを見たときに足あとを残す'}
+        help_texts = {'username': '表示名として使われます（半角英数字と @ . + - _ が使えます）'}
         widgets = {'birth_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
                    'simple_ui': forms.CheckboxInput(attrs={'class': 'switch'}),
                    'leave_footprints': forms.CheckboxInput(attrs={'class': 'switch'})}

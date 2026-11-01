@@ -100,24 +100,21 @@
 </section>
 
 <section class="card">
-    <h2 class="section-title">自分の依頼</h2>
+    <div class="section-head"><h2 class="section-title">自分の依頼</h2>{% if request_count > 3 %}<a href="{% url 'core:history' %}?tab=requests">すべて見る（全{{ request_count }}件）›</a>{% endif %}</div>
     {% for r in my_requests %}
         <a class="list-row history-row" href="{% url 'core:help_request_detail' r.pk %}"><span class="history-main"><span class="history-title">{{ r.title }}</span><span class="history-meta">{{ r.created_at|date:"Y/n/j" }} ・ {{ r.area_label }}{% if r.points_cost %} ・ {{ r.points_cost }}pt{% endif %}</span></span><span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></a>
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
-    {% if request_count > 3 %}<a class="more-link" href="{% url 'core:history' %}?tab=requests">すべての依頼を見る（全{{ request_count }}件）›</a>{% endif %}
-    <h2 class="section-title">お手伝い履歴</h2>
+    <div class="section-head"><h2 class="section-title">お手伝い履歴</h2>{% if help_total > 3 %}<a href="{% url 'core:history' %}?tab=helps">すべて見る（全{{ help_total }}件）›</a>{% endif %}</div>
     {% for m in my_helps %}
         <a class="list-row history-row" href="{% url 'core:help_request_detail' m.help_request.pk %}"><span class="history-main"><span class="history-title">{{ m.help_request.title }}</span><span class="history-meta">依頼者：{{ m.help_request.requester.username }} ・ {{ m.help_request.created_at|date:"Y/n/j" }} ・ {{ m.help_request.area_label }}</span></span><span class="status status-{{ m.status }}">{{ m.get_status_display }}</span></a>
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
-    {% if help_total > 3 %}<a class="more-link" href="{% url 'core:history' %}?tab=helps">すべてのお手伝いを見る（全{{ help_total }}件）›</a>{% endif %}
 </section>
 
 <section class="card">
-    <h2 class="section-title">受け取ったレビュー</h2>
+    <div class="section-head"><h2 class="section-title">受け取ったレビュー</h2>{% if review_count > 3 %}<a href="{% url 'core:history' %}?tab=reviews">すべて見る（全{{ review_count }}件）›</a>{% endif %}</div>
     {% for rv in reviews %}
         {% include 'core/_review_row.html' %}
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
-    {% if review_count > 3 %}<a class="more-link" href="{% url 'core:history' %}?tab=reviews">すべてのレビューを見る（全{{ review_count }}件）›</a>{% endif %}
 </section>
 
 <a class="list-row" href="{% url 'core:footprints' %}"><span>👣 足あと（プロフィールを見た人）</span><span class="meta">›</span></a>

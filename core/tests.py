@@ -3144,7 +3144,7 @@ class ProfileHistoryTests(BaseTestCase):
         self.client.force_login(user)
         page = self.client.get(reverse('core:profile'))
         self.assertEqual(page.content.decode().count('history-row'), 3)
-        self.assertContains(page, 'すべての依頼を見る（全5件）')
+        self.assertContains(page, 'すべて見る（全5件）')
 
     def test_history_page_lists_all_and_paginates(self):
         user = make_user('hist_user2')
@@ -3172,7 +3172,7 @@ class ProfileHistoryTests(BaseTestCase):
         self.client.force_login(user)
         page = self.client.get(reverse('core:profile'))
         self.assertEqual(page.content.decode().count('<div class="review">'), 3)
-        self.assertContains(page, 'すべてのレビューを見る（全5件）')
+        self.assertContains(page, 'すべて見る（全5件）')
 
     def test_history_reviews_tab_and_reply_next(self):
         user = make_user('rv_user2')

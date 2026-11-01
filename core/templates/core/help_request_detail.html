@@ -123,7 +123,7 @@
                     </div>
                 {% endfor %}
             {% endif %}
-            <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>
+            {% if match %}<a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>{% endif %}
             {% if participants %}
             <div class="work-panel">
                 <p class="work-title">⏱ 作業時間と精算見込み</p>

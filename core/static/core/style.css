@@ -114,6 +114,9 @@ a.card { transition: transform .15s, box-shadow .15s; }
 a.card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(80, 60, 40, .05), 0 12px 26px rgba(80, 60, 40, .08); }
 .card-alert { border-color: #f1cfc6; background: var(--danger-soft); }
 .section-title { font-size: 1rem; font-weight: 700; margin: 20px 0 10px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
+.section-head .section-title { margin: 0; }
+.section-head a { font-size: .86rem; font-weight: 700; color: var(--primary-dark); white-space: nowrap; }
 .card > .section-title:first-child, .form > .section-title:first-child { margin-top: 0; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .meta { color: var(--muted); font-size: .82rem; }
@@ -128,12 +131,13 @@ a.card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(80, 60, 4
 /* ---------- ボタン ---------- */
 .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 48px;
     padding: 12px 20px; border-radius: 999px; border: 1.5px solid transparent;
     font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, transform .1s;
     text-align: center; line-height: 1.3;
 }
 .btn:active { transform: scale(.98); }
-.btn-sm { padding: 8px 15px; font-size: .86rem; }
+.btn-sm { padding: 8px 15px; font-size: .86rem; min-height: 38px; }
 .btn-block { display: flex; width: 100%; margin-top: 10px; }
 .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 1px 3px rgba(55, 106, 81, .35), 0 4px 14px rgba(55, 106, 81, .18); }
 .btn-primary:hover { background: var(--primary-dark); }
@@ -294,9 +298,11 @@ a.list-row:hover { color: var(--primary-dark); }
 .has-error input, .has-error textarea { border-color: var(--danger); }
 .check { display: flex; align-items: center; gap: 8px; font-size: .9rem; cursor: pointer; }
 .chips-choice > div { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips-choice label { display: inline-flex; align-items: center; gap: 6px; padding: 9px 15px; border: 1.5px solid #e2d9cd; border-radius: 999px; font-size: .88rem; cursor: pointer; background: #fffdfa; transition: all .15s; }
+.chips-choice label { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 9px 15px; border: 1.5px solid #e2d9cd; border-radius: 999px; font-size: .88rem; cursor: pointer; background: #fffdfa; transition: all .15s; }
 .chips-choice label:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; }
-.chips-choice input { accent-color: var(--primary); margin: 0; }
+.chips-choice label:has(input:checked)::before { content: "✓"; font-weight: 700; }
+.chips-choice label:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.chips-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .field-radioselect.field-mode .chips-choice > div, .field-mode .chips-choice > div { display: grid; grid-template-columns: 1fr; }
 .field-mode .chips-choice label { border-radius: 14px; }
 .inline-form { display: flex; gap: 8px; margin-bottom: 8px; }

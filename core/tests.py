@@ -161,6 +161,23 @@ class MatchingTests(BaseTestCase):
         expired.refresh_from_db()
         self.assertEqual(expired.status, HelpRequest.Status.EXPIRED)
 
+    def test_simple_ui_list_defaults_to_all(self):
+        requester = make_user('sreq')
+        near_hr = make_request(requester)
+        far_hr = make_request(requester, loc=FAR)
+        simple_helper = make_user('shelp', simple_ui=True)
+        self.client.force_login(simple_helper)
+        listed = self.client.get(reverse('core:help_request_list')).context['help_requests']
+        self.assertIn(near_hr, listed)
+        self.assertIn(far_hr, listed)  # シンプルUIの既定はすべて表示
+        listed_near = self.client.get(
+            reverse('core:help_request_list'), {'near': '1'}).context['help_requests']
+        self.assertEqual(listed_near, [near_hr])  # 500m以内ボタンで絞り込み
+        page = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(page, 'simple-scope')
+        self.assertContains(page, '500m以内')
+        self.assertContains(page, 'すべての依頼')
+
     def test_scheduled_tab(self):
         requester = make_user('req')
         later = timezone.now() + timedelta(days=1)

@@ -60,7 +60,14 @@ def terms_of_service(request):
 def help_request_list(request):
     services.expire_requests()
     tab = 'scheduled' if request.GET.get('tab') == 'scheduled' else 'now'
-    show_all = request.GET.get('all') == '1'
+    near = request.GET.get('near') == '1'
+    if near:
+        show_all = False
+    elif 'all' in request.GET:
+        show_all = request.GET.get('all') == '1'
+    else:
+        # 既定: シンプルUIではすべて表示(500m以内はボタンで明示的に選ぶ)。通常UIは半径内。
+        show_all = bool(request.user.is_authenticated and getattr(request.user, 'simple_ui', False))
     qs = (HelpRequest.objects.filter(status__in=[HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS],
                                      expires_at__gt=timezone.now(),
                                      scheduled_for__isnull=(tab == 'now'))
@@ -109,7 +116,7 @@ def help_request_list(request):
     others = [hr for hr in help_requests if not getattr(hr, 'recommended', False)]
     return render(request, 'core/help_request_list.html', {
         'help_requests': help_requests, 'recommended': recommended, 'others': others,
-        'located': bool(points), 'show_all': show_all, 'tab': tab, 'radius': services.RADIUS_METERS,
+        'located': bool(points), 'show_all': show_all, 'near': near, 'tab': tab, 'radius': services.RADIUS_METERS,
         'photo_block_reason': services.photo_block_reason(user) if user.is_authenticated else '',
         'q': q, 'preset_tags': PresetTag.objects.all(), 'all_skills': Skill.objects.all(),
         'selected_tag': int(tag_id) if tag_id.isdigit() else '',

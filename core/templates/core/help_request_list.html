@@ -37,18 +37,27 @@
 {% endif %}
 
 <div class="page-head" id="simple-requests">
-    <h1>近くの依頼</h1>
+    <h1>{% if show_all %}すべての依頼{% else %}近くの依頼{% endif %}</h1>
     <a href="{% url 'core:help_request_create' %}" class="btn btn-primary btn-sm">＋ 依頼する</a>
 </div>
 
 <div class="segmented">
-    <a href="?tab=now{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'now' %}is-active{% endif %}">今すぐ</a>
-    <a href="?tab=scheduled{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'scheduled' %}is-active{% endif %}">日時指定</a>
+    <a href="?tab=now{% if show_all %}&all=1{% elif near %}&near=1{% endif %}{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'now' %}is-active{% endif %}">今すぐ</a>
+    <a href="?tab=scheduled{% if show_all %}&all=1{% elif near %}&near=1{% endif %}{% if filtering %}&q={{ q|urlencode }}{% endif %}" class="{% if tab == 'scheduled' %}is-active{% endif %}">日時指定</a>
 </div>
+
+{% if user.is_authenticated and user.simple_ui %}
+<div class="simple-scope" role="group" aria-label="表示する範囲">
+    <a href="?tab={{ tab }}&all=1" class="btn {% if show_all %}btn-primary{% else %}btn-outline{% endif %}">すべて表示</a>
+    <a href="?tab={{ tab }}&near=1" class="btn {% if show_all %}btn-outline{% else %}btn-primary{% endif %}">500m以内</a>
+</div>
+{% if not located %}<p class="meta">※ 現在地が未設定のため、500m以内では絞り込めません。<a href="{% url 'core:profile_edit' %}" class="link">現在地を設定する</a></p>{% endif %}
+{% endif %}
 
 <form method="get" class="search-form" role="search">
     <input type="hidden" name="tab" value="{{ tab }}">
     {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+    {% if near %}<input type="hidden" name="near" value="1">{% endif %}
     <div class="search-row">
         <input type="search" name="q" value="{{ q }}" placeholder="キーワードで探す（例：買い物、荷物）" aria-label="キーワード">
         <button type="submit" class="btn btn-primary btn-sm">検索</button>
@@ -72,7 +81,7 @@
         {% if located %}
             {% if show_all %}
                 <span>すべての依頼</span>
-                <a href="?tab={{ tab }}" class="link">{{ radius }}m以内だけ表示</a>
+                <a href="?tab={{ tab }}&near=1" class="link">{{ radius }}m以内だけ表示</a>
             {% else %}
                 <span>現在地・活動拠点から{{ radius }}m以内</span>
                 <a href="?tab={{ tab }}&all=1" class="link">すべて表示</a>
@@ -101,6 +110,7 @@
         <a href="?tab={{ tab }}" class="link">検索条件をクリアする</a>
         {% else %}
         <p>{% if tab == 'scheduled' %}日時指定の依頼はまだありません。{% else %}いま募集中の依頼はありません。{% endif %}</p>
+        {% if not show_all %}<a href="?tab={{ tab }}&all=1" class="link">すべての依頼を表示する</a><br>{% endif %}
         <a href="{% url 'core:stats' %}" class="link">依頼が出やすい時間帯を見る</a>
         {% endif %}
     </div>

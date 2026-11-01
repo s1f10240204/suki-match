@@ -591,6 +591,18 @@ body.simple-ui .form input, body.simple-ui .form select, body.simple-ui .form te
 body.simple-ui .auth-page input { font-size: 1.14rem; padding: 16px; min-height: 60px; border-width: 1.5px; border-radius: 14px; }
 body.simple-ui .form textarea { min-height: 130px; line-height: 1.7; }
 body.simple-ui .chips-choice label { font-size: 1.06rem; padding: 15px 18px; min-height: 56px; border-width: 2px; border-radius: 16px; }
+/* スイッチとラジオ・チェックボックスは大きな入力欄ルールの対象外(混ざると巨大化して崩れる) */
+body.simple-ui .form input[type="radio"], body.simple-ui .form input[type="checkbox"],
+body.simple-ui .auth-page input[type="radio"], body.simple-ui .auth-page input[type="checkbox"] {
+    min-height: 0; padding: 0;
+}
+body.simple-ui .form input[type="checkbox"].switch,
+body.simple-ui .auth-page input[type="checkbox"].switch {
+    width: 62px; height: 38px; min-height: 38px; padding: 0;
+}
+/* シンプルUIの表示範囲きりかえ(すべて表示 / 500m以内) */
+.simple-scope { display: flex; gap: 10px; margin: 2px 0 14px; }
+.simple-scope .btn { flex: 1; }
 body.simple-ui .chips-choice input { width: 22px; height: 22px; flex: none; }
 body.simple-ui .errorlist { font-size: 1.02rem; font-weight: 700; line-height: 1.7; }
 body.simple-ui .geo-button { font-size: 1.05rem; min-height: 52px; }

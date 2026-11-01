@@ -4,7 +4,7 @@
     {% if user.pk == wm.help_request.requester_id %}
         <p class="meta">📷 ヘルパーが到着したら、このQRコードを読み取ってもらってください。読み取ると作業が開始します。</p>
         <div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div>
-        <p class="meta">QRコードは30秒ごとに切り替わります（スクリーンショットでは開始できません）。</p>
+        <p class="meta">QRコードは30秒ごとに切り替わります（スクリーンショットでは開始できません）。このQRはsuki-match専用で、相手の画面の「QRコードを読み取る」ボタンで読み取ります。</p>
     {% else %}
         <p class="meta">📷 会った時に、依頼者のQRコードを読み取ってください。読み取ると作業が開始します。</p>
         <button type="button" class="btn btn-primary btn-block" data-qr-scan-open data-jsqr-url="{% static 'core/jsQR.min.js' %}">📷 QRコードを読み取る</button>
@@ -14,7 +14,7 @@
     {% if user.pk == wm.helper_id %}
         <p class="meta">📷 終わったら、このQRコードを依頼者に読み取ってもらってください。</p>
         <div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div>
-        <p class="meta">QRコードは30秒ごとに切り替わります。</p>
+        <p class="meta">QRコードは30秒ごとに切り替わります。このQRはsuki-match専用で、相手の画面の「QRコードを読み取る」ボタンで読み取ります。</p>
     {% else %}
         <p class="meta">📷 終わったら、ヘルパーのQRコードを読み取ってください。読み取るだけで自動で終了します。</p>
         <button type="button" class="btn btn-primary btn-block" data-qr-scan-open data-jsqr-url="{% static 'core/jsQR.min.js' %}">📷 QRコードを読み取る</button>

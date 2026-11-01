@@ -716,12 +716,21 @@ def parse_work_qr_token(token, max_age=None):
     return data.get('m'), data.get('p')
 
 
+WORK_QR_PAYLOAD_PREFIX = 'sukimatch://work-qr/'
+
+
+def work_qr_payload(match, phase):
+    """QRコードに埋め込む専用文字列。URLではないのでスマホ標準のカメラでは開けず、
+    suki-match内の読み取り機能だけが反応する。"""
+    return WORK_QR_PAYLOAD_PREFIX + make_work_qr_token(match, phase)
+
+
 def work_qr_svg(match, phase, scan_base_url):
     """読み取り用URLをQRコード(SVG文字列)にする。"""
     import qrcode
     from qrcode.image.svg import SvgPathImage
     token = make_work_qr_token(match, phase)
-    img = qrcode.make(f'{scan_base_url}/work-qr/{token}/', image_factory=SvgPathImage)
+    img = qrcode.make(work_qr_payload(match, phase), image_factory=SvgPathImage)
     from io import BytesIO
     buf = BytesIO()
     img.save(buf)

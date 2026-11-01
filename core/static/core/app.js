@@ -1706,10 +1706,10 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         var code = null;
         try { code = window.jsQR(img.data, w, h); } catch (e) { return; }
         if (!code || !code.data) return;
-        var m = String(code.data).match(/\/work-qr\/[A-Za-z0-9_:\-.=]+\//);
+        var m = String(code.data).match(/work-qr\/([A-Za-z0-9_:\-.=]+)/);
         if (m) {
             close();
-            location.assign(m[0]);
+            location.assign('/work-qr/' + m[1] + '/');
         } else if (Date.now() - badCodeAt > 3000) {
             badCodeAt = Date.now();
             setStatus('suki-matchのQRコードではありません。相手の画面に表示されたQRコードを映してください。');

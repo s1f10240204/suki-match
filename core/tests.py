@@ -3104,6 +3104,15 @@ class WorkQRTests(BaseTestCase):
         response = self.client.get(reverse('core:work_qr_scan', args=['invalid-token']))
         self.assertContains(response, '有効期限が切れています')
 
+    def test_qr_payload_is_app_only_scheme(self):
+        requester, hr, helper, match = self._qr_match()
+        payload = services.work_qr_payload(match, 'start')
+        self.assertTrue(payload.startswith('sukimatch://work-qr/'))
+        self.assertNotIn('http', payload)  # URLではないので標準カメラでは開けない
+        token = payload.rsplit('/', 1)[-1]
+        parsed = services.parse_work_qr_token(token)
+        self.assertEqual(parsed, (match.pk, 'start'))
+
     def test_scan_end_completes_without_button(self):
         requester, hr, helper, match = self._qr_match()
         services.qr_start_work(match, helper)

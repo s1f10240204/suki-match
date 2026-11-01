@@ -228,12 +228,16 @@ class HelpRequestForm(forms.ModelForm):
 
 
 class ApplicationForm(forms.ModelForm):
+    # work_mode は未送信でも応募が成立するよう任意項目にし、既定は対面(QR)
+    work_mode = forms.ChoiceField(
+        label='お手伝いの形式', required=False, initial='qr',
+        choices=[('qr', '対面（QRで開始・終了）'), ('remote', '会わない（ボタンで開始・終了）')],
+        widget=forms.RadioSelect)
+
     class Meta:
         model = Application
         fields = ('message', 'work_mode')
-        labels = {'work_mode': 'お手伝いの形式'}
-        widgets = {'message': forms.TextInput(attrs={'placeholder': '例: 近所に住んでいます。子育て経験があります'}),
-                   'work_mode': forms.RadioSelect}
+        widgets = {'message': forms.TextInput(attrs={'placeholder': '例: 近所に住んでいます。子育て経験があります'})}
 
 
 class CancelForm(forms.Form):

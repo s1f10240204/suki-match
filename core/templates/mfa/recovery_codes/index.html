@@ -1,0 +1,44 @@
+{% extends "mfa/recovery_codes/base.html" %}
+{% load static %}
+
+{% block head_title %}リカバリーコード{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>リカバリーコード</h1></div>
+
+<section class="card">
+    <p>リカバリーコードは{{ total_count }}個中 {{ unused_codes|length }}個が使えます。大切に保管してください（1つのコードは1回だけ使えます）。</p>
+    {% if can_view_codes %}
+    <div class="field" style="margin-top:12px">
+        <label class="field-label" for="recovery_codes">未使用のコード</label>
+        <textarea id="recovery_codes" class="codes-box" rows="{{ unused_codes|length }}" readonly>{% for code in unused_codes %}{{ code }}{% if not forloop.last %}
+{% endif %}{% endfor %}</textarea>
+    </div>
+    {% endif %}
+    <div class="button-row">
+        {% if can_download_codes %}
+        <a class="btn btn-ghost" href="{% url 'mfa_download_recovery_codes' %}">ダウンロード</a>
+        {% endif %}
+        {% if can_generate_codes %}
+        <a class="btn btn-outline" href="{% url 'mfa_generate_recovery_codes' %}">新しいコードを生成</a>
+        {% endif %}
+    </div>
+    {% if MFA_RECOVERY_CODES_SHOW_ONCE and can_view_codes %}
+    <label class="check" style="margin-top:12px"><input type="checkbox" id="codes_saved"> リカバリーコードを保存しました</label>
+    {% endif %}
+    <a class="btn btn-ghost btn-block" href="{% url 'mfa_index' %}">多要素認証に戻る</a>
+</section>
+{% endblock content %}
+
+{% block extra_body %}
+    {{ block.super }}
+    <script src="{% static 'mfa/js/recovery_codes.js' %}"></script>
+    <script src="{% static 'account/js/onload.js' %}"></script>
+    <script data-allauth-onload="allauth.recoveryCodes.forms.viewForm" type="application/json">{
+    "ids": {
+        "saveConfirmation": "codes_saved",
+        "recoveryCodes": "recovery_codes"
+    }
+}
+    </script>
+{% endblock extra_body %}

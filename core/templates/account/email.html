@@ -1,0 +1,58 @@
+{% extends "account/base_manage_email.html" %}
+{% load static %}
+
+{% block head_title %}メールアドレス{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>メールアドレス</h1></div>
+
+{% if emailaddresses %}
+<section class="card">
+    <p class="help">以下のメールアドレスがアカウントに登録されています。選択して、下のボタンで操作できます。</p>
+    <form method="post" class="plain-form" action="{% url 'account_email' %}">
+        {% csrf_token %}
+        {% for radio in emailaddress_radios %}
+        {% with emailaddress=radio.emailaddress %}
+        <div class="list-row">
+            <label class="radio-row" for="{{ radio.id }}">
+                <input type="radio" name="email" id="{{ radio.id }}" value="{{ emailaddress.email }}"{% if radio.checked %} checked{% endif %}>
+                <span>{{ emailaddress.email }}</span>
+            </label>
+            <span class="email-badges">
+                {% if emailaddress.verified %}<span class="chip chip-ok">確認済み</span>{% else %}<span class="chip">未確認</span>{% endif %}
+                {% if emailaddress.primary %}<span class="chip chip-skill">メイン</span>{% endif %}
+            </span>
+        </div>
+        {% endwith %}
+        {% endfor %}
+        <div class="button-row">
+            <button type="submit" name="action_primary" class="btn btn-primary btn-sm">メインにする</button>
+            <button type="submit" name="action_send" class="btn btn-ghost btn-sm">確認メールを再送する</button>
+            <button type="submit" name="action_remove" class="btn btn-danger btn-sm">削除</button>
+        </div>
+    </form>
+</section>
+{% else %}
+    {% include "account/snippets/warn_no_email.html" %}
+{% endif %}
+
+{% if can_add_email %}
+<h2 class="section-title">メールアドレスの登録</h2>
+<form method="post" action="{% url 'account_email' %}" class="form">
+    {% csrf_token %}
+    {% for field in form %}
+        {% include 'core/_field.html' with field=field %}
+    {% endfor %}
+    <button type="submit" name="action_add" class="btn btn-primary btn-block">メールアドレスの登録</button>
+</form>
+{% endif %}
+{% endblock content %}
+
+{% block extra_body %}
+    <script src="{% static 'account/js/account.js' %}"></script>
+    <script src="{% static 'account/js/onload.js' %}"></script>
+    <script data-allauth-onload="allauth.account.forms.manageEmailForm" type="application/json">{
+    "i18n": {"confirmDelete": "選択したメールアドレスを削除しますか？"}
+}
+    </script>
+{% endblock extra_body %}

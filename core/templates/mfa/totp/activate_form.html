@@ -1,0 +1,24 @@
+{% extends "mfa/totp/base.html" %}
+
+{% block head_title %}認証アプリを有効化{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>認証アプリを有効化</h1></div>
+
+<form method="post" action="{% url 'mfa_activate_totp' %}" class="form">
+    {% csrf_token %}
+    <p>アカウントを守るため、認証アプリ（Google Authenticatorなど）で下のQRコードを読み取ってください。その後、アプリに表示される確認コードを入力します。</p>
+    <div class="qr-box"><img src="{{ totp_svg_data_uri }}" alt="認証アプリ登録用QRコード"></div>
+    <div class="field">
+        <label class="field-label" for="authenticator_secret">認証シークレット</label>
+        <input type="text" id="authenticator_secret" name="authenticator_secret" value="{{ form.secret }}" disabled>
+        <p class="help">このシークレットを保管しておくと、あとで認証アプリを再設定できます。</p>
+    </div>
+    {% for field in form.visible_fields %}
+        {% include 'core/_field.html' with field=field %}
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% if form.non_field_errors %}{% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}{% endif %}
+    <button type="submit" class="btn btn-primary btn-block">有効化する</button>
+</form>
+{% endblock content %}

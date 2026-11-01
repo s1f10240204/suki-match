@@ -1,0 +1,45 @@
+{% extends "mfa/base_manage.html" %}
+
+{% block head_title %}多要素認証{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>多要素認証</h1></div>
+
+{% if "totp" in MFA_SUPPORTED_TYPES %}
+<section class="card">
+    <h2 class="section-title">認証アプリ</h2>
+    {% if authenticators.totp %}
+        <p>認証アプリは有効になっています。</p>
+        <a class="btn btn-danger btn-block" href="{% url 'mfa_deactivate_totp' %}">無効化する</a>
+    {% else %}
+        <p>認証アプリは有効ではありません。</p>
+        <a class="btn btn-primary btn-block" href="{% url 'mfa_activate_totp' %}">有効化する</a>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if "recovery_codes" in MFA_SUPPORTED_TYPES %}
+<section class="card">
+    <h2 class="section-title">リカバリーコード</h2>
+    {% if authenticators.recovery_codes %}
+        {% with total_count=authenticators.recovery_codes.generate_codes|length unused_count=authenticators.recovery_codes.get_unused_codes|length %}
+        <p>リカバリーコードは{{ total_count }}個中 {{ unused_count }}個が使えます。</p>
+        {% if is_mfa_enabled %}
+        <div class="button-row">
+            {% if unused_count > 0 and not MFA_RECOVERY_CODES_SHOW_ONCE %}
+            <a class="btn btn-ghost" href="{% url 'mfa_view_recovery_codes' %}">コードを見る</a>
+            <a class="btn btn-ghost" href="{% url 'mfa_download_recovery_codes' %}">ダウンロード</a>
+            {% endif %}
+            <a class="btn btn-outline" href="{% url 'mfa_generate_recovery_codes' %}">新しいコードを生成</a>
+        </div>
+        {% endif %}
+        {% endwith %}
+    {% else %}
+        <p>リカバリーコードは設定されていません。</p>
+        {% if is_mfa_enabled %}
+        <a class="btn btn-primary btn-block" href="{% url 'mfa_generate_recovery_codes' %}">コードを生成する</a>
+        {% endif %}
+    {% endif %}
+</section>
+{% endif %}
+{% endblock content %}

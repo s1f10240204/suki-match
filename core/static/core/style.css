@@ -167,7 +167,7 @@ a.card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(80, 60, 4
 .card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: .85rem; font-weight: 700; }
 .request-card.is-recommended { border-color: #f1cdb9; background: linear-gradient(180deg, #fffaf6 0%, #fff 60%); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.chip { font-size: .75rem; font-weight: 700; padding: 3px 11px; border-radius: 999px; background: var(--surface-soft); color: #6b6158; }
+.chip { font-size: .75rem; font-weight: 700; padding: 3px 11px; border-radius: 999px; background: var(--surface-soft); color: #6b6158; white-space: nowrap; }
 .chip-skill { background: var(--primary-soft); color: var(--primary-dark); }
 .chip-tag { background: #fbf3df; color: #8a6418; }
 .chip-ok { background: var(--ok-soft); color: var(--ok); }
@@ -470,7 +470,7 @@ a.pt-desc { text-decoration: underline; text-underline-offset: 2px; }
 .auth-page button[type=submit]:not(.btn):not(.btn-text):not(.pw-toggle), .auth-page form button:not(.btn-text):not(.btn):not(.pw-toggle) {
     width: 100%; padding: 12px 20px; border-radius: 999px; border: none; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer;
 }
-.auth-page a { color: var(--primary-dark); font-weight: 700; }
+.auth-page a:not(.btn) { color: var(--primary-dark); font-weight: 700; }
 .auth-page ul { padding-left: 1.2em; }
 .auth-page .helptext, .auth-page ul.errorlist { font-size: .8rem; color: var(--muted); }
 .auth-page ul.errorlist { color: var(--danger); }
@@ -527,8 +527,8 @@ a.pt-desc { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---------- 生年月日入力 ---------- */
 .form input[type="date"] {
-    width: 100%; padding: 12px 14px; border: 1.5px solid #e2d9cd; border-radius: 14px;
-    font: inherit; background: #fffdfa; color: var(--text);
+    width: 100%; padding: 12px 14px; border: 1.5px solid transparent; border-radius: 14px;
+    font: inherit; background: var(--surface-soft); color: var(--text);
 }
 
 /* ---------- シンプルUI(お年寄り向け再設計: 大きい・濃い・少ない) ---------- */
@@ -860,3 +860,14 @@ label.check:has(input.switch) > input.switch { position: absolute; right: 0; top
 body.simple-ui input[type="checkbox"].switch { width: 62px; height: 38px; }
 body.simple-ui input[type="checkbox"].switch::after { width: 34px; height: 34px; }
 body.simple-ui input[type="checkbox"].switch:checked::after { transform: translateX(24px); }
+
+/* allauth上書きページ用 */
+.qr-box img { width: 220px; height: 220px; max-width: 72vw; max-height: 72vw; }
+.codes-box { font-family: ui-monospace, Menlo, monospace; font-size: 1rem; line-height: 1.9; text-align: center; }
+label.radio-row { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; cursor: pointer; }
+.radio-row input[type="radio"] { width: 20px; height: 20px; accent-color: var(--primary); flex: none; }
+
+/* カードの中で素のフォームを使う場合(メール管理のリスト等) */
+.auth-page form.plain-form { background: none; border: none; box-shadow: none; padding: 0; margin: 0; border-radius: 0; }
+.email-badges { display: flex; gap: 4px; flex: none; align-items: center; }
+.radio-row > span { min-width: 0; overflow-wrap: anywhere; }

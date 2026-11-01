@@ -1,0 +1,23 @@
+{% extends "mfa/base_entrance.html" %}
+
+{% block head_title %}二段階認証{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>二段階認証</h1></div>
+
+<form method="post" action="{% url 'mfa_authenticate' %}" class="form">
+    {% csrf_token %}
+    <p>アカウントは二段階認証で保護されています。認証アプリに表示されるコードを入力してください。リカバリーコードでもログインできます。</p>
+    {% for field in form.visible_fields %}
+        {% include 'core/_field.html' with field=field %}
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% if form.non_field_errors %}{% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}{% endif %}
+    <button type="submit" class="btn btn-primary btn-block">ログイン</button>
+    <button type="submit" class="btn btn-ghost btn-block" form="logout-from-stage">キャンセル</button>
+</form>
+<form id="logout-from-stage" method="post" action="{% url 'account_logout' %}" style="display:none">
+    <input type="hidden" name="next" value="{% url 'account_login' %}">
+    {% csrf_token %}
+</form>
+{% endblock content %}

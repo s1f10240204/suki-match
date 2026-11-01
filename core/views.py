@@ -246,7 +246,7 @@ def apply_help_request(request, pk):
     form = ApplicationForm(request.POST)
     if form.is_valid():
         _run(request, lambda: services.apply(help_request, request.user, form.cleaned_data['message'],
-                                             form.cleaned_data.get('work_mode', 'qr')),
+                                             (form.cleaned_data.get('work_mode') or 'qr')),
              '応募しました。依頼者の承認をお待ちください。')
     return redirect('core:help_request_detail', pk=pk)
 

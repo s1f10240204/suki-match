@@ -1,0 +1,16 @@
+{% extends "mfa/totp/base.html" %}
+
+{% block head_title %}認証アプリを無効化{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>認証アプリを無効化</h1></div>
+
+<form method="post" action="{% url 'mfa_deactivate_totp' %}">
+    {% csrf_token %}
+    <p>認証アプリによる二段階認証を無効化しようとしています。よろしいですか？</p>
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% if form.non_field_errors %}{% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}{% endif %}
+    <button type="submit" class="btn btn-danger btn-block">無効化する</button>
+    <a class="btn btn-ghost btn-block" href="{% url 'mfa_index' %}">やめる</a>
+</form>
+{% endblock content %}

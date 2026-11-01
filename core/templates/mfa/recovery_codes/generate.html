@@ -1,0 +1,15 @@
+{% extends "mfa/recovery_codes/base.html" %}
+
+{% block head_title %}リカバリーコード{% endblock head_title %}
+
+{% block content %}
+<div class="page-head"><h1>リカバリーコード</h1></div>
+
+<form method="post" action="{% url 'mfa_generate_recovery_codes' %}">
+    {% csrf_token %}
+    <p>新しいリカバリーコードのセットを生成します。{% if unused_code_count %}今のコードは使えなくなります。{% endif %}よろしいですか？</p>
+    {{ form.as_p }}
+    <button type="submit" class="btn {% if unused_code_count %}btn-danger{% else %}btn-primary{% endif %} btn-block">生成する</button>
+    <a class="btn btn-ghost btn-block" href="{% url 'mfa_index' %}">やめる</a>
+</form>
+{% endblock content %}

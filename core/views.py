@@ -1473,7 +1473,8 @@ def run_tasks(request):
     token = request.headers.get('X-Tasks-Token', '')
     if not settings.TASKS_TOKEN or not constant_time_compare(token, settings.TASKS_TOKEN):
         return HttpResponseForbidden('forbidden')
-    return JsonResponse({'expired': services.expire_requests(),
+    return JsonResponse({'auto_canceled': services.auto_cancel_stale_matches(),
+                         'expired': services.expire_requests(),
                          'purged_messages': services.purge_expired_chat_messages(),
                          'reminded': services.send_schedule_reminders(),
                          'referral_rewards': services.process_referral_rewards()})

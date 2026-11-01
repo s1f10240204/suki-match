@@ -999,6 +999,87 @@ def apply_cancel_penalty(user, match):
     return sanction
 
 
+AUTO_CANCEL_AFTER = timedelta(hours=24)
+AUTO_CANCEL_PENALTY_THRESHOLD = 3  # 直近30日でこの回数以上でペナルティ対象
+
+
+def _auto_cancel_count(user):
+    """そのユーザーが関わった自動キャンセルの件数(直近 PENALTY_WINDOW_DAYS 日)。"""
+    since = timezone.now() - timedelta(days=PENALTY_WINDOW_DAYS)
+    return Match.objects.filter(auto_canceled=True, canceled_at__gte=since).filter(
+        Q(helper=user) | Q(help_request__requester=user)).count()
+
+
+def apply_auto_cancel_penalty(user, match):
+    """自動キャンセルが繰り返し発生したユーザーへの段階的ペナルティ(3回目=警告〜)。
+
+    自動キャンセル自体はペナルティではないが、直近30日で3回以上になると
+    通常のキャンセルと同じ階段でペナルティを付ける。
+    """
+    count = _auto_cancel_count(user)
+    if count < AUTO_CANCEL_PENALTY_THRESHOLD:
+        return None
+    level, duration = PENALTY_LADDER.get(count - 2, PENALTY_MAX)
+    sanction = Sanction.objects.create(
+        user=user, level=level, related_match=match,
+        reason=f'マッチング後24時間以内の未完了による自動キャンセル(直近{PENALTY_WINDOW_DAYS}日で{count}回目)',
+        ends_at=timezone.now() + duration)
+    notify(user, 'sanction', f'ペナルティ: {sanction.get_level_display()}({sanction.reason})',
+           reverse('core:profile'))
+    return sanction
+
+
+def auto_cancel_stale_matches():
+    """マッチングから24時間経っても完了しないマッチを自動キャンセルする。
+
+    ペナルティにはしない(枠はヘルパーキャンセルと同じ扱いで空ける)。
+    両者へ通知し、繰り返すユーザーには apply_auto_cancel_penalty で対応する。
+    戻り値はキャンセルしたマッチ数。
+    """
+    now = timezone.now()
+    stale = list(Match.objects.filter(
+        status=Match.Status.IN_PROGRESS, created_at__lte=now - AUTO_CANCEL_AFTER)
+        .select_related('help_request', 'helper'))
+    if not stale:
+        return 0
+    by_request = {}
+    for m in stale:
+        by_request.setdefault(m.help_request_id, []).append(m)
+    for matches in by_request.values():
+        help_request = matches[0].help_request
+        with transaction.atomic():
+            for m in matches:
+                m.status = Match.Status.CANCELED
+                m.canceled_at = now
+                m.canceled_by = None
+                m.cancel_reason = 'マッチングから24時間経過による自動キャンセル'
+                m.auto_canceled = True
+                m.save(update_fields=['status', 'canceled_at', 'canceled_by',
+                                      'cancel_reason', 'auto_canceled'])
+            reopen = help_request.expires_at > now
+            if help_request.active_matches.exists():
+                help_request.status = HelpRequest.Status.IN_PROGRESS
+            elif not reopen:
+                _refund_escrow(help_request)
+                help_request.status = HelpRequest.Status.EXPIRED
+            else:
+                help_request.status = HelpRequest.Status.OPEN
+            help_request.save(update_fields=['status', 'points_settled'])
+        url = detail_url(help_request)
+        for m in matches:
+            for target in (m.helper, help_request.requester):
+                text = (f'「{help_request.title}」はマッチングから24時間が経過しても'
+                        '完了しなかったため、自動でキャンセルされました')
+                if _auto_cancel_count(target) == AUTO_CANCEL_PENALTY_THRESHOLD - 1:
+                    text += '。繰り返すとペナルティの対象になります'
+                notify(target, 'canceled', text, url)
+            apply_auto_cancel_penalty(m.helper, m)
+            apply_auto_cancel_penalty(help_request.requester, m)
+        if reopen:
+            notify_nearby_helpers(help_request)
+    return len(stale)
+
+
 def submit_review(help_request, user, rating, comment=''):
     try:
         rating = int(rating)

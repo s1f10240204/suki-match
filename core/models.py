@@ -322,6 +322,7 @@ class Match(models.Model):
     canceled_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     cancel_reason = models.CharField('キャンセル理由', max_length=200, blank=True)
     penalized = models.BooleanField('ペナルティ対象', default=False)
+    auto_canceled = models.BooleanField('自動キャンセル', default=False)
     # 作業時間の実測(タイマー)と申告。精算は effective_minutes で決める
     work_mode = models.CharField('お手伝いの形式', max_length=10,
                                  choices=[('qr', '対面（QRで開始・終了）'), ('remote', '会わない（ボタンで開始・終了）')],

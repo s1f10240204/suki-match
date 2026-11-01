@@ -3077,6 +3077,63 @@ class ServicePolishTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class AutoCancelTests(BaseTestCase):
+    """マッチングから24時間完了しないマッチの自動キャンセル(繰り返すとペナルティ)。"""
+
+    def _matched(self, name, helper=None, hours_ago=25):
+        requester = make_user(f'{name}_req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = helper or make_user(f'{name}_help')
+        match = services.accept_first_come(hr, helper)
+        Match.objects.filter(pk=match.pk).update(
+            created_at=timezone.now() - timedelta(hours=hours_ago))
+        match.refresh_from_db()
+        return requester, hr, helper, match
+
+    def test_stale_match_auto_canceled_and_notified(self):
+        requester, hr, helper, match = self._matched('ac1')
+        self.assertEqual(services.auto_cancel_stale_matches(), 1)
+        match.refresh_from_db()
+        hr.refresh_from_db()
+        self.assertEqual(match.status, Match.Status.CANCELED)
+        self.assertTrue(match.auto_canceled)
+        self.assertFalse(match.penalized)  # 自動キャンセル自体はペナルティではない
+        self.assertEqual(hr.status, HelpRequest.Status.OPEN)  # 枠が空いて再募集
+        self.assertTrue(Notification.objects.filter(user=helper, kind='canceled').exists())
+        self.assertTrue(Notification.objects.filter(user=requester, kind='canceled').exists())
+        self.assertFalse(Sanction.objects.filter(user=helper).exists())
+
+    def test_fresh_match_untouched(self):
+        _, _, _, match = self._matched('ac2', hours_ago=23)
+        self.assertEqual(services.auto_cancel_stale_matches(), 0)
+        match.refresh_from_db()
+        self.assertEqual(match.status, Match.Status.IN_PROGRESS)
+
+    def test_done_match_untouched(self):
+        requester, hr, helper, match = self._matched('ac3')
+        services.complete(hr, requester)
+        self.assertEqual(services.auto_cancel_stale_matches(), 0)
+        match.refresh_from_db()
+        self.assertEqual(match.status, Match.Status.DONE)
+
+    def test_repeat_auto_cancels_become_penalty(self):
+        helper = make_user('ac_repeat_help')
+        self._matched('ac_r1', helper=helper)
+        self._matched('ac_r2', helper=helper)
+        services.auto_cancel_stale_matches()
+        # 2回まではペナルティなし
+        self.assertFalse(Sanction.objects.filter(user=helper).exists())
+        self._matched('ac_r3', helper=helper)
+        services.auto_cancel_stale_matches()
+        # 3回目で警告ペナルティ
+        sanction = Sanction.objects.filter(user=helper).first()
+        self.assertIsNotNone(sanction)
+        self.assertEqual(sanction.level, Sanction.Level.WARNING)
+
+
 class ProfileHistoryTests(BaseTestCase):
     """マイページの履歴は最新3件だけ+全件は履歴ページで見る。"""
 

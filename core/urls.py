@@ -33,6 +33,7 @@ urlpatterns = [
     path('line/richmenu/setup/', views.line_richmenu_setup, name='line_richmenu_setup'),
     path('me/', views.profile, name='profile'),
     path('me/points/', views.points_history, name='points_history'),
+    path('me/history/', views.history, name='history'),
     path('me/missions/<str:key>/claim/', views.claim_mission, name='claim_mission'),
     path('me/invite-code/', views.register_invite_code, name='register_invite_code'),
     path('me/edit/', views.profile_edit, name='profile_edit'),

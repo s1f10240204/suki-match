@@ -946,3 +946,7 @@ body.simple-ui .celebrate-title { font-size: 1.8rem; }
 .qr-who { color: var(--ink-soft, #5a5142); margin: 6px 0 12px; line-height: 1.75; }
 .qr-live { text-align: center; font-size: 1.15rem; }
 .qr-done { text-align: center; font-weight: 700; color: var(--primary-dark); }
+
+/* ---------- 履歴の「すべて見る」とページ送り ---------- */
+.more-link { display: block; text-align: right; padding: 10px 2px 4px; font-weight: 700; color: var(--primary-dark); text-decoration: none; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }

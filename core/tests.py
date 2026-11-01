@@ -3077,6 +3077,39 @@ class ServicePolishTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class ProfileHistoryTests(BaseTestCase):
+    """マイページの履歴は最新3件だけ+全件は履歴ページで見る。"""
+
+    def test_profile_shows_only_latest_three(self):
+        user = make_user('hist_user')
+        for _ in range(5):
+            make_request(user)
+        self.client.force_login(user)
+        page = self.client.get(reverse('core:profile'))
+        self.assertEqual(page.content.decode().count('history-row'), 3)
+        self.assertContains(page, 'すべての依頼を見る（全5件）')
+
+    def test_history_page_lists_all_and_paginates(self):
+        user = make_user('hist_user2')
+        for _ in range(25):
+            make_request(user)
+        self.client.force_login(user)
+        page1 = self.client.get(reverse('core:history') + '?tab=requests')
+        self.assertEqual(page1.content.decode().count('history-row'), 20)
+        self.assertContains(page1, '1 / 2 ページ')
+        page2 = self.client.get(reverse('core:history') + '?tab=requests&page=2')
+        self.assertEqual(page2.content.decode().count('history-row'), 5)
+
+    def test_history_helps_tab(self):
+        requester = make_user('hist_req')
+        hr = make_request(requester)
+        helper = make_user('hist_help')
+        services.accept_first_come(hr, helper)
+        self.client.force_login(helper)
+        page = self.client.get(reverse('core:history') + '?tab=helps')
+        self.assertEqual(page.content.decode().count('history-row'), 1)
+
+
 class WorkQRTests(BaseTestCase):
     """対面QRタイマー:形式選択・トークン検証・読み取りで開始/終了。"""
 

@@ -599,8 +599,9 @@ def profile(request):
         'sanctions': Sanction.objects.filter(user=user).active().order_by('-starts_at'),
         'reviews': user.received_reviews.select_related('reviewer').order_by('-created_at')[:10],
         'avg_rating': user.received_reviews.aggregate(a=Avg('rating'))['a'],
-        'my_requests': user.requests.order_by('-created_at')[:10],
-        'my_helps': user.helps.select_related('help_request').order_by('-created_at')[:10],
+        'my_requests': user.requests.order_by('-created_at')[:3],
+        'my_helps': user.helps.select_related('help_request').order_by('-created_at')[:3],
+        'help_total': user.helps.count(),
         'help_count': user.helps.filter(status=Match.Status.DONE).count(),
         'request_count': user.requests.count(),
         'bases': user.bases.all(),
@@ -608,6 +609,25 @@ def profile(request):
         'radius': services.RADIUS_METERS,
         'points_to_next': max(next_level_points - user.total_earned, 0),
         'level_progress': 100 if user.level >= 100 else int((user.total_earned - prev_level_points) * 100 / span),
+    })
+
+
+@login_required
+def history(request):
+    """自分の依頼/お手伝いの全履歴(マイページは最新3件だけにして、残りはここで見る)。"""
+    from django.core.paginator import Paginator
+    user = request.user
+    tab = request.GET.get('tab')
+    if tab not in ('requests', 'helps'):
+        tab = 'requests'
+    if tab == 'requests':
+        qs = user.requests.order_by('-created_at')
+    else:
+        qs = user.helps.select_related('help_request', 'help_request__requester').order_by('-created_at')
+    page = Paginator(qs, 20).get_page(request.GET.get('page'))
+    return render(request, 'core/history.html', {
+        'tab': tab, 'page': page,
+        'request_count': user.requests.count(), 'help_total': user.helps.count(),
     })
 
 

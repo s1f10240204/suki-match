@@ -3151,6 +3151,44 @@ class WorkQRTests(BaseTestCase):
         match.refresh_from_db()
         self.assertIsNotNone(match.work_ended_at)
 
+    def test_scan_end_auto_completes_and_home_celebration(self):
+        requester, hr, helper, match = self._qr_match()
+        services.qr_start_work(match, helper)
+        token = services.make_work_qr_token(match, 'end')
+        self.client.force_login(requester)
+        self.client.get(reverse('core:work_qr_scan', args=[token]))
+        hr.refresh_from_db()
+        match.refresh_from_db()
+        # 読み取りだけでタイマー停止→完了(精算)まで進む
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        self.assertEqual(match.status, Match.Status.DONE)
+        self.assertTrue(PointTransaction.objects.filter(
+            user=helper, help_request=hr, kind=PointTransaction.Kind.EARNED).exists())
+        # ヘルパーは通知をタップしなくても、ホームを開けば完了表示が出る
+        self.client.force_login(helper)
+        page = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(page, 'data-celebrate')
+        self.assertContains(page, 'お仕事が完了しました！')
+
+    def test_scan_end_waits_for_other_helpers(self):
+        requester = make_user('qr_req_m')
+        User.objects.filter(pk=requester.pk).update(points=300)
+        requester.refresh_from_db()
+        hr = make_request(requester, headcount=2)
+        helper1, helper2 = make_user('qr_h1'), make_user('qr_h2')
+        m1 = services.accept_first_come(hr, helper1, work_mode='qr')
+        services.accept_first_come(hr, helper2, work_mode='qr')
+        services.qr_start_work(m1, helper1)
+        token = services.make_work_qr_token(m1, 'end')
+        self.client.force_login(requester)
+        self.client.get(reverse('core:work_qr_scan', args=[token]))
+        hr.refresh_from_db()
+        m1.refresh_from_db()
+        # 1人目のタイマーは止まるが、もう1人が残っているので完了にはならない
+        self.assertIsNotNone(m1.work_ended_at)
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)
+        self.assertEqual(m1.status, Match.Status.IN_PROGRESS)
+
     def test_requester_pref_overrides_helper_choice(self):
         # 対面のみ指定:ヘルパーが remote を選んでも qr になる
         requester = make_user('pref_req')

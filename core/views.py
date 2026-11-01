@@ -54,6 +54,7 @@ def _celebration(user, help_request, matches, key, role):
             'points': earned,
         })
     return {'key': key, 'role': role, 'rows': rows,
+            'request_pk': help_request.pk, 'title': help_request.title,
             'total_points': sum(r['points'] for r in rows)}
 
 
@@ -130,7 +131,17 @@ def help_request_list(request):
         help_requests.sort(key=lambda hr: hr.sort_key)
     recommended = [hr for hr in help_requests if getattr(hr, 'recommended', False)]
     others = [hr for hr in help_requests if not getattr(hr, 'recommended', False)]
+    celebration = None
+    if user.is_authenticated:
+        done_match = (Match.objects.filter(
+            helper=user, status=Match.Status.DONE,
+            completed_at__gte=timezone.now() - timedelta(days=14))
+            .select_related('help_request').order_by('-completed_at').first())
+        if done_match is not None:
+            celebration = _celebration(user, done_match.help_request, [done_match],
+                                       f'match-{done_match.pk}', 'helper')
     return render(request, 'core/help_request_list.html', {
+        'celebration': celebration, 'celebrate_away': bool(celebration),
         'help_requests': help_requests, 'recommended': recommended, 'others': others,
         'located': bool(points), 'show_all': show_all, 'near': near, 'tab': tab, 'radius': services.RADIUS_METERS,
         'photo_block_reason': services.photo_block_reason(user) if user.is_authenticated else '',
@@ -461,7 +472,7 @@ def chat(request, pk):
                                    f'match-{match.pk}', role)
     return render(request, 'core/chat.html', {
         'match': match, 'help_request': help_request, 'other': match.other_user(request.user),
-        'celebration': celebration, 'celebrate_from': 'chat',
+        'celebration': celebration, 'celebrate_away': bool(celebration),
         'chat_messages': chat_messages, 'chat_open': services.chat_is_open(match), 'form': form,
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),
@@ -748,11 +759,25 @@ def work_qr_scan(request, token):
         # 終了は確認ボタンを挟まず、読み取りだけで即完了する
         try:
             services.qr_stop_work(match, user)
-            messages.success(request, '作業を終了しました。お疲れさまでした。')
-            return redirect('core:chat', pk=match.pk)
         except services.ServiceError as e:
             return render(request, 'core/work_qr_scan.html',
                           {'error': e.message if hasattr(e, 'message') else str(e)})
+        # 他に作業中の人がいなければ、完了(精算)まで自動で進める
+        help_request = match.help_request
+        others_working = help_request.active_matches.exclude(pk=match.pk).filter(
+            work_ended_at__isnull=True).exists()
+        if not others_working:
+            try:
+                services.complete(help_request, user)
+                messages.success(request, 'お仕事が完了しました！お疲れさまでした。')
+                return redirect('core:chat', pk=match.pk)
+            except services.ServiceError:
+                pass  # 完了できない事情がある場合はタイマー停止のみ
+        if others_working:
+            messages.success(request, '作業を終了しました。他の人の作業が終わると完了します。')
+        else:
+            messages.success(request, '作業を終了しました。お疲れさまでした。')
+        return redirect('core:chat', pk=match.pk)
     if request.method == 'POST':
         try:
             if phase == 'start':

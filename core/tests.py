@@ -3100,6 +3100,37 @@ class ProfileHistoryTests(BaseTestCase):
         page2 = self.client.get(reverse('core:history') + '?tab=requests&page=2')
         self.assertEqual(page2.content.decode().count('history-row'), 5)
 
+    def _make_reviews(self, reviewee, count=5):
+        hr = make_request(make_user('rv_req'))
+        reviews = []
+        for i in range(count):
+            reviews.append(Review.objects.create(
+                reviewer=make_user(f'rv_r{i}'), reviewee=reviewee,
+                help_request=hr, rating=5, comment='ありがとうございました'))
+        return reviews
+
+    def test_profile_reviews_limited_to_three(self):
+        user = make_user('rv_user')
+        self._make_reviews(user)
+        self.client.force_login(user)
+        page = self.client.get(reverse('core:profile'))
+        self.assertEqual(page.content.decode().count('<div class="review">'), 3)
+        self.assertContains(page, 'すべてのレビューを見る（全5件）')
+
+    def test_history_reviews_tab_and_reply_next(self):
+        user = make_user('rv_user2')
+        reviews = self._make_reviews(user)
+        self.client.force_login(user)
+        page = self.client.get(reverse('core:history') + '?tab=reviews')
+        self.assertEqual(page.content.decode().count('<div class="review">'), 5)
+        # 履歴ページから返信したら履歴ページに戻る
+        response = self.client.post(
+            reverse('core:review_reply', args=[reviews[0].pk]),
+            {'reply': 'こちらこそありがとうございました', 'next': '/me/history/?tab=reviews'})
+        self.assertEqual(response.url, '/me/history/?tab=reviews')
+        reviews[0].refresh_from_db()
+        self.assertEqual(reviews[0].reply, 'こちらこそありがとうございました')
+
     def test_history_helps_tab(self):
         requester = make_user('hist_req')
         hr = make_request(requester)

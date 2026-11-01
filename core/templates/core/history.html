@@ -8,12 +8,17 @@
 <div class="segmented" role="tablist">
     <a href="?tab=requests" class="{% if tab == 'requests' %}is-active{% endif %}">自分の依頼（{{ request_count }}）</a>
     <a href="?tab=helps" class="{% if tab == 'helps' %}is-active{% endif %}">お手伝い（{{ help_total }}）</a>
+    <a href="?tab=reviews" class="{% if tab == 'reviews' %}is-active{% endif %}">レビュー（{{ review_count }}）</a>
 </div>
 
 <section class="card">
     {% if tab == 'requests' %}
         {% for r in page %}
             <a class="list-row history-row" href="{% url 'core:help_request_detail' r.pk %}"><span class="history-main"><span class="history-title">{{ r.title }}</span><span class="history-meta">{{ r.created_at|date:"Y/n/j" }} ・ {{ r.area_label }}{% if r.points_cost %} ・ {{ r.points_cost }}pt{% endif %}</span></span><span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></a>
+        {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+    {% elif tab == 'reviews' %}
+        {% for rv in page %}
+            {% include 'core/_review_row.html' with next_url='/me/history/?tab=reviews' %}
         {% empty %}<p class="meta">まだありません。</p>{% endfor %}
     {% else %}
         {% for m in page %}

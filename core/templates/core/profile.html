@@ -115,17 +115,9 @@
 <section class="card">
     <h2 class="section-title">受け取ったレビュー</h2>
     {% for rv in reviews %}
-        <div class="review"><p><span class="stars">{% for i in "12345"|make_list %}{% if forloop.counter <= rv.rating %}★{% else %}☆{% endif %}{% endfor %}</span> <span class="meta">{{ rv.reviewer.username }} · {{ rv.created_at|date:"Y/n/j" }}</span></p>{% if rv.comment %}<p>{{ rv.comment }}</p>{% endif %}
-        {% if rv.reply %}<p class="review-reply"><strong>あなたの返信：</strong>{{ rv.reply }}</p>{% endif %}
-        <details class="reply-form"><summary>{% if rv.reply %}返信を編集する{% else %}返信する{% endif %}</summary>
-            <form method="post" action="{% url 'core:review_reply' rv.pk %}">
-                {% csrf_token %}
-                <div class="field"><textarea name="reply" rows="2" maxlength="1000" placeholder="お礼や補足を書けます（空で送信すると返信を削除）">{{ rv.reply }}</textarea></div>
-                <button type="submit" class="btn btn-ghost">返信を保存</button>
-            </form>
-        </details>
-        </div>
+        {% include 'core/_review_row.html' %}
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
+    {% if review_count > 3 %}<a class="more-link" href="{% url 'core:history' %}?tab=reviews">すべてのレビューを見る（全{{ review_count }}件）›</a>{% endif %}
 </section>
 
 <a class="list-row" href="{% url 'core:footprints' %}"><span>👣 足あと（プロフィールを見た人）</span><span class="meta">›</span></a>

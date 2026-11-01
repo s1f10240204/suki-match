@@ -597,7 +597,8 @@ def profile(request):
         'referral_reward': services.REFERRAL_REWARD_POINTS,
         'referral_count': user.referrals.count(),
         'sanctions': Sanction.objects.filter(user=user).active().order_by('-starts_at'),
-        'reviews': user.received_reviews.select_related('reviewer').order_by('-created_at')[:10],
+        'reviews': user.received_reviews.select_related('reviewer').order_by('-created_at')[:3],
+        'review_count': user.received_reviews.count(),
         'avg_rating': user.received_reviews.aggregate(a=Avg('rating'))['a'],
         'my_requests': user.requests.order_by('-created_at')[:3],
         'my_helps': user.helps.select_related('help_request').order_by('-created_at')[:3],
@@ -618,16 +619,19 @@ def history(request):
     from django.core.paginator import Paginator
     user = request.user
     tab = request.GET.get('tab')
-    if tab not in ('requests', 'helps'):
+    if tab not in ('requests', 'helps', 'reviews'):
         tab = 'requests'
     if tab == 'requests':
         qs = user.requests.order_by('-created_at')
-    else:
+    elif tab == 'helps':
         qs = user.helps.select_related('help_request', 'help_request__requester').order_by('-created_at')
+    else:
+        qs = user.received_reviews.select_related('reviewer').order_by('-created_at')
     page = Paginator(qs, 20).get_page(request.GET.get('page'))
     return render(request, 'core/history.html', {
         'tab': tab, 'page': page,
         'request_count': user.requests.count(), 'help_total': user.helps.count(),
+        'review_count': user.received_reviews.count(),
     })
 
 
@@ -658,6 +662,9 @@ def review_reply(request, pk):
     review.reply_at = timezone.now() if body else None
     review.save(update_fields=['reply', 'reply_at'])
     messages.success(request, '返信を保存しました。' if body else '返信を削除しました。')
+    nxt = request.POST.get('next', '')
+    if nxt.startswith('/') and not nxt.startswith('//'):
+        return redirect(nxt)
     return redirect('core:profile')
 
 

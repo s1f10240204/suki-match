@@ -603,6 +603,25 @@ class ImprovementBatchTests(BaseTestCase):
         user.refresh_from_db()
         self.assertEqual(user.points, 0)
 
+    def test_exempt_user_photo_auto_approved(self):
+        """@iniad.org 免除ユーザーが写真を上げたら審査なしで即承認されること。"""
+        from allauth.account.models import EmailAddress
+
+        from core import services
+        user = User.objects.create_user('iniad_photo', email='iniad@example.jp')
+        EmailAddress.objects.create(user=user, email='x@iniad.org',
+                                    verified=True, primary=True)
+        result = services.set_photo(user, jpeg_upload())
+        user.refresh_from_db()
+        self.assertEqual(result, 'approved')
+        self.assertEqual(user.avatar_status, User.PhotoStatus.APPROVED)
+        # 免除でないユーザーは従来通り審査待ち
+        plain = User.objects.create_user('plain_photo', email='plain@example.jp')
+        result = services.set_photo(plain, jpeg_upload())
+        plain.refresh_from_db()
+        self.assertEqual(result, 'pending')
+        self.assertEqual(plain.avatar_status, User.PhotoStatus.PENDING)
+
     def test_iniad_verified_email_exempts_photo_gate(self):
         from allauth.account.models import EmailAddress
         user = make_user('iniadok', avatar='', avatar_status=User.PhotoStatus.NONE)

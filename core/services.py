@@ -209,7 +209,7 @@ def find_duplicate_photo(user, signature):
 
 def set_photo(user, photo):
     """顔写真を保存する。別アカウントと同じ写真なら審査に出さず自動却下+運営へフラグ。
-    戻り値: 'pending'(審査待ち) / 'duplicate'(重複で自動却下)。"""
+    戻り値: 'pending'(審査待ち) / 'duplicate'(重複で自動却下) / 'approved'(免除ユーザーの即時承認)。"""
     old = user.avatar.name if user.avatar else ''
     photo.seek(0)
     signature = images.photo_signature(photo.read())
@@ -234,6 +234,13 @@ def set_photo(user, photo):
                    f'⚠️ {user.username}さんが{other.username}さんと同じ写真を登録したため、自動で却下しました。',
                    reverse('admin:core_duplicatephotoflag_changelist'))
         result = 'duplicate'
+    elif photo_exempt(user):
+        # @iniad.org で本人確認済みのユーザーは、審査に出さずその場で承認する
+        user.avatar_status, user.avatar_reject_reason = User.PhotoStatus.APPROVED, ''
+        user.avatar_reviewed_at = timezone.now()
+        user.save(update_fields=['avatar', 'avatar_phash', 'avatar_status',
+                                 'avatar_reject_reason', 'avatar_reviewed_at'])
+        result = 'approved'
     else:
         user.avatar_status, user.avatar_reject_reason, user.avatar_reviewed_at = User.PhotoStatus.PENDING, '', None
         user.save(update_fields=['avatar', 'avatar_phash', 'avatar_status',

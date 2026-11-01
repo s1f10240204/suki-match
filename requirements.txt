@@ -3,6 +3,7 @@ channels>=4.1
 daphne>=4.1
 channels-redis>=4.2
 django-allauth[socialaccount]>=65.0
+fido2>=2.0  # allauth.mfa の import に必要(WebAuthn自体は無効)
 Pillow>=10.0
 dj-database-url>=2.1
 python-dotenv>=1.0

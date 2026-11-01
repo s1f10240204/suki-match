@@ -20,6 +20,10 @@
     <a class="list-row" href="{% url 'account_email' %}"><span>メールアドレス</span><span class="meta">{{ user.email|default:"未登録" }} ›</span></a>
     <a class="list-row" href="{% url 'account_change_password' %}"><span>パスワードの変更</span><span class="meta">›</span></a>
     <a class="list-row" href="{% url 'socialaccount_connections' %}"><span>外部アカウント連携</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'mfa_index' %}"><span>二段階認証</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'core:data_export' %}"><span>自分のデータをダウンロード</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'core:terms' %}"><span>利用規約</span><span class="meta">›</span></a>
+    <a class="list-row" href="{% url 'core:privacy' %}"><span>プライバシーポリシー</span><span class="meta">›</span></a>
     <a class="list-row" href="{% url 'core:faq' %}"><span>よくある質問</span><span class="meta">›</span></a>
     <a class="list-row" href="{% url 'core:support' %}"><span>サポート・お問い合わせ</span><span class="meta">›</span></a>
 </section>
@@ -72,6 +76,16 @@
 </section>
 
 <section class="card card-alert">
+    <h2 class="section-title">休会（一時停止）</h2>
+    <p class="help">しばらく使わないときは、データを残したまま休会できます。休会中はプロフィールが他の人に表示されず、通知も止まります。いつでも解除できます。</p>
+    {% if user.is_on_break %}
+        <form method="post" action="{% url 'core:account_break_end' %}">{% csrf_token %}<button type="submit" class="btn btn-primary">休会を解除する</button></form>
+    {% else %}
+        <a class="btn btn-ghost" href="{% url 'core:account_break' %}">休会手続きへ進む</a>
+    {% endif %}
+</section>
+
+<section class="card">
     <h2 class="section-title">アカウント削除（退会）</h2>
     <p class="help">退会するとアカウントとデータが全て削除され、元に戻せません。</p>
     <a class="btn btn-danger" href="{% url 'core:account_delete' %}">退会手続きへ進む</a>

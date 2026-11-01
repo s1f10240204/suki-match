@@ -2803,3 +2803,136 @@ class TalkHideTests(BaseTestCase):
         self.client.force_login(outsider)
         resp = self.client.post(reverse('core:talk_hide', args=[self.req.pk]))
         self.assertEqual(resp.status_code, 404)
+
+
+class ServicePolishTests(BaseTestCase):
+    """利用規約・足あと・レビュー返信・データ出力・休会・二段階認証の導線。"""
+
+    PW = 'pw' + '-12345'
+
+    def _user(self, username):
+        return User.objects.create_user(username, email=f'{username}@example.jp',
+                                        password=self.PW)
+
+    # ---- 利用規約 ----
+    def test_terms_page_and_settings_links(self):
+        response = self.client.get(reverse('core:terms'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '利用規約')
+        user = self._user('polish1')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:account_settings'))
+        self.assertContains(response, '二段階認証')
+        self.assertContains(response, '自分のデータをダウンロード')
+        self.assertContains(response, '利用規約')
+
+    # ---- 足あと ----
+    def test_footprint_recorded_once_per_day(self):
+        from core.models import ProfileView
+        target = make_user('fp_target')
+        viewer = self._user('fp_viewer')
+        self.client.force_login(viewer)
+        self.client.get(reverse('core:public_profile', args=['fp_target']))
+        self.client.get(reverse('core:public_profile', args=['fp_target']))
+        self.assertEqual(ProfileView.objects.filter(
+            viewer=viewer, profile_user=target).count(), 1)
+        # 本人が自分のページを見ても付かない
+        self.client.force_login(target)
+        self.client.get(reverse('core:public_profile', args=['fp_target']))
+        self.assertEqual(ProfileView.objects.filter(profile_user=target).count(), 1)
+        # 足あとページに表示される
+        response = self.client.get(reverse('core:footprints'))
+        self.assertContains(response, 'fp_viewer')
+
+    def test_footprint_opt_out(self):
+        from core.models import ProfileView
+        make_user('fp_target2')
+        viewer = self._user('fp_shy')
+        viewer.leave_footprints = False
+        viewer.save(update_fields=['leave_footprints'])
+        self.client.force_login(viewer)
+        self.client.get(reverse('core:public_profile', args=['fp_target2']))
+        self.assertEqual(ProfileView.objects.count(), 0)
+
+    # ---- レビュー返信 ----
+    def test_review_reply(self):
+        reviewer = make_user('rv_reviewer')
+        reviewee = self._user('rv_reviewee')
+        hr = make_request(reviewer)
+        from core.models import Review
+        review = Review.objects.create(reviewer=reviewer, reviewee=reviewee,
+                                       help_request=hr, rating=5, comment='助かりました')
+        self.client.force_login(reviewee)
+        response = self.client.post(reverse('core:review_reply', args=[review.pk]),
+                                    {'reply': 'こちらこそありがとうございました'})
+        self.assertEqual(response.status_code, 302)
+        review.refresh_from_db()
+        self.assertEqual(review.reply, 'こちらこそありがとうございました')
+        self.assertIsNotNone(review.reply_at)
+        # 公開プロフィールにも返信が出る
+        response = self.client.get(reverse('core:public_profile', args=['rv_reviewee']))
+        self.assertContains(response, 'こちらこそありがとうございました')
+        # 他人のレビューには返信できない
+        other = self._user('rv_other')
+        self.client.force_login(other)
+        response = self.client.post(reverse('core:review_reply', args=[review.pk]),
+                                    {'reply': 'なりすまし'})
+        self.assertEqual(response.status_code, 404)
+
+    # ---- データダウンロード ----
+    def test_data_export(self):
+        user = self._user('exp1')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:data_export'))
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(reverse('core:data_export'))
+        self.assertEqual(response['Content-Type'], 'application/json; charset=utf-8')
+        import json as _json
+        data = _json.loads(response.content.decode('utf-8'))
+        self.assertEqual(data['profile']['username'], 'exp1')
+        self.assertIn('points_history', data)
+
+    # ---- 休会 ----
+    def test_break_flow(self):
+        user = self._user('brk1')
+        hr = make_request(user)  # 募集中の依頼(自動で取り下げられる)
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:account_break'),
+                                    {'password': self.PW, 'confirm': 'yes'})
+        self.assertEqual(response.status_code, 302)
+        user.refresh_from_db()
+        hr.refresh_from_db()
+        self.assertTrue(user.is_on_break)
+        self.assertEqual(hr.status, HelpRequest.Status.CANCELED)
+        self.assertNotEqual(services.photo_block_reason(user), '')
+        self.assertFalse(services.sender_can_post(hr, user))
+        # 他人からはプロフィールが見えない
+        other = self._user('brk_other')
+        self.client.force_login(other)
+        response = self.client.get(reverse('core:public_profile', args=['brk1']))
+        self.assertEqual(response.status_code, 404)
+        # 解除できる
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:account_break_end'))
+        self.assertEqual(response.status_code, 302)
+        user.refresh_from_db()
+        self.assertFalse(user.is_on_break)
+
+    def test_break_blocked_by_in_progress_match(self):
+        helper = self._user('brk_helper')
+        requester = make_user('brk_requester')
+        hr = make_request(requester)
+        Match.objects.create(help_request=hr, helper=helper, status=Match.Status.IN_PROGRESS)
+        error = services.start_break(helper)
+        self.assertNotEqual(error, '')
+        helper.refresh_from_db()
+        self.assertFalse(helper.is_on_break)
+
+    # ---- 二段階認証の導線 ----
+    def test_mfa_pages_render(self):
+        user = self._user('mfa1')
+        self.client.force_login(user)
+        response = self.client.get(reverse('mfa_index'))
+        self.assertEqual(response.status_code, 200)
+        response = self.client.get(reverse('mfa_activate_totp'), follow=True)
+        self.assertEqual(response.status_code, 200)

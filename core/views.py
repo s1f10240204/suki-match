@@ -23,7 +23,7 @@ from .forms import (AccountForm, ActivityBaseForm, ApplicationForm, CancelForm, 
 from . import geocoding
 from .geocoding import area_label_for
 from .models import (Application, ChatHide, DuplicatePhotoFlag, HelpRequest, Inquiry, InquiryReply, Match, Message,
-                     PointTransaction, PresetTag, SupportQuestion,
+                     PointTransaction, PresetTag, ProfileView, SupportQuestion,
                      PushSubscription,
                      Review, Sanction, Skill, User, UserBlock)
 from .services import ServiceError
@@ -51,6 +51,10 @@ def _viewpoints(user):
 
 def privacy_policy(request):
     return render(request, 'core/privacy.html')
+
+
+def terms_of_service(request):
+    return render(request, 'core/terms.html')
 
 
 def help_request_list(request):
@@ -561,6 +565,111 @@ def profile_edit(request):
 
 
 @login_required
+@require_POST
+def review_reply(request, pk):
+    """自分が受け取ったレビューへ返信する(編集・削除も同じ口)。"""
+    review = get_object_or_404(Review, pk=pk, reviewee=request.user)
+    body = request.POST.get('reply', '').strip()[:1000]
+    review.reply = body
+    review.reply_at = timezone.now() if body else None
+    review.save(update_fields=['reply', 'reply_at'])
+    messages.success(request, '返信を保存しました。' if body else '返信を削除しました。')
+    return redirect('core:profile')
+
+
+@login_required
+def footprints(request):
+    """足あと:自分のプロフィールを見た人(最新50件)。"""
+    items = (ProfileView.objects.filter(profile_user=request.user)
+             .select_related('viewer').order_by('-last_viewed_at')[:50])
+    return render(request, 'core/footprints.html', {'items': items})
+
+
+@login_required
+def data_export(request):
+    """自分のデータを JSON でダウンロードする。"""
+    if request.method == 'POST':
+        user = request.user
+        my_matches = Match.objects.filter(
+            Q(helper=user) | Q(help_request__requester=user)).select_related('help_request', 'helper')
+        data = {
+            'exported_at': timezone.now().isoformat(),
+            'profile': {
+                'username': user.username, 'email': user.email,
+                'date_joined': user.date_joined.isoformat(),
+                'bio': user.bio, 'points': user.points, 'total_earned': user.total_earned,
+                'photo_status': user.avatar_status,
+            },
+            'points_history': [
+                {'at': t.created_at.isoformat(), 'amount': t.amount,
+                 'balance_after': t.balance_after, 'kind': t.kind, 'description': t.description}
+                for t in user.point_transactions.all().order_by('created_at')],
+            'my_requests': [
+                {'id': r.pk, 'title': r.title, 'status': r.status,
+                 'created_at': r.created_at.isoformat(), 'points_cost': r.points_cost}
+                for r in user.requests.all().order_by('created_at')],
+            'matches': [
+                {'id': m.pk, 'request_id': m.help_request_id, 'request_title': m.help_request.title,
+                 'role': 'helper' if m.helper_id == user.pk else 'requester',
+                 'status': m.status}
+                for m in my_matches.order_by('id')],
+            'reviews_received': [
+                {'from': r.reviewer.username, 'rating': r.rating, 'comment': r.comment,
+                 'reply': r.reply, 'at': r.created_at.isoformat()}
+                for r in user.received_reviews.select_related('reviewer').order_by('created_at')],
+            'reviews_given': [
+                {'to': r.reviewee.username, 'rating': r.rating, 'comment': r.comment,
+                 'at': r.created_at.isoformat()}
+                for r in user.given_reviews.select_related('reviewee').order_by('created_at')],
+            'inquiries': [
+                {'id': i.pk, 'body': i.body, 'status': i.status,
+                 'at': i.created_at.isoformat(),
+                 'replies': [{'author': rp.author, 'body': rp.body,
+                              'at': rp.created_at.isoformat()} for rp in i.replies.all()]}
+                for i in user.inquiries.all().order_by('created_at')],
+        }
+        response = HttpResponse(json.dumps(data, ensure_ascii=False, indent=2),
+                                content_type='application/json; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="suki-match-my-data.json"'
+        return response
+    return render(request, 'core/data_export.html')
+
+
+@login_required
+def account_break(request):
+    """休会(アカウントの一時停止)。ログインはできて、いつでも解除できる。"""
+    user = request.user
+    error = ''
+    if request.method == 'POST':
+        if user.is_staff:
+            error = 'スタッフのアカウントは休会できません。'
+        elif request.POST.get('confirm') != 'yes':
+            error = '確認のチェックを入れてください。'
+        elif user.has_usable_password() and not user.check_password(request.POST.get('password', '')):
+            error = 'パスワードが違います。'
+        elif not user.has_usable_password() and request.POST.get('username_check', '').strip() != user.username:
+            error = 'ユーザー名が一致しません。'
+        if not error:
+            error = services.start_break(user)
+        if not error:
+            messages.success(request, '休会を開始しました。解除するまで、プロフィールは他の人に表示されず、通知も止まります。')
+            return redirect('core:account_settings')
+    return render(request, 'core/account_break.html', {
+        'has_password': user.has_usable_password(),
+        'open_request_count': user.requests.filter(status=HelpRequest.Status.OPEN).count(),
+        'error': error,
+    })
+
+
+@login_required
+@require_POST
+def account_break_end(request):
+    services.end_break(request.user)
+    messages.success(request, '休会を解除しました。通常通り利用できます。')
+    return redirect('core:account_settings')
+
+
+@login_required
 def account_delete(request):
     """アカウント削除(退会)。本人がパスワード再入力＋確認チェックで実行できる。"""
     from django.contrib.auth import logout
@@ -677,6 +786,15 @@ def user_photo(request, pk):
 
 def public_profile(request, username):
     target = get_object_or_404(User, username=username, is_active=True)
+    viewer = request.user
+    if target.is_on_break and not (viewer.is_authenticated
+                                   and (viewer.pk == target.pk or viewer.is_staff)):
+        raise Http404  # 休会中のプロフィールは他の人には見せない
+    if (viewer.is_authenticated and viewer.pk != target.pk
+            and viewer.leave_footprints):
+        ProfileView.objects.update_or_create(
+            viewer=viewer, profile_user=target, date=timezone.localdate(),
+            defaults={'last_viewed_at': timezone.now()})
     return render(request, 'core/public_profile.html', {
         'target': target,
         'is_blocked': request.user.is_authenticated and UserBlock.objects.filter(

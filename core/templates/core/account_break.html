@@ -1,0 +1,53 @@
+{% extends 'core/base.html' %}
+
+{% block title %}休会（一時停止） - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>休会（一時停止）</h1></div>
+
+<section class="card">
+    <h2 class="section-title">休会するとどうなりますか？</h2>
+    <ul class="plain-list">
+        <li>プロフィールが他の人に表示されなくなります</li>
+        <li>募集中の依頼は自動で取り下げます</li>
+        <li>依頼・お手伝い・チャット送信ができなくなります</li>
+        <li>LINE・プッシュ通知が止まります（アプリ内の通知履歴には残ります）</li>
+        <li><strong>データは削除されません。</strong>ログインすればいつでも解除して再開できます</li>
+    </ul>
+    {% if open_request_count %}
+        <p class="help">募集中の依頼が{{ open_request_count }}件あります。休会時に自動で取り下げます（預けたポイントは返金されます）。</p>
+    {% endif %}
+</section>
+
+{% if user.is_staff %}
+    <section class="card">
+        <p>スタッフのアカウントは休会できません。</p>
+        <a class="btn btn-ghost" href="{% url 'core:account_settings' %}">設定に戻る</a>
+    </section>
+{% else %}
+    <form method="post" class="card">
+        {% csrf_token %}
+        <h2 class="section-title">本人確認</h2>
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+        {% if has_password %}
+            <div class="field">
+                <label for="password">現在のパスワード</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+        {% else %}
+            <div class="field">
+                <label for="username_check">確認のため、あなたのユーザー名「{{ user.username }}」を入力してください</label>
+                <input type="text" id="username_check" name="username_check" autocomplete="off" required>
+            </div>
+        {% endif %}
+        <div class="field">
+            <label class="checkline">
+                <input type="checkbox" name="confirm" value="yes" required>
+                休会中はサービスが使えなくなることを理解しました
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">休会する</button>
+        <a class="btn btn-ghost btn-block" href="{% url 'core:account_settings' %}">やっぱりやめる</a>
+    </form>
+{% endif %}
+{% endblock %}

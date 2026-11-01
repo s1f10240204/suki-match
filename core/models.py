@@ -120,6 +120,8 @@ class User(AbstractUser):
                                    default=None, help_text='1アカウントに1つのランダムなコード')
     referral_reward_at = models.DateTimeField('招待ボーナス付与日時', null=True, blank=True)
     last_login_bonus_date = models.DateField('ログインボーナス受取日', null=True, blank=True)
+    is_on_break = models.BooleanField('休会中', default=False)
+    leave_footprints = models.BooleanField('足あとを残す', default=True)
     total_earned = models.IntegerField('累計獲得ポイント', default=0)  # レベルはこちらで決まる(使っても減らない)
     level = models.PositiveSmallIntegerField('レベル', default=1)
     skills = models.ManyToManyField(Skill, blank=True, related_name='users', verbose_name='できること')
@@ -336,6 +338,8 @@ class Review(models.Model):
     help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE)
     rating = models.IntegerField('評価')
     comment = models.TextField('コメント', blank=True)
+    reply = models.TextField('レビューへの返信', blank=True)
+    reply_at = models.DateTimeField('返信日時', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -343,6 +347,22 @@ class Review(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['reviewer', 'help_request'], name='one_review_per_request'),
         ]
+
+
+class ProfileView(models.Model):
+    """足あと:誰が誰のプロフィールを見たか(1日1件に集約)。"""
+    viewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='profile_views_made')
+    profile_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='profile_views_received')
+    date = models.DateField('閲覧日')
+    last_viewed_at = models.DateTimeField('最終閲覧日時', auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '足あと'
+        constraints = [
+            models.UniqueConstraint(fields=['viewer', 'profile_user', 'date'],
+                                    name='one_footprint_per_day'),
+        ]
+        ordering = ('-last_viewed_at',)
 
 
 class SanctionQuerySet(models.QuerySet):

@@ -33,7 +33,7 @@
 <section class="card">
     <h2 class="section-title">最近のレビュー</h2>
     {% for rv in reviews %}
-        <div class="review"><p><span class="stars">{% for i in "12345"|make_list %}{% if forloop.counter <= rv.rating %}★{% else %}☆{% endif %}{% endfor %}</span> <span class="meta">{{ rv.reviewer.username }}</span></p>{% if rv.comment %}<p>{{ rv.comment }}</p>{% endif %}</div>
+        <div class="review"><p><span class="stars">{% for i in "12345"|make_list %}{% if forloop.counter <= rv.rating %}★{% else %}☆{% endif %}{% endfor %}</span> <span class="meta">{{ rv.reviewer.username }}</span></p>{% if rv.comment %}<p>{{ rv.comment }}</p>{% endif %}{% if rv.reply %}<p class="review-reply"><strong>{{ target.username }}さんからの返信：</strong>{{ rv.reply }}</p>{% endif %}</div>
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
 </section>
 

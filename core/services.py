@@ -148,6 +148,8 @@ def photo_exempt(user):
 
 def photo_block_reason(user):
     """顔写真の審査が済んでいないと、依頼も応募もできない。"""
+    if user.is_on_break:
+        return '休会中は利用できません。休会を解除すると使えるようになります。'
     if photo_exempt(user):
         return ''
     status = user.avatar_status if user.avatar else User.PhotoStatus.NONE
@@ -317,6 +319,8 @@ def notify(user, kind, text, url=''):
     setting = notification_setting(user)
     if setting.forced_off:
         return notification  # 管理者が通知を止めている場合は外部通知を送らない
+    if user.is_on_break:
+        return notification  # 休会中は外部通知を送らない(アプリ内履歴には残す)
     line_api.maybe_notify(user, kind, notification.text, url)
     if kind != 'nearby_request' and setting.push_activity:
         # iOS の Web Push は「タイトル行 + from アプリ名(システム固定・変更不可) +
@@ -980,6 +984,25 @@ def register_invite_code(user, code):
     return referrer
 
 
+def start_break(user):
+    """休会を開始する。進行中のマッチがある場合は開始できない(エラーメッセージを返す)。"""
+    active = Match.objects.filter(status=Match.Status.IN_PROGRESS).filter(
+        Q(helper=user) | Q(help_request__requester=user))
+    if active.exists():
+        return '進行中のお手伝いがあるため休会できません。完了またはキャンセルしてからお試しください。'
+    for hr in HelpRequest.objects.filter(requester=user, status=HelpRequest.Status.OPEN):
+        cancel(hr, user, reason='休会のため取り下げ')
+    user.is_on_break = True
+    user.save(update_fields=['is_on_break'])
+    return ''
+
+
+def end_break(user):
+    """休会を解除して通常利用に戻す。"""
+    user.is_on_break = False
+    user.save(update_fields=['is_on_break'])
+
+
 def grant_starter_points(user):
     """新規登録のスターター100ptを付与する(冪等)。
 
@@ -1195,6 +1218,8 @@ def chat_is_open(match):
 
 
 def sender_can_post(help_request, sender):
+    if sender.is_on_break:
+        return False  # 休会中はチャット送信も止める
     if help_request.status != HelpRequest.Status.IN_PROGRESS:
         return False
     if sender.pk == help_request.requester_id:

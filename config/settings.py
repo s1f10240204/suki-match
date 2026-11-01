@@ -63,6 +63,10 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
 ]
+# 二段階認証(任意でONにできる。認証アプリのTOTP＋リカバリーコード)
+INSTALLED_APPS.append('allauth.mfa')
+MFA_SUPPORTED_TYPES = ['totp', 'recovery_codes']
+
 # Googleの認証情報が設定されているときだけGoogleログインを有効化する
 if GOOGLE_CLIENT_ID:
     INSTALLED_APPS.append('allauth.socialaccount.providers.google')

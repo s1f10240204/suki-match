@@ -1,0 +1,24 @@
+{% extends 'core/base.html' %}
+
+{% block title %}自分のデータをダウンロード - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>自分のデータをダウンロード</h1></div>
+
+<section class="card">
+    <h2 class="section-title">ダウンロードできる内容</h2>
+    <ul class="plain-list">
+        <li>プロフィール情報（ユーザー名・メールアドレス・登録日・ポイント残高）</li>
+        <li>ポイント履歴（全件）</li>
+        <li>自分の依頼とマッチングの履歴</li>
+        <li>受け取ったレビュー・書いたレビュー（返信を含む）</li>
+        <li>お問い合わせとその回答</li>
+    </ul>
+    <p class="help">JSON形式のファイルでダウンロードされます。ファイルには個人情報が含まれますので、取り扱いにはご注意ください。</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-block">ダウンロードする</button>
+    </form>
+    <a class="btn btn-ghost btn-block" href="{% url 'core:account_settings' %}">設定に戻る</a>
+</section>
+{% endblock %}

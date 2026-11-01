@@ -1,0 +1,19 @@
+{% extends 'core/base.html' %}
+
+{% block title %}足あと - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>👣 足あと</h1></div>
+<p class="help">あなたのプロフィールを見た人です（新しい順・最大50件）。相手の設定によっては記録されない場合があります。自分の足あとは「設定 ＞ プロフィール・表示」で止められます。</p>
+
+<section class="card">
+    {% for v in items %}
+        <a class="list-row" href="{% url 'core:public_profile' v.viewer.username %}">
+            <span>{{ v.viewer.username }}</span>
+            <span class="meta">{{ v.last_viewed_at|date:"Y/n/j H:i" }}</span>
+        </a>
+    {% empty %}
+        <p class="meta">まだ足あとはありません。</p>
+    {% endfor %}
+</section>
+{% endblock %}

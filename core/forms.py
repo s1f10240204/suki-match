@@ -90,8 +90,9 @@ class ProfileForm(forms.ModelForm):
 class AccountForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ('username', 'birth_date', 'simple_ui')
-        labels = {'username': 'ユーザー名', 'simple_ui': 'シンプルUI（大きな文字・ボタン）'}
+        fields = ('username', 'birth_date', 'simple_ui', 'leave_footprints')
+        labels = {'username': 'ユーザー名', 'simple_ui': 'シンプルUI（大きな文字・ボタン）',
+                  'leave_footprints': 'プロフィールを見たときに足あとを残す'}
         widgets = {'birth_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')}
 
 

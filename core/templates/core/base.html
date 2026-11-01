@@ -97,6 +97,12 @@
 
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 
+    {% if user.is_authenticated and user.is_on_break %}
+    <div class="impersonate-bar" role="status">
+        <span>⏸ <strong>休会中です</strong>：プロフィールは他の人に表示されず、依頼・お手伝い・チャット送信はできません</span>
+        <form method="post" action="{% url 'core:account_break_end' %}">{% csrf_token %}<button type="submit" class="impersonate-back">休会を解除する</button></form>
+    </div>
+    {% endif %}
     <main class="main {% block main_class %}{% endblock %}">
         {% if user.is_authenticated and user.simple_ui %}{% with name=request.resolver_match.url_name %}{% if name != 'help_request_list' and name != 'help_request_create' and name != 'message_list' and name != 'notifications' and name != 'profile' %}
         <button type="button" class="simple-back" onclick="if (window.history.length > 1) { history.back(); } else { location.href = '{% url 'core:help_request_list' %}'; }">← もどる</button>

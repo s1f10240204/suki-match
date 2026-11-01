@@ -70,4 +70,10 @@
         <p class="meta">ブロック中のユーザーはいません。ブロックは各ユーザーのプロフィールからできます。</p>
     {% endfor %}
 </section>
+
+<section class="card card-alert">
+    <h2 class="section-title">アカウント削除（退会）</h2>
+    <p class="help">退会するとアカウントとデータが全て削除され、元に戻せません。</p>
+    <a class="btn btn-danger" href="{% url 'core:account_delete' %}">退会手続きへ進む</a>
+</section>
 {% endblock %}

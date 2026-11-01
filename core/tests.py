@@ -2534,6 +2534,65 @@ class SupportTests(BaseTestCase):
         self.assertEqual(inquiry.replies.get().author_kind, InquiryReply.Author.USER)
 
 
+class AccountDeleteTests(TestCase):
+    PW = 'del' + '-pass-' + '1234'
+
+    def _user(self, name):
+        user = make_user(name)
+        user.set_password(self.PW)
+        user.save()
+        return user
+
+    def test_page_renders_and_settings_links(self):
+        user = self._user('delpage')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:account_delete'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '退会する')
+        settings_page = self.client.get(reverse('core:account_settings'))
+        self.assertContains(settings_page, reverse('core:account_delete'))
+
+    def test_wrong_password_keeps_account(self):
+        user = self._user('delwrong')
+        self.client.force_login(user)
+        self.client.post(reverse('core:account_delete'),
+                         {'confirm': 'yes', 'password': 'nope-nope'})
+        self.assertTrue(User.objects.filter(username='delwrong').exists())
+
+    def test_correct_password_deletes_account(self):
+        user = self._user('delok')
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:account_delete'),
+                                    {'confirm': 'yes', 'password': self.PW})
+        self.assertRedirects(response, reverse('core:help_request_list'))
+        self.assertFalse(User.objects.filter(username='delok').exists())
+        # ログアウト済みなのでマイページはログインへ飛ぶ
+        self.assertEqual(self.client.get(reverse('core:profile')).status_code, 302)
+
+    def test_in_progress_match_blocks_deletion(self):
+        requester = self._user('delreq')
+        requester.points = 100
+        requester.save()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = self._user('delhelp')
+        services.accept_first_come(hr, helper)
+        self.client.force_login(requester)
+        response = self.client.post(reverse('core:account_delete'),
+                                    {'confirm': 'yes', 'password': self.PW})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(username='delreq').exists())
+
+    def test_no_password_user_uses_username_check(self):
+        user = self._user('delnopw')
+        user.set_unusable_password()
+        user.save()
+        self.client.force_login(user)
+        self.client.post(reverse('core:account_delete'),
+                         {'confirm': 'yes', 'username_check': 'delnopw'})
+        self.assertFalse(User.objects.filter(username='delnopw').exists())
+
+
 class MessageRecallTests(BaseTestCase):
     """チャットの送信取り消し(両方の画面から消える)。"""
 

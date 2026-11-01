@@ -34,6 +34,7 @@ urlpatterns = [
     path('me/invite-code/', views.register_invite_code, name='register_invite_code'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),
+    path('me/delete/', views.account_delete, name='account_delete'),
     path('me/notifications/', views.notifications, name='notifications'),
     path('me/bases/', views.add_base, name='add_base'),
     path('me/bases/<int:pk>/delete/', views.delete_base, name='delete_base'),

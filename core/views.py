@@ -561,6 +561,48 @@ def profile_edit(request):
 
 
 @login_required
+def account_delete(request):
+    """アカウント削除(退会)。本人がパスワード再入力＋確認チェックで実行できる。"""
+    from django.contrib.auth import logout
+    user = request.user
+    in_progress = (
+        Match.objects.filter(helper=user, status=Match.Status.IN_PROGRESS).exists()
+        or Match.objects.filter(help_request__requester=user,
+                                status=Match.Status.IN_PROGRESS).exists()
+    )
+    open_requests = user.requests.filter(status=HelpRequest.Status.OPEN)
+    error = ''
+    if request.method == 'POST':
+        if user.is_staff:
+            error = 'スタッフのアカウントはここからは削除できません。'
+        elif in_progress:
+            error = '進行中のお手伝いがあります。完了かキャンセルをしてから退会してください。'
+        elif request.POST.get('confirm') != 'yes':
+            error = '確認のチェックを入れてください。'
+        elif user.has_usable_password() and not user.check_password(request.POST.get('password', '')):
+            error = 'パスワードが違います。'
+        elif not user.has_usable_password() and request.POST.get('username_check', '').strip() != user.username:
+            error = 'ユーザー名が一致しません。'
+        if not error:
+            for hr in list(open_requests):
+                try:
+                    services.cancel(hr, user, reason='退会による取り下げ')
+                except Exception:
+                    hr.status = HelpRequest.Status.CANCELED
+                    hr.save(update_fields=['status'])
+            logout(request)
+            user.delete()
+            messages.success(request, '退会が完了しました。これまでのご利用ありがとうございました。')
+            return redirect('core:help_request_list')
+    return render(request, 'core/account_delete.html', {
+        'in_progress': in_progress,
+        'open_request_count': open_requests.count(),
+        'has_password': user.has_usable_password(),
+        'error': error,
+    })
+
+
+@login_required
 def account_settings(request):
     account_form = AccountForm(request.POST if 'save_account' in request.POST else None, instance=request.user)
     setting = services.notification_setting(request.user)

@@ -1,0 +1,58 @@
+{% extends 'core/base.html' %}
+
+{% block title %}アカウント削除（退会） - suki-match{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>アカウント削除（退会）</h1></div>
+
+<section class="card card-alert">
+    <h2 class="section-title">退会するとどうなりますか？</h2>
+    <ul class="plain-list">
+        <li>プロフィール・顔写真は削除されます</li>
+        <li>あなたの依頼・応募・メッセージは削除されます</li>
+        <li>ポイント残高（{{ user.points }}pt）は失われます</li>
+        <li><strong>削除したデータは元に戻せません</strong></li>
+    </ul>
+    {% if open_request_count %}
+        <p class="help">募集中の依頼が{{ open_request_count }}件あります。退会時に自動で取り下げます。</p>
+    {% endif %}
+</section>
+
+{% if user.is_staff %}
+    <section class="card">
+        <p>スタッフのアカウントはここからは削除できません。</p>
+        <a class="btn btn-ghost" href="{% url 'core:account_settings' %}">設定に戻る</a>
+    </section>
+{% elif in_progress %}
+    <section class="card">
+        <p><strong>進行中のお手伝いがあるため、今は退会できません。</strong></p>
+        <p class="help">相手のいる進行中のやり取りがあります。完了かキャンセルをしてから、もう一度お試しください。</p>
+        <a class="btn btn-ghost" href="{% url 'core:account_settings' %}">設定に戻る</a>
+    </section>
+{% else %}
+    <form method="post" class="card">
+        {% csrf_token %}
+        <h2 class="section-title">本人確認</h2>
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+        {% if has_password %}
+            <div class="field">
+                <label for="password">現在のパスワード</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+        {% else %}
+            <div class="field">
+                <label for="username_check">確認のため、あなたのユーザー名「{{ user.username }}」を入力してください</label>
+                <input type="text" id="username_check" name="username_check" autocomplete="off" required>
+            </div>
+        {% endif %}
+        <div class="field">
+            <label class="checkline">
+                <input type="checkbox" name="confirm" value="yes" required>
+                アカウントとデータを全て削除することに同意します
+            </label>
+        </div>
+        <button type="submit" class="btn btn-danger btn-block">退会する（アカウントを削除）</button>
+        <a class="btn btn-ghost btn-block" href="{% url 'core:account_settings' %}">やっぱりやめる</a>
+    </form>
+{% endif %}
+{% endblock %}

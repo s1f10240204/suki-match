@@ -39,6 +39,18 @@
             <input type="text" readonly value="{{ referral_link }}" id="pt-invite-link" onclick="this.select()" aria-label="招待リンク">
         </div>
     </div>
+    {% if user.referred_by %}
+    <p class="meta">あなたは {{ user.referred_by.username }} さんの招待で参加しました。</p>
+    {% elif can_register_invite %}
+    <form method="post" action="{% url 'core:register_invite_code' %}" class="invite-form">
+        {% csrf_token %}
+        <label for="pt-invite-code-input">招待コードをお持ちの方はこちら（登録から48時間以内に登録できます）</label>
+        <div class="copy-row">
+            <input type="text" name="code" id="pt-invite-code-input" placeholder="例: AB3K9XYZ" autocomplete="off">
+            <button type="submit" class="btn btn-primary btn-sm">登録する</button>
+        </div>
+    </form>
+    {% endif %}
 
     <h3 class="earn-subtitle">ミッション</h3>
     {% for m in missions %}

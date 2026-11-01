@@ -27,46 +27,22 @@
             <span class="points-value">{{ user.points }}<small>pt</small></span>
             <span class="meta">現在のポイント</span>
         </div>
-        <p class="points-desc">依頼するときに使えます(お手伝い1分あたり1pt)。お手伝いを完了するとポイントが貯まります。</p>
-        <p class="points-history-link">ポイント履歴を見る ›</p>
+        <p class="points-history-link">履歴と貯め方を見る ›</p>
     </a>
-    <section class="card invite-card">
-        <h2 class="section-title">👋 友達を招待して +{{ referral_reward }}pt</h2>
-        <p class="meta">友達が登録して、顔写真の承認（または大学メールの確認）まで終わると、あなたに +{{ referral_reward }}pt 入ります。これまで {{ referral_count }}人 があなた経由で登録しました。</p>
-        <p class="invite-label">あなたの招待コード</p>
-        <div class="copy-row">
-            <span class="invite-code" id="invite-code-text">{{ invite_code }}</span>
-            <button type="button" class="btn btn-primary btn-sm" data-copy="#invite-code-text">コピー</button>
-        </div>
-        <p class="invite-label">招待リンク</p>
-        <div class="copy-row">
-            <input type="text" readonly value="{{ invite_link }}" id="invite-link-text" onclick="this.select()" aria-label="招待リンク">
-            <button type="button" class="btn btn-outline btn-sm" data-copy="#invite-link-text">コピー</button>
-        </div>
-        {% if user.referred_by %}
-        <p class="meta">あなたは {{ user.referred_by.username }} さんの招待で参加しました。</p>
-        {% elif can_register_invite %}
-        <form method="post" action="{% url 'core:register_invite_code' %}" class="invite-form">
-            {% csrf_token %}
-            <label for="invite-code-input">招待コードをお持ちの方はこちら（登録から48時間以内に登録できます）</label>
-            <div class="copy-row">
-                <input type="text" name="code" id="invite-code-input" placeholder="例: AB3K9XYZ" autocomplete="off">
-                <button type="submit" class="btn btn-primary btn-sm">登録する</button>
-            </div>
-        </form>
-        {% endif %}
-    </section>
-    <div class="stats-row">
+        <div class="stats-row">
         <div><p class="stat-value">{% if avg_rating %}★{{ avg_rating|floatformat:1 }}{% else %}-{% endif %}</p><p class="meta">平均評価</p></div>
         <div><p class="stat-value">{{ help_count }}</p><p class="meta">お手伝い完了</p></div>
         <div><p class="stat-value">{{ request_count }}</p><p class="meta">依頼</p></div>
     </div>
-    <div class="button-row">
-        <a href="{% url 'core:profile_edit' %}" class="btn btn-outline btn-sm">プロフィール編集</a>
-        <a href="{% url 'core:public_profile' user.username %}" class="btn btn-ghost btn-sm">公開プロフィール</a>
-        <a href="{% url 'core:account_settings' %}" class="btn btn-ghost btn-sm">アカウント設定</a>
-        <a href="{% url 'core:support' %}" class="btn btn-ghost btn-sm">サポート・お問い合わせ</a>
-    </div>
+</section>
+
+<section class="card menu-list">
+    <a class="menu-row" href="{% url 'core:profile_edit' %}"><span class="menu-ico">✏️</span>プロフィール編集<span class="menu-chev">›</span></a>
+    <a class="menu-row" href="{% url 'core:public_profile' user.username %}"><span class="menu-ico">👤</span>公開プロフィールを見る<span class="menu-chev">›</span></a>
+    <a class="menu-row" href="{% url 'core:points_history' %}"><span class="menu-ico">👋</span>友達を招待して +{{ referral_reward }}pt<span class="menu-chev">›</span></a>
+    <a class="menu-row" href="{% url 'core:footprints' %}"><span class="menu-ico">👣</span>足あと（プロフィールを見た人）<span class="menu-chev">›</span></a>
+    <a class="menu-row" href="{% url 'core:account_settings' %}"><span class="menu-ico">⚙️</span>アカウント設定<span class="menu-chev">›</span></a>
+    <a class="menu-row" href="{% url 'core:support' %}"><span class="menu-ico">🎧</span>サポート・お問い合わせ<span class="menu-chev">›</span></a>
 </section>
 
 {% if sanctions %}
@@ -116,8 +92,6 @@
         {% include 'core/_review_row.html' %}
     {% empty %}<p class="meta">まだありません。</p>{% endfor %}
 </section>
-
-<a class="list-row" href="{% url 'core:footprints' %}"><span>👣 足あと（プロフィールを見た人）</span><span class="meta">›</span></a>
 
 <form method="post" action="{% url 'account_logout' %}" class="logout-form">
     {% csrf_token %}

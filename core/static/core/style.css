@@ -114,6 +114,13 @@ a.card { transition: transform .15s, box-shadow .15s; }
 a.card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(80, 60, 40, .05), 0 12px 26px rgba(80, 60, 40, .08); }
 .card-alert { border-color: #f1cfc6; background: var(--danger-soft); }
 .section-title { font-size: 1rem; font-weight: 700; margin: 20px 0 10px; }
+.menu-list { padding: 6px 18px; }
+.menu-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f0e9dd; color: var(--text); font-weight: 600; }
+.menu-row:last-child { border-bottom: none; }
+.menu-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-soft); display: grid; place-items: center; font-size: 1.02rem; flex: none; }
+.menu-chev { margin-left: auto; color: var(--muted); font-weight: 400; }
+body.simple-ui .menu-row { padding: 19px 0; font-size: 1.06rem; }
+body.simple-ui .menu-ico { width: 44px; height: 44px; font-size: 1.25rem; border-radius: 12px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
 .section-head .section-title { margin: 0; }
 .section-head a { font-size: .86rem; font-weight: 700; color: var(--primary-dark); white-space: nowrap; }

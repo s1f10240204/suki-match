@@ -554,6 +554,7 @@ def points_history(request):
         'referral_count': user.referrals.count(),
         'referral_earned': referral_earned,
         'referral_reward': services.REFERRAL_REWARD_POINTS,
+        'can_register_invite': services.referral_window_open(user),
         'missions': services.mission_states(user),
         'login_bonus_points': services.LOGIN_BONUS_POINTS,
         'login_bonus_today': user.last_login_bonus_date == timezone.localdate()})

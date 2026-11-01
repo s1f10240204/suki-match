@@ -687,6 +687,7 @@ def stop_work(match, user):
         raise ServiceError('すでに作業を終了しています。')
     match.work_ended_at = timezone.now()
     match.save(update_fields=['work_ended_at'])
+    maybe_auto_complete(match.help_request)
     return match
 
 
@@ -783,6 +784,7 @@ def qr_stop_work(match, scanner):
     match.save(update_fields=['work_ended_at'])
     notify(match.helper, 'work',
            '作業が終了しました。お疲れさまでした', detail_url(match.help_request))
+    maybe_auto_complete(match.help_request)
     return match
 
 
@@ -799,6 +801,7 @@ def declare_minutes(match, user, minutes):
     match.declared_minutes = minutes
     match.declaration_approved = match.work_started_at is None
     match.save(update_fields=['declared_minutes', 'declaration_approved'])
+    maybe_auto_complete(match.help_request)
     return match
 
 
@@ -811,11 +814,42 @@ def review_declaration(match, user, approve):
     if approve:
         match.declaration_approved = True
         match.save(update_fields=['declaration_approved'])
+        maybe_auto_complete(match.help_request)
     else:
         match.declared_minutes = None
         match.declaration_approved = False
         match.save(update_fields=['declared_minutes', 'declaration_approved'])
+        maybe_auto_complete(match.help_request)
     return match
+
+
+def maybe_auto_complete(help_request):
+    """全員の作業が終わっていれば、ボタンを介さず自動で完了(精算)する。
+
+    作業の終わらせ方はQR読み取り・終了ボタン・時間申告の承認のどれでもよく、
+    全マッチ分が終わった時点でここから complete() を呼ぶ。終わっていない人が
+    残っている間は何もしない(戻り値 False)。
+    """
+    if help_request.status != HelpRequest.Status.IN_PROGRESS:
+        return False
+    matches = list(help_request.active_matches)
+    if not matches:
+        return False
+
+    def finished(m):
+        # 承認待ちの訂正申告がある間は未確定として完了しない(承認/却下が先)
+        if m.declared_minutes and not m.declaration_approved:
+            return False
+        return bool(m.work_ended_at) or bool(m.declared_minutes and m.declaration_approved)
+
+    if not all(finished(m) for m in matches):
+        return False
+    requester = User.objects.get(pk=help_request.requester_id)
+    try:
+        complete(help_request, requester)
+    except ServiceError:
+        return False
+    return True
 
 
 def complete(help_request, user):

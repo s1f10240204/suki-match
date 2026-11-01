@@ -768,18 +768,13 @@ def work_qr_scan(request, token):
         except services.ServiceError as e:
             return render(request, 'core/work_qr_scan.html',
                           {'error': e.message if hasattr(e, 'message') else str(e)})
-        # 他に作業中の人がいなければ、完了(精算)まで自動で進める
+        # 完了(精算)まで進んだかどうかは services 側の自動完了の結果で判断する
         help_request = match.help_request
-        others_working = help_request.active_matches.exclude(pk=match.pk).filter(
-            work_ended_at__isnull=True).exists()
-        if not others_working:
-            try:
-                services.complete(help_request, user)
-                messages.success(request, 'お仕事が完了しました！お疲れさまでした。')
-                return redirect('core:chat', pk=match.pk)
-            except services.ServiceError:
-                pass  # 完了できない事情がある場合はタイマー停止のみ
-        if others_working:
+        help_request.refresh_from_db()
+        if help_request.status == HelpRequest.Status.DONE:
+            messages.success(request, 'お仕事が完了しました！お疲れさまでした。')
+        elif help_request.active_matches.filter(
+                work_ended_at__isnull=True, declared_minutes__isnull=True).exists():
             messages.success(request, '作業を終了しました。他の人の作業が終わると完了します。')
         else:
             messages.success(request, '作業を終了しました。お疲れさまでした。')

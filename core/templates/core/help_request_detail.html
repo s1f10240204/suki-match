@@ -142,13 +142,9 @@
                     {% if p.work_mode == 'qr' %}{% include 'core/_work_qr.html' with wm=p %}{% endif %}
                 </div>
                 {% endfor %}
-                <p class="meta">完了すると上記の時間で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
+                <p class="meta">全員の作業が終わると、上記の時間で自動で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
             </div>
             {% endif %}
-            <form method="post" action="{% url 'core:complete_help_request' help_request.pk %}">
-                {% csrf_token %}
-                <button class="btn btn-primary btn-block">完了にする</button>
-            </form>
         {% endif %}
 
     {% elif is_helper and help_request.status == 'in_progress' %}

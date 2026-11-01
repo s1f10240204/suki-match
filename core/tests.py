@@ -1465,6 +1465,31 @@ class WorkTimerTests(BaseTestCase):
         with self.assertRaises(services.ServiceError):
             services.start_work(match, make_user('w1other'))
 
+    def test_stop_work_auto_completes(self):
+        requester, hr, helper, match = self._setup('wauto')
+        services.start_work(match, helper)
+        services.stop_work(match, helper)
+        hr.refresh_from_db()
+        match.refresh_from_db()
+        # 完了ボタンなし:全員の作業が終われば自動で完了・精算される
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        self.assertEqual(match.status, Match.Status.DONE)
+        self.assertTrue(PointTransaction.objects.filter(
+            user=helper, help_request=hr, kind=PointTransaction.Kind.EARNED).exists())
+
+    def test_declare_auto_completes(self):
+        requester, hr, helper, match = self._setup('wdecl')
+        # タイマー未使用の申告は自動承認され、それで完了まで進む
+        services.declare_minutes(match, helper, 20)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+
+    def test_detail_has_no_complete_button(self):
+        requester, hr, helper, match = self._setup('wbtn')
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertNotContains(page, '完了にする')
+
     def test_measured_rounding_and_cap(self):
         _, hr, _, match = self._setup('w2', duration=15)
         self._set_timer(match, 27)  # 27分作業 → 5分切り上げで30分
@@ -1505,7 +1530,9 @@ class WorkTimerTests(BaseTestCase):
         services.declare_minutes(match, helper, 40)  # 上限2倍で30分に丸められる
         self.assertTrue(match.declaration_approved)
         self.assertEqual(services.effective_minutes(match, hr), 30)
-        services.complete(hr, requester)
+        # 申告(自動承認)だけで完了・精算まで自動で進む
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
         helper.refresh_from_db()
         self.assertEqual(helper.points, 30)
 
@@ -1516,12 +1543,29 @@ class WorkTimerTests(BaseTestCase):
         match.refresh_from_db()
         self.assertFalse(match.declaration_approved)
         self.assertEqual(services.effective_minutes(match, hr), 30)  # 承認までは実測
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)  # 承認までは完了しない
         services.review_declaration(match, requester, approve=True)
         self.assertEqual(services.effective_minutes(match, hr), 20)
+        # 承認した時点で申告の20分で完了・精算まで進む
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 20)
+
+    def test_correction_declaration_rejected(self):
+        requester, hr, helper, match = self._setup('w7r', requester_points=100, duration=30)
+        self._set_timer(match, 27)  # 実測30分・終了済み
+        services.declare_minutes(match, helper, 20)
         services.review_declaration(match, requester, approve=False)
         match.refresh_from_db()
         self.assertIsNone(match.declared_minutes)
         self.assertEqual(services.effective_minutes(match, hr), 30)
+        # 却下で申告が消え、実測30分のまま完了・精算まで進む
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 30)
 
 
 class PointHistoryTests(BaseTestCase):
@@ -3184,9 +3228,7 @@ class WorkQRTests(BaseTestCase):
         self.client.force_login(helper)
         data = jsonlib.loads(self.client.get(url).content)
         self.assertTrue(data['ended'])
-        self.assertFalse(data['completed'])
-        services.complete(hr, requester)
-        data = jsonlib.loads(self.client.get(url).content)
+        # 1人だけのマッチは終了QRの読み取りで完了(精算)まで自動で進む
         self.assertTrue(data['completed'])
 
     def test_scan_end_waits_for_other_helpers(self):

@@ -1577,3 +1577,18 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         setInterval(refresh, 25000);
     });
 })();
+
+// チップ送信完了ダイアログ:閉じる/背景タップで消し、URLの ?tipped=1 を消す
+(function () {
+    var overlay = document.querySelector('[data-tip-dialog]');
+    if (!overlay) return;
+    function close() {
+        overlay.remove();
+        if (window.history && history.replaceState) {
+            history.replaceState(null, '', location.pathname + location.hash);
+        }
+    }
+    var btn = overlay.querySelector('[data-tip-dialog-close]');
+    if (btn) btn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+})();

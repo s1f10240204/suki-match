@@ -210,6 +210,9 @@
             <h2 class="section-title">お礼のチップ</h2>
             <p class="meta">感謝の気持ちをポイントで伝えられます（あなたの残高 {{ user.points }}pt）。</p>
             {% for dm in done_matches %}
+            {% if dm.tipped %}
+            <p class="tip-done"><span class="tip-to">{{ dm.helper.username }}さんへ</span> <span class="chip chip-ok">✓ チップ送信済み</span></p>
+            {% else %}
             <form method="post" action="{% url 'core:tip_match' dm.pk %}" class="tip-form">
                 {% csrf_token %}
                 <span class="tip-to">{{ dm.helper.username }}さんへ</span>
@@ -221,6 +224,7 @@
                 </select>
                 <button class="btn btn-ghost btn-sm">チップを渡す</button>
             </form>
+            {% endif %}
             {% endfor %}
         </div>
     {% endif %}
@@ -263,4 +267,16 @@
 {% if user.is_authenticated and not is_requester %}
     <p class="report-link"><a href="{% url 'core:report_user' help_request.requester.username %}?request={{ help_request.pk }}">この依頼を通報する</a></p>
 {% endif %}
+
+{% if tip_dialog %}
+<div class="modal-overlay" data-tip-dialog>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="チップ送信完了">
+        <p class="tip-dialog-emoji">🎉</p>
+        <h2 class="tip-dialog-title">チップを送信しました！</h2>
+        <p class="meta">お礼の気持ちが相手に届きました。</p>
+        <button type="button" class="btn btn-primary btn-block" data-tip-dialog-close>閉じる</button>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
+

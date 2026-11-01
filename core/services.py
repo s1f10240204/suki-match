@@ -974,6 +974,13 @@ def submit_review(help_request, user, rating, comment=''):
 TIP_MAX_POINTS = 200
 
 
+def tipped_helper_ids(help_request, tipper):
+    """その依頼でチップ送信済みのヘルパーID集合(1つのお手伝いにつき1回まで)。"""
+    return set(PointTransaction.objects.filter(
+        user=tipper, kind=PointTransaction.Kind.TIP_SENT,
+        help_request=help_request).values_list('counterparty_id', flat=True))
+
+
 def tip_helper(match, tipper, amount):
     """完了したお手伝いへのお礼チップ。依頼者の残高からヘルパーへ移す。"""
     help_request = match.help_request
@@ -989,6 +996,10 @@ def tip_helper(match, tipper, amount):
         raise ServiceError(f'チップは1〜{TIP_MAX_POINTS}ptで指定してください。')
     with transaction.atomic():
         payer = User.objects.select_for_update().get(pk=tipper.pk)
+        if PointTransaction.objects.filter(
+                user=payer, kind=PointTransaction.Kind.TIP_SENT,
+                help_request=help_request, counterparty_id=match.helper_id).exists():
+            raise ServiceError('このお手伝いにはすでにチップを渡しています。')
         if payer.points < amount:
             raise ServiceError(f'ポイントが不足しています(必要 {amount}pt / 保有 {payer.points}pt)。')
         payer.points -= amount

@@ -1888,6 +1888,33 @@ class TipTests(BaseTestCase):
         helper.refresh_from_db()
         self.assertEqual(helper.points, 15)              # 失敗時は動かない
 
+    def test_tip_only_once(self):
+        requester, hr, helper, match = self._completed('tiponce')
+        services.tip_helper(match, requester, 10)
+        with self.assertRaises(services.ServiceError):
+            services.tip_helper(match, requester, 10)
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, 25)  # 15 + チップ10 のみ
+        self.assertEqual(
+            PointTransaction.objects.filter(user=requester, kind='tip_sent').count(), 1)
+        self.assertEqual(services.tipped_helper_ids(hr, requester), {helper.pk})
+
+    def test_tip_view_dialog_and_done_state(self):
+        requester, hr, helper, match = self._completed('tipdlg')
+        self.client.force_login(requester)
+        resp = self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '20'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('tipped=1', resp.url)
+        page = self.client.get(resp.url)
+        self.assertContains(page, 'チップを送信しました！')
+        self.assertContains(page, 'チップ送信済み')
+        # 2回目のPOSTは弾かれて残高は変わらない
+        helper.refresh_from_db()
+        before = helper.points
+        self.client.post(reverse('core:tip_match', args=[match.pk]), {'amount': '20'})
+        helper.refresh_from_db()
+        self.assertEqual(helper.points, before)
+
     def test_tip_view(self):
         requester, hr, helper, match = self._completed('tip3')
         self.client.force_login(helper)  # ログインでログインボーナス +2 が入る

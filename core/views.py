@@ -213,8 +213,13 @@ def help_request_detail(request, pk):
         for app in context['applications']:
             app.applicant.rating_avg, app.applicant.rating_count = services.rating_summary(app.applicant)
     if is_requester and help_request.status == HelpRequest.Status.DONE:
-        context['done_matches'] = list(
+        done_matches = list(
             help_request.matches.filter(status=Match.Status.DONE).select_related('helper'))
+        tipped_ids = services.tipped_helper_ids(help_request, user)
+        for dm in done_matches:
+            dm.tipped = dm.helper_id in tipped_ids
+        context['done_matches'] = done_matches
+        context['tip_dialog'] = request.GET.get('tipped') == '1'
     context['can_repost'] = is_requester and help_request.status in (
         HelpRequest.Status.DONE, HelpRequest.Status.CANCELED, HelpRequest.Status.EXPIRED)
     if match is not None and (is_requester or is_helper):
@@ -316,9 +321,11 @@ def work_declaration_review(request, pk):
 def tip_match(request, pk):
     match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
     amount = _run(request, lambda: services.tip_helper(match, request.user, request.POST.get('amount', '')))
+    url = reverse('core:help_request_detail', kwargs={'pk': match.help_request_id})
     if amount is not None:
         messages.success(request, f'{match.helper.username}さんに{amount}ptのチップを渡しました。')
-    return redirect('core:help_request_detail', pk=match.help_request_id)
+        url += '?tipped=1'
+    return redirect(url)
 
 
 @login_required

@@ -694,7 +694,7 @@ def stop_work(match, user):
 # ---------- 対面QRタイマー ----------
 
 WORK_QR_SALT = 'work-qr-v1'
-WORK_QR_MAX_AGE = 90  # 秒。表示は30秒ごとに更新され、少しの時計ずれを吸収する
+WORK_QR_MAX_AGE = 15  # 秒。表示は5秒ごとに更新される。スクリーンショット対策に短く保つ
 
 
 def make_work_qr_token(match, phase):
@@ -705,11 +705,19 @@ def make_work_qr_token(match, phase):
 
 
 def parse_work_qr_token(token, max_age=None):
-    """トークンを検証して (match_id, phase) を返す。無効・期限切れは None。"""
+    """トークンを検証して (match_id, phase) を返す。無効・期限切れは None。
+
+    max_age=0 のときは署名だけを検証する(確認画面のPOST用。鮮度は
+    「読み取り時にセッションへ控えた記録」で別途担保する)。
+    """
     from django.core import signing
     try:
-        data = signing.TimestampSigner(salt=WORK_QR_SALT).unsign_object(
-            token, max_age=max_age if max_age is not None else WORK_QR_MAX_AGE)
+        signer = signing.TimestampSigner(salt=WORK_QR_SALT)
+        if max_age == 0:
+            data = signer.unsign_object(token)
+        else:
+            data = signer.unsign_object(
+                token, max_age=max_age if max_age is not None else WORK_QR_MAX_AGE)
     except Exception:
         return None
     if not isinstance(data, dict) or data.get('p') not in ('start', 'end'):

@@ -744,8 +744,12 @@ def work_qr_code(request, pk):
 
 @login_required
 def work_qr_scan(request, token):
-    """QR読み取り側:署名トークンを検証し、確認画面→開始/終了を実行する。"""
-    parsed = services.parse_work_qr_token(token, max_age=600 if request.method == 'POST' else None)
+    """QR読み取り側:署名トークンを検証し、確認画面→開始/終了を実行する。
+
+    トークン自体の有効時間は15秒と短い(スクリーンショット対策)。開始の
+    確認POSTは、読み取り(GET)時にセッションへ控えた記録(3分有効)で担保する。
+    """
+    parsed = services.parse_work_qr_token(token, max_age=0 if request.method == 'POST' else None)
     if parsed is None:
         return render(request, 'core/work_qr_scan.html',
                       {'error': 'QRコードの有効期限が切れています。相手の画面で新しいQRコードを表示してもらってください。'})
@@ -780,6 +784,12 @@ def work_qr_scan(request, token):
             messages.success(request, '作業を終了しました。お疲れさまでした。')
         return redirect('core:chat', pk=match.pk)
     if request.method == 'POST':
+        scanned = request.session.get('work_qr_scanned') or {}
+        if not (scanned.get('m') == match.pk and scanned.get('p') == phase
+                and scanned.get('exp', 0) > timezone.now().timestamp()):
+            return render(request, 'core/work_qr_scan.html',
+                          {'error': '確認の有効時間が切れています。もう一度QRコードを読み取ってください。'})
+        request.session.pop('work_qr_scanned', None)
         try:
             if phase == 'start':
                 services.qr_start_work(match, user)
@@ -790,6 +800,11 @@ def work_qr_scan(request, token):
         except services.ServiceError as e:
             messages.error(request, e.message if hasattr(e, 'message') else str(e))
         return redirect('core:chat', pk=match.pk)
+    # 確認画面を出した時点でセッションに控える(POSTはこの控えでのみ実行できる)
+    request.session['work_qr_scanned'] = {
+        'm': match.pk, 'p': phase,
+        'exp': (timezone.now() + timedelta(minutes=3)).timestamp(),
+    }
     return render(request, 'core/work_qr_scan.html', {
         'match': match, 'phase': phase,
         'action_label': '作業を開始する' if phase == 'start' else '作業を終了する',

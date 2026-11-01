@@ -3214,6 +3214,35 @@ class WorkQRTests(BaseTestCase):
         self.assertContains(page, 'data-celebrate')
         self.assertContains(page, 'お仕事が完了しました！')
 
+    def test_scan_post_requires_prior_scan(self):
+        requester, hr, helper, match = self._qr_match()
+        token = services.make_work_qr_token(match, 'start')
+        url = reverse('core:work_qr_scan', args=[token])
+        self.client.force_login(helper)
+        # 読み取り(GET)を経ずにPOSTしても開始できない(スクショ+直POST対策)
+        response = self.client.post(url)
+        match.refresh_from_db()
+        self.assertIsNone(match.work_started_at)
+        self.assertContains(response, 'もう一度QRコードを読み取ってください')
+        # GETで確認画面を経ればPOSTで開始できる
+        self.client.get(url)
+        self.client.post(url)
+        match.refresh_from_db()
+        self.assertIsNotNone(match.work_started_at)
+
+    def test_expired_token_rejected(self):
+        import time as time_mod
+        from unittest import mock
+        from django.core import signing
+        requester, hr, helper, match = self._qr_match()
+        old = signing.b62_encode(int(time_mod.time()) - 3600)
+        with mock.patch.object(signing.TimestampSigner, 'timestamp', return_value=old):
+            token = services.make_work_qr_token(match, 'start')
+        self.assertIsNone(services.parse_work_qr_token(token))
+        self.client.force_login(helper)
+        response = self.client.get(reverse('core:work_qr_scan', args=[token]))
+        self.assertContains(response, '有効期限が切れています')
+
     def test_qr_code_json_reports_state(self):
         import json as jsonlib
         requester, hr, helper, match = self._qr_match()

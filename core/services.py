@@ -305,6 +305,7 @@ PUSH_TITLES = {
     'points': 'ポイントのお知らせ',
     'schedule_reminder': '予定のリマインダー',
     'inquiry_reply': 'お問い合わせへの回答',
+    'work': '作業時間のお知らせ',
     'photo': '顔写真の審査',
     'photo_duplicate': '写真の重複検出',
     'sanction': 'アカウントのお知らせ',
@@ -513,7 +514,7 @@ def publish_request(help_request):
     return notify_nearby_helpers(help_request)
 
 
-def _claim(help_request, helper):
+def _claim(help_request, helper, work_mode='remote'):
     """募集人数の枠が残っていれば参加させる。呼び出し側のトランザクション内で行をロックして数える。"""
     locked = HelpRequest.objects.select_for_update().get(pk=help_request.pk)
     if locked.status not in (HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS) \
@@ -523,7 +524,7 @@ def _claim(help_request, helper):
         raise ServiceError('すでに参加しています。')
     if locked.matches.filter(status=Match.Status.IN_PROGRESS).count() >= locked.headcount:
         raise ServiceError('募集人数に達しました。')
-    match = Match.objects.create(help_request=locked, helper=helper)
+    match = Match.objects.create(help_request=locked, helper=helper, work_mode=work_mode)
     if locked.status == HelpRequest.Status.OPEN:
         locked.status = HelpRequest.Status.IN_PROGRESS
         locked.save(update_fields=['status'])
@@ -547,28 +548,34 @@ def _check_can_help(help_request, user):
         raise ServiceError('この依頼は募集を締め切りました。')
 
 
-def accept_first_come(help_request, user):
+def accept_first_come(help_request, user, work_mode='remote'):
     if help_request.mode != HelpRequest.Mode.FIRST_COME:
         raise ServiceError('この依頼は承認制です。応募してください。')
     _check_can_help(help_request, user)
+    if work_mode not in ('qr', 'remote'):
+        work_mode = 'remote'
     with transaction.atomic():
-        match = _claim(help_request, user)
+        match = _claim(help_request, user, work_mode=work_mode)
     notify(help_request.requester, 'matched',
            f'{user.username}さんが「{help_request.title}」を引き受けました', detail_url(help_request))
     return match
 
 
-def apply(help_request, user, message=''):
+def apply(help_request, user, message='', work_mode='qr'):
     if help_request.mode != HelpRequest.Mode.APPROVAL:
         raise ServiceError('この依頼は先着順です。')
     _check_can_help(help_request, user)
+    if work_mode not in ('qr', 'remote'):
+        work_mode = 'qr'
     application, created = Application.objects.get_or_create(
-        help_request=help_request, applicant=user, defaults={'message': message})
+        help_request=help_request, applicant=user,
+        defaults={'message': message, 'work_mode': work_mode})
     if not created:
         if application.status != Application.Status.WITHDRAWN:
             raise ServiceError('すでに応募しています。')
         application.status, application.message = Application.Status.APPLIED, message
-        application.save(update_fields=['status', 'message'])
+        application.work_mode = work_mode
+        application.save(update_fields=['status', 'message', 'work_mode'])
     notify(help_request.requester, 'applied',
            f'「{help_request.title}」に{user.username}さんが応募しました', detail_url(help_request))
     return application
@@ -595,7 +602,7 @@ def approve(application, user):
     if reason:
         raise ServiceError('この応募者は現在お手伝いを受けられません。')
     with transaction.atomic():
-        match = _claim(help_request, application.applicant)
+        match = _claim(help_request, application.applicant, work_mode=application.work_mode)
         application.status = Application.Status.ACCEPTED
         application.save(update_fields=['status'])
         others = []
@@ -674,6 +681,93 @@ def stop_work(match, user):
         raise ServiceError('すでに作業を終了しています。')
     match.work_ended_at = timezone.now()
     match.save(update_fields=['work_ended_at'])
+    return match
+
+
+# ---------- 対面QRタイマー ----------
+
+WORK_QR_SALT = 'work-qr-v1'
+WORK_QR_MAX_AGE = 90  # 秒。表示は30秒ごとに更新され、少しの時計ずれを吸収する
+
+
+def make_work_qr_token(match, phase):
+    """フェーズ( start / end )専用の署名付きトークン。90秒で失効する。"""
+    from django.core import signing
+    return signing.TimestampSigner(salt=WORK_QR_SALT).sign_object(
+        {'m': match.pk, 'p': phase})
+
+
+def parse_work_qr_token(token, max_age=None):
+    """トークンを検証して (match_id, phase) を返す。無効・期限切れは None。"""
+    from django.core import signing
+    try:
+        data = signing.TimestampSigner(salt=WORK_QR_SALT).unsign_object(
+            token, max_age=max_age if max_age is not None else WORK_QR_MAX_AGE)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get('p') not in ('start', 'end'):
+        return None
+    return data.get('m'), data.get('p')
+
+
+def work_qr_svg(match, phase, scan_base_url):
+    """読み取り用URLをQRコード(SVG文字列)にする。"""
+    import qrcode
+    from qrcode.image.svg import SvgPathImage
+    token = make_work_qr_token(match, phase)
+    img = qrcode.make(f'{scan_base_url}/work-qr/{token}/', image_factory=SvgPathImage)
+    from io import BytesIO
+    buf = BytesIO()
+    img.save(buf)
+    return buf.getvalue().decode('utf-8')
+
+
+def qr_phase_for(match, user):
+    """そのユーザーが今QRを表示すべきフェーズ。表示すべきでなければ None。"""
+    if match.work_mode != 'qr' or match.status != Match.Status.IN_PROGRESS:
+        return None
+    if not match.work_started_at and user.pk == match.help_request.requester_id:
+        return 'start'   # 開始QRは依頼者が表示し、ヘルパーが読む
+    if match.work_started_at and not match.work_ended_at and user.pk == match.helper_id:
+        return 'end'     # 終了QRはヘルパーが表示し、依頼者が読む
+    return None
+
+
+def qr_start_work(match, scanner):
+    """開始QRの読み取り:ヘルパーが依頼者のQRを読んで作業開始。"""
+    if match.work_mode != 'qr':
+        raise ServiceError('このマッチングはQR形式ではありません。')
+    if scanner.pk != match.helper_id:
+        raise ServiceError('開始のQRコードは、ヘルパーが読み取るものです。')
+    if match.status != Match.Status.IN_PROGRESS:
+        raise ServiceError('進行中のマッチングではありません。')
+    if match.work_started_at:
+        raise ServiceError('すでに作業を開始しています。')
+    if scanner.is_on_break:
+        raise ServiceError('休会中は利用できません。')
+    match.work_started_at = timezone.now()
+    match.save(update_fields=['work_started_at'])
+    notify(match.help_request.requester, 'work',
+           f'{scanner.username}さんが作業を開始しました', detail_url(match.help_request))
+    return match
+
+
+def qr_stop_work(match, scanner):
+    """終了QRの読み取り:依頼者がヘルパーのQRを読んで作業終了。"""
+    if match.work_mode != 'qr':
+        raise ServiceError('このマッチングはQR形式ではありません。')
+    if scanner.pk != match.help_request.requester_id:
+        raise ServiceError('終了のQRコードは、依頼者が読み取るものです。')
+    if match.status != Match.Status.IN_PROGRESS:
+        raise ServiceError('進行中のマッチングではありません。')
+    if not match.work_started_at:
+        raise ServiceError('まだ作業を開始していません。')
+    if match.work_ended_at:
+        raise ServiceError('すでに作業を終了しています。')
+    match.work_ended_at = timezone.now()
+    match.save(update_fields=['work_ended_at'])
+    notify(match.helper, 'work',
+           '作業が終了しました。お疲れさまでした', detail_url(match.help_request))
     return match
 
 

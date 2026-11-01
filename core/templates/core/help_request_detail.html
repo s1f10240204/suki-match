@@ -138,6 +138,7 @@
                         <button name="decision" value="reject" class="btn btn-ghost btn-sm">却下</button>
                     </form>
                     {% endif %}
+                    {% if p.work_mode == 'qr' %}{% include 'core/_work_qr.html' with wm=p %}{% endif %}
                 </div>
                 {% endfor %}
                 <p class="meta">完了すると上記の時間で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
@@ -161,6 +162,14 @@
             {% if not skill_ok %}<p class="notice">この依頼は指定スキルを持つ方向けです(受けることはできます)。</p>{% endif %}
             <form method="post" action="{% url 'core:accept_help_request' help_request.pk %}">
                 {% csrf_token %}
+                <div class="field field-radioselect">
+                    <label class="field-label">お手伝いの形式</label>
+                    <div class="chips-choice"><div>
+                        <label><input type="radio" name="work_mode" value="qr" checked> 対面（QRで開始・終了）</label>
+                        <label><input type="radio" name="work_mode" value="remote"> 会わない（ボタンで開始・終了）</label>
+                    </div></div>
+                    <p class="help">対面の場合は、会った時にQRコードの読み取りでタイマーが始まります。</p>
+                </div>
                 <button class="btn btn-primary btn-block">お手伝いする(すぐ決定)</button>
             </form>
         {% elif my_application and my_application.status == 'applied' %}
@@ -175,6 +184,7 @@
             <form method="post" action="{% url 'core:apply_help_request' help_request.pk %}" class="form">
                 {% csrf_token %}
                 {% include 'core/_field.html' with field=application_form.message %}
+                {% include 'core/_field.html' with field=application_form.work_mode %}
                 <button class="btn btn-primary btn-block">応募する</button>
             </form>
         {% endif %}

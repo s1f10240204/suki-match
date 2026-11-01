@@ -20,6 +20,11 @@
 
 {% if chat_open and user.pk == match.helper_id %}
 {% include 'core/_work_helper.html' with wm=match %}
+{% elif chat_open and user.pk == match.help_request.requester_id and match.work_mode == 'qr' %}
+<div class="work-panel">
+    <p class="work-title">⏱ 作業時間</p>
+    {% include 'core/_work_qr.html' with wm=match %}
+</div>
 {% endif %}
 
 <div class="chat-hint" id="chat-hint" hidden>

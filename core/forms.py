@@ -228,8 +228,10 @@ class HelpRequestForm(forms.ModelForm):
 class ApplicationForm(forms.ModelForm):
     class Meta:
         model = Application
-        fields = ('message',)
-        widgets = {'message': forms.TextInput(attrs={'placeholder': '例: 近所に住んでいます。子育て経験があります'})}
+        fields = ('message', 'work_mode')
+        labels = {'work_mode': 'お手伝いの形式'}
+        widgets = {'message': forms.TextInput(attrs={'placeholder': '例: 近所に住んでいます。子育て経験があります'}),
+                   'work_mode': forms.RadioSelect}
 
 
 class CancelForm(forms.Form):

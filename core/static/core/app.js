@@ -1561,3 +1561,19 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
         });
     }
 })();
+
+// ---------- 対面QRタイマー(QRコードの自動更新) ----------
+(function () {
+    document.querySelectorAll('[data-qr-box]').forEach(function (box) {
+        var url = box.getAttribute('data-qr-url');
+        if (!url) { return; }
+        function refresh() {
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d && d.svg) { box.innerHTML = d.svg; } })
+                .catch(function () {});
+        }
+        refresh();
+        setInterval(refresh, 25000);
+    });
+})();

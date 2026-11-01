@@ -2967,3 +2967,103 @@ class ServicePolishTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         response = self.client.get(reverse('mfa_activate_totp'), follow=True)
         self.assertEqual(response.status_code, 200)
+
+
+class WorkQRTests(BaseTestCase):
+    """対面QRタイマー:形式選択・トークン検証・読み取りで開始/終了。"""
+
+    def _qr_match(self):
+        requester = make_user('qr_req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        helper = make_user('qr_help')
+        match = services.accept_first_come(hr, helper, work_mode='qr')
+        return requester, hr, helper, match
+
+    def test_mode_choice_saved(self):
+        requester, hr, helper, match = self._qr_match()
+        self.assertEqual(match.work_mode, 'qr')
+        # 既定は従来ボタン形式
+        requester2 = make_user('qr_req2')
+        hr2 = make_request(requester2)
+        helper2 = make_user('qr_help2')
+        match2 = services.accept_first_come(hr2, helper2)
+        self.assertEqual(match2.work_mode, 'remote')
+
+    def test_application_mode_inherited_on_approve(self):
+        requester = make_user('qr_app_req')
+        hr = make_request(requester)
+        hr.mode = HelpRequest.Mode.APPROVAL
+        hr.save(update_fields=['mode'])
+        helper = make_user('qr_app_help')
+        application = services.apply(hr, helper, 'よろしく', work_mode='remote')
+        self.assertEqual(application.work_mode, 'remote')
+        match = services.approve(application, requester)
+        self.assertEqual(match.work_mode, 'remote')
+
+    def test_token_roundtrip_and_tamper(self):
+        requester, hr, helper, match = self._qr_match()
+        token = services.make_work_qr_token(match, 'start')
+        self.assertEqual(services.parse_work_qr_token(token), (match.pk, 'start'))
+        self.assertIsNone(services.parse_work_qr_token(token + 'x'))
+        self.assertIsNone(services.parse_work_qr_token('garbage'))
+
+    def test_qr_start_stop_roles(self):
+        from core.services import ServiceError
+        requester, hr, helper, match = self._qr_match()
+        # 依頼者が開始QRを読んでも開始できない
+        with self.assertRaises(ServiceError):
+            services.qr_start_work(match, requester)
+        services.qr_start_work(match, helper)
+        match.refresh_from_db()
+        self.assertIsNotNone(match.work_started_at)
+        # ヘルパーが終了QRを読んでも終了できない
+        with self.assertRaises(ServiceError):
+            services.qr_stop_work(match, helper)
+        services.qr_stop_work(match, requester)
+        match.refresh_from_db()
+        self.assertIsNotNone(match.work_ended_at)
+
+    def test_qr_code_endpoint_holder_only(self):
+        import json as _json
+        requester, hr, helper, match = self._qr_match()
+        self.client.force_login(requester)
+        response = self.client.get(reverse('core:work_qr_code', args=[match.pk]))
+        data = _json.loads(response.content)
+        self.assertIn('<svg', data['svg'])
+        self.assertEqual(data['phase'], 'start')
+        # ヘルパーは開始フェーズでは表示側ではない
+        self.client.force_login(helper)
+        response = self.client.get(reverse('core:work_qr_code', args=[match.pk]))
+        data = _json.loads(response.content)
+        self.assertEqual(data['svg'], '')
+
+    def test_scan_flow_views(self):
+        requester, hr, helper, match = self._qr_match()
+        token = services.make_work_qr_token(match, 'start')
+        url = reverse('core:work_qr_scan', args=[token])
+        # 依頼者(表示側)が開くと役割エラー
+        self.client.force_login(requester)
+        response = self.client.get(url)
+        self.assertContains(response, 'ヘルパーの方が読み取るものです')
+        # ヘルパー:確認画面→POSTで開始
+        self.client.force_login(helper)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '作業を開始する')
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        match.refresh_from_db()
+        self.assertIsNotNone(match.work_started_at)
+        # 期限切れ・不正トークン
+        response = self.client.get(reverse('core:work_qr_scan', args=['invalid-token']))
+        self.assertContains(response, '有効期限が切れています')
+
+    def test_detail_shows_mode_choice(self):
+        requester = make_user('qr_show_req')
+        hr = make_request(requester)
+        helper = make_user('qr_show_help')
+        self.client.force_login(helper)
+        response = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(response, '対面（QRで開始・終了）')

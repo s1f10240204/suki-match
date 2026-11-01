@@ -1,6 +1,8 @@
 <div class="work-panel">
     <p class="work-title">⏱ 作業時間</p>
-    {% if not wm.work_started_at %}
+    {% if wm.work_mode == 'qr' %}
+        {% include 'core/_work_qr.html' with wm=wm %}
+    {% elif not wm.work_started_at %}
         <form method="post" action="{% url 'core:work_start' wm.pk %}">
             {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
             <button class="btn btn-primary btn-block">▶ 作業開始</button>

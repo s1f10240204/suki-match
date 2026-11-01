@@ -233,7 +233,8 @@ def help_request_detail(request, pk):
 @require_POST
 def accept_help_request(request, pk):
     help_request = get_object_or_404(HelpRequest, pk=pk)
-    _run(request, lambda: services.accept_first_come(help_request, request.user),
+    _run(request, lambda: services.accept_first_come(help_request, request.user,
+                                                     request.POST.get('work_mode', 'remote')),
          'お手伝いが決まりました。チャットで依頼者と連絡を取りましょう。')
     return redirect('core:help_request_detail', pk=pk)
 
@@ -244,7 +245,8 @@ def apply_help_request(request, pk):
     help_request = get_object_or_404(HelpRequest, pk=pk)
     form = ApplicationForm(request.POST)
     if form.is_valid():
-        _run(request, lambda: services.apply(help_request, request.user, form.cleaned_data['message']),
+        _run(request, lambda: services.apply(help_request, request.user, form.cleaned_data['message'],
+                                             form.cleaned_data.get('work_mode', 'qr')),
              '応募しました。依頼者の承認をお待ちください。')
     return redirect('core:help_request_detail', pk=pk)
 
@@ -658,6 +660,54 @@ def account_break(request):
         'has_password': user.has_usable_password(),
         'open_request_count': user.requests.filter(status=HelpRequest.Status.OPEN).count(),
         'error': error,
+    })
+
+
+@login_required
+def work_qr_code(request, pk):
+    """QR表示側:現在のフェーズのQRコード(SVG)を JSON で返す(30秒ごとに更新)。"""
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    phase = services.qr_phase_for(match, request.user)
+    if phase is None:
+        return JsonResponse({'svg': ''})
+    base = request.build_absolute_uri('/')[:-1]
+    return JsonResponse({'svg': services.work_qr_svg(match, phase, base), 'phase': phase})
+
+
+@login_required
+def work_qr_scan(request, token):
+    """QR読み取り側:署名トークンを検証し、確認画面→開始/終了を実行する。"""
+    parsed = services.parse_work_qr_token(token, max_age=600 if request.method == 'POST' else None)
+    if parsed is None:
+        return render(request, 'core/work_qr_scan.html',
+                      {'error': 'QRコードの有効期限が切れています。相手の画面で新しいQRコードを表示してもらってください。'})
+    match_id, phase = parsed
+    match = get_object_or_404(Match.objects.select_related('help_request', 'helper'), pk=match_id)
+    user = request.user
+    if user.pk not in match.participants():
+        return render(request, 'core/work_qr_scan.html',
+                      {'error': 'このマッチングの参加者ではありません。'})
+    if phase == 'start' and user.pk != match.helper_id:
+        return render(request, 'core/work_qr_scan.html',
+                      {'error': 'この開始用QRコードは、ヘルパーの方が読み取るものです。'})
+    if phase == 'end' and user.pk != match.help_request.requester_id:
+        return render(request, 'core/work_qr_scan.html',
+                      {'error': 'この終了用QRコードは、依頼者の方が読み取るものです。'})
+    if request.method == 'POST':
+        try:
+            if phase == 'start':
+                services.qr_start_work(match, user)
+                messages.success(request, '作業を開始しました。タイマーが動いています。')
+            else:
+                services.qr_stop_work(match, user)
+                messages.success(request, '作業を終了しました。お疲れさまでした。')
+        except services.ServiceError as e:
+            messages.error(request, e.message if hasattr(e, 'message') else str(e))
+        return redirect('core:chat', pk=match.pk)
+    return render(request, 'core/work_qr_scan.html', {
+        'match': match, 'phase': phase,
+        'action_label': '作業を開始する' if phase == 'start' else '作業を終了する',
+        'other': match.other_user(user),
     })
 
 

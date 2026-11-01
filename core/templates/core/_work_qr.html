@@ -1,0 +1,21 @@
+{# 対面QRタイマーの状態表示(依頼者・ヘルパー共通の断片)。wm=Match #}
+{% if not wm.work_started_at %}
+    {% if user.pk == wm.help_request.requester_id %}
+        <p class="meta">📷 ヘルパーが到着したら、このQRコードを読み取ってもらってください。読み取ると作業が開始します。</p>
+        <div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div>
+        <p class="meta">QRコードは30秒ごとに切り替わります（スクリーンショットでは開始できません）。</p>
+    {% else %}
+        <p class="meta">📷 会った時に、依頼者のQRコードをスマホのカメラで読み取ってください。読み取ると作業が開始します。</p>
+    {% endif %}
+{% elif not wm.work_ended_at %}
+    <p class="work-live">作業中…<span data-elapsed-since="{{ wm.work_started_at|date:'c' }}"></span></p>
+    {% if user.pk == wm.helper_id %}
+        <p class="meta">📷 終わったら、このQRコードを依頼者に読み取ってもらってください。</p>
+        <div class="qr-box" data-qr-box data-qr-url="{% url 'core:work_qr_code' wm.pk %}"><p class="meta">QRコードを読み込んでいます…</p></div>
+        <p class="meta">QRコードは30秒ごとに切り替わります。</p>
+    {% else %}
+        <p class="meta">📷 終わったら、ヘルパーのQRコードを読み取ってください。</p>
+    {% endif %}
+{% else %}
+    <p class="work-done">実測時間: 約{{ wm.work_basis }}分（この時間で精算されます）</p>
+{% endif %}

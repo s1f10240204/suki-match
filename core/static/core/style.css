@@ -837,3 +837,7 @@ body.simple-ui .chat-hint { font-size: 1.08rem; }
 /* レビューへの返信 */
 .review-reply { background: var(--primary-soft, #eef4ee); border-radius: 8px; padding: 8px 10px; font-size: .92em; }
 .reply-form summary { cursor: pointer; color: var(--muted); font-size: .9em; margin-top: 4px; }
+
+/* 対面QRタイマー */
+.qr-box { display: flex; justify-content: center; padding: 10px 0; }
+.qr-box svg { width: 220px; height: 220px; max-width: 72vw; max-height: 72vw; background: #fff; border-radius: 12px; }

@@ -276,6 +276,25 @@ def push(group, payload):
         async_to_sync(layer.group_send)(group, payload)
 
 
+PUSH_TITLES = {
+    'message': '新しいメッセージ',
+    'applied': 'お手伝いの申し込み',
+    'matched': 'マッチングしました',
+    'completed': 'お手伝い完了',
+    'canceled': 'キャンセルのお知らせ',
+    'rejected': '応募のお知らせ',
+    'expired': '依頼の期限切れ',
+    'tip': 'チップが届きました',
+    'points': 'ポイントのお知らせ',
+    'schedule_reminder': '予定のリマインダー',
+    'inquiry_reply': 'お問い合わせへの回答',
+    'photo': '顔写真の審査',
+    'photo_duplicate': '写真の重複検出',
+    'sanction': 'アカウントのお知らせ',
+    'staff_switch': 'アカウント切替',
+}
+
+
 def notify(user, kind, text, url=''):
     """通知履歴に残し、接続中ならWebSocketでも届ける。LINE・プッシュは設定に応じて送る。"""
     notification = Notification.objects.create(user=user, kind=kind, text=text[:200], url=url)
@@ -285,9 +304,10 @@ def notify(user, kind, text, url=''):
         return notification  # 管理者が通知を止めている場合は外部通知を送らない
     line_api.maybe_notify(user, kind, notification.text, url)
     if kind != 'nearby_request' and setting.push_activity:
-        # タイトルは空にする(iOSはヘッダーにアプリ名 suki-match を出すため、
-        # タイトルにも suki-match を入れると「from suki-match」と重複表示される)
-        send_web_push(user, '', notification.text, url)
+        # iOS の Web Push は「タイトル行 + from アプリ名(システム固定・変更不可) +
+        # 本文」の形で表示される。タイトルを空にすると iOS がアプリ名で補完して
+        # 「suki-match / from suki-match」と重複して見えるため、種類別の文言を入れる。
+        send_web_push(user, PUSH_TITLES.get(kind, 'お知らせ'), notification.text, url)
     return notification
 
 

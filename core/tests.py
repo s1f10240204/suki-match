@@ -592,6 +592,15 @@ class ImprovementBatchTests(BaseTestCase):
         push_mock.assert_not_called()
         self.assertEqual(user.notifications.count(), 1)  # アプリ内履歴は残る
 
+    def test_push_title_by_kind(self):
+        user = make_user('pushtitle')
+        with mock.patch.object(services.line_api, 'maybe_notify'),                 mock.patch.object(services, 'send_web_push') as push_mock:
+            services.notify(user, 'message', 'こんにちは', '/')
+        self.assertEqual(push_mock.call_args[0][1], '新しいメッセージ')
+        with mock.patch.object(services.line_api, 'maybe_notify'),                 mock.patch.object(services, 'send_web_push') as push_mock:
+            services.notify(user, 'inquiry_reply', '回答しました', '/')
+        self.assertEqual(push_mock.call_args[0][1], 'お問い合わせへの回答')
+
     def test_push_subscribe_endpoints(self):
         user = make_user('pushy')
         self.client.force_login(user)

@@ -135,6 +135,16 @@ class HelpRequestForm(forms.ModelForm):
     headcount_custom = forms.IntegerField(
         label='人数(5人以上)', required=False, min_value=5, max_value=20,
         widget=forms.NumberInput(attrs={'inputmode': 'numeric', 'placeholder': '例: 6'}))
+    work_mode_pref = forms.ChoiceField(
+        label='お手伝いの形式', required=False, initial='any',
+        choices=[('any', 'おまかせ（お手伝いする人が選ぶ）'),
+                 ('qr', '対面のみ（QRで開始・終了）'),
+                 ('remote', '会わないのみ（ボタンで開始・終了）')],
+        widget=forms.RadioSelect,
+        help_text='「対面のみ」「会わないのみ」を選ぶと、その依頼の形式が固定されます。')
+
+    def clean_work_mode_pref(self):
+        return self.cleaned_data.get('work_mode_pref') or 'any'
 
     class Meta:
         model = HelpRequest
@@ -143,7 +153,6 @@ class HelpRequestForm(forms.ModelForm):
                   'work_mode_pref')
         widgets = {
             'mode': forms.RadioSelect,
-            'work_mode_pref': forms.RadioSelect,
             'preset_tags': forms.CheckboxSelectMultiple,
             'description': forms.Textarea(attrs={'rows': 3, 'placeholder': '定型タグだけでもOKです'}),
             'scheduled_for': forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),

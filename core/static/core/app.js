@@ -1379,7 +1379,13 @@
     document.querySelectorAll('[data-sticky-save]').forEach(function (bar) {
         var form = bar.closest('form');
         if (!form) { return; }
-        var show = function () { bar.hidden = false; requestAnimationFrame(function () { bar.classList.add('show'); }); };
+        var show = function () {
+            bar.hidden = false;
+            requestAnimationFrame(function () { bar.classList.add('show'); });
+            // バーが出たら、フォーム内の一番下の保存ボタンは役目交代で隠す
+            var inline = form.querySelector('[data-inline-save]');
+            if (inline) { inline.hidden = true; }
+        };
         form.addEventListener('input', show);
         form.addEventListener('change', show);
     });

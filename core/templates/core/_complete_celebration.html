@@ -1,0 +1,33 @@
+{% if celebration %}
+<div class="modal-overlay celebrate-overlay" data-celebrate data-key="{{ celebration.key }}"{% if celebrate_force %} data-force="1"{% endif %} hidden>
+    <div class="modal-card celebrate-card" role="dialog" aria-modal="true" aria-label="お仕事完了">
+        <div class="celebrate-check" aria-hidden="true">✓</div>
+        <p class="celebrate-emojis" aria-hidden="true"><span>🎉</span><span>✨</span><span>🎊</span><span>✨</span></p>
+        <h2 class="celebrate-title">お仕事が完了しました！</h2>
+        <p class="celebrate-req">「{{ help_request.title }}」</p>
+        {% for row in celebration.rows %}
+        <p class="celebrate-row">{{ row.name }}さん{% if row.minutes %} ・ 約{{ row.minutes }}分{% endif %}{% if row.points %} ・ {% if celebration.role == 'requester' %}お支払い{% else %}獲得{% endif %} <strong>{{ row.points }}pt</strong>{% endif %}</p>
+        {% endfor %}
+        {% if celebration.role == 'requester' and celebration.rows|length > 1 %}
+        <p class="celebrate-row celebrate-total">合計 <strong>{{ celebration.total_points }}pt</strong> をお支払いしました</p>
+        {% endif %}
+        <div class="celebrate-actions">
+            {% if celebrate_from == 'chat' %}
+            <a href="{% url 'core:help_request_detail' help_request.pk %}#review-form" class="btn btn-primary btn-block">レビューを書く</a>
+            <a href="{% url 'core:help_request_detail' help_request.pk %}" class="btn btn-outline btn-block">依頼の詳細を見る</a>
+            {% else %}
+            {% if review_form %}
+            <a href="#review-form" class="btn btn-primary btn-block" data-celebrate-close>レビューを書く</a>
+            {% endif %}
+            {% if celebration.role == 'requester' and celebrate_has_untipped %}
+            <a href="#tip-section" class="btn btn-outline btn-block" data-celebrate-close>🎁 お礼にチップを渡す</a>
+            {% endif %}
+            {% if match %}
+            <a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを見る</a>
+            {% endif %}
+            {% endif %}
+            <button type="button" class="btn btn-ghost btn-block" data-celebrate-close>閉じる</button>
+        </div>
+    </div>
+</div>
+{% endif %}

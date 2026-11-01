@@ -900,3 +900,26 @@ label.radio-row { display: flex; align-items: center; gap: 10px; flex: 1; min-wi
 .qr-scanner-close { background: #fff; color: #222; border: none; border-radius: 999px; padding: 10px 16px; font-weight: 700; font-size: 1rem; cursor: pointer; }
 .qr-scanner-frame { position: absolute; top: 50%; left: 50%; width: min(72vw, 300px); aspect-ratio: 1; transform: translate(-50%, -58%); border: 3px solid #fff; border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .38); z-index: 1; pointer-events: none; }
 .qr-scanner-status { position: absolute; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); margin: 0; padding: 12px 16px; background: rgba(0, 0, 0, .72); color: #fff; border-radius: 12px; text-align: center; z-index: 2; }
+
+/* ---------- 完了セレブレーション ---------- */
+.celebrate-card { text-align: center; padding-top: 30px; }
+.celebrate-check {
+    width: 76px; height: 76px; margin: 0 auto 6px; border-radius: 50%;
+    background: var(--primary); color: #fff; font-size: 2.4rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 26px rgba(76, 139, 107, .35);
+    animation: celebrate-pop .45s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+@keyframes celebrate-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.celebrate-emojis { margin: 2px 0 0; font-size: 1.35rem; letter-spacing: .35em; }
+.celebrate-emojis span { display: inline-block; animation: celebrate-float 1.6s ease-in-out infinite; }
+.celebrate-emojis span:nth-child(2) { animation-delay: .2s; }
+.celebrate-emojis span:nth-child(3) { animation-delay: .4s; }
+.celebrate-emojis span:nth-child(4) { animation-delay: .6s; }
+@keyframes celebrate-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.celebrate-title { font-size: 1.55rem; margin: 8px 0 2px; color: var(--primary-dark); }
+body.simple-ui .celebrate-title { font-size: 1.8rem; }
+.celebrate-req { font-weight: 700; margin: 2px 0 6px; overflow-wrap: anywhere; }
+.celebrate-row { margin: 2px 0; color: var(--ink-soft, #5a5142); }
+.celebrate-total { font-size: 1.05rem; color: inherit; }
+.celebrate-actions { margin-top: 16px; display: grid; gap: 10px; }

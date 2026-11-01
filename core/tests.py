@@ -249,6 +249,26 @@ class MatchingTests(BaseTestCase):
         helper.refresh_from_db()
         self.assertEqual(helper.points, 12)
 
+    def test_completion_celebration_shown_to_both(self):
+        requester, helper = make_user('creq'), make_user('chelper')
+        hr = make_request(requester)
+        services.accept_first_come(hr, helper)
+        self.client.force_login(requester)
+        response = self.client.post(reverse('core:complete_help_request', args=[hr.pk]))
+        self.assertTrue(response.url.endswith('?completed=1'))  # 完了直後は必ず表示
+        page = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(page, 'data-celebrate')
+        self.assertContains(page, 'お仕事が完了しました！')
+        self.assertContains(page, 'req-%d' % hr.pk)
+        # ヘルパーにも詳細とチャットで表示される
+        self.client.force_login(helper)
+        page = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(page, 'data-celebrate')
+        self.assertContains(page, '獲得')
+        match = hr.matches.get(helper=helper)
+        page = self.client.get(reverse('core:chat', args=[match.pk]))
+        self.assertContains(page, 'data-celebrate')
+
 
 class CancelPenaltyTests(BaseTestCase):
     def setUp(self):

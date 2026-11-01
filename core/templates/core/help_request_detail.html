@@ -206,7 +206,7 @@
     {% endif %}
 
     {% if is_requester and help_request.status == 'done' and done_matches %}
-        <div class="tip-box">
+        <div class="tip-box" id="tip-section">
             <h2 class="section-title">お礼のチップ</h2>
             <p class="meta">感謝の気持ちをポイントで伝えられます（あなたの残高 {{ user.points }}pt）。</p>
             {% for dm in done_matches %}
@@ -230,7 +230,7 @@
     {% endif %}
 
     {% if review_form %}
-        <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form">
+        <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form" id="review-form">
             {% csrf_token %}
             <h2 class="section-title">{{ review_target.username }}さんを評価する</h2>
             {% include 'core/_field.html' with field=review_form.rating %}
@@ -267,6 +267,8 @@
 {% if user.is_authenticated and not is_requester %}
     <p class="report-link"><a href="{% url 'core:report_user' help_request.requester.username %}?request={{ help_request.pk }}">この依頼を通報する</a></p>
 {% endif %}
+
+{% include 'core/_complete_celebration.html' %}
 
 {% if tip_dialog %}
 <div class="modal-overlay" data-tip-dialog>

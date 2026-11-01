@@ -64,4 +64,5 @@
 {% else %}
     <p class="notice">このチャットは終了したため、送信できません。{% if retention_deadline %}履歴は{{ retention_deadline|date:"n/j H:i" }}まで保存されます。{% endif %}</p>
 {% endif %}
+{% include 'core/_complete_celebration.html' %}
 {% endblock %}

@@ -41,6 +41,22 @@ def _run(request, action, success=''):
     return result
 
 
+def _celebration(user, help_request, matches, key, role):
+    """完了セレブレーション表示用のデータ(相手・分数・ポイント)。"""
+    rows = []
+    for m in matches:
+        earned = (PointTransaction.objects.filter(
+            help_request=help_request, user=m.helper,
+            kind=PointTransaction.Kind.EARNED).aggregate(t=Sum('amount'))['t'] or 0)
+        rows.append({
+            'name': m.helper.username if role == 'requester' else help_request.requester.username,
+            'minutes': services.effective_minutes(m, help_request, timezone.now()),
+            'points': earned,
+        })
+    return {'key': key, 'role': role, 'rows': rows,
+            'total_points': sum(r['points'] for r in rows)}
+
+
 def _viewpoints(user):
     """距離の基準点: 現在地と活動拠点。"""
     points = [(user.latitude, user.longitude)] if user.has_location else []
@@ -227,6 +243,16 @@ def help_request_detail(request, pk):
             dm.tipped = dm.helper_id in tipped_ids
         context['done_matches'] = done_matches
         context['tip_dialog'] = request.GET.get('tipped') == '1'
+        context['celebration'] = _celebration(user, help_request, done_matches,
+                                              f'req-{help_request.pk}', 'requester')
+        context['celebrate_force'] = request.GET.get('completed') == '1'
+        context['celebrate_has_untipped'] = any(not dm.tipped for dm in done_matches)
+    elif user.is_authenticated and help_request.status == HelpRequest.Status.DONE:
+        own_done = help_request.matches.filter(
+            helper=user, status=Match.Status.DONE).select_related('helper').first()
+        if own_done is not None:
+            context['celebration'] = _celebration(user, help_request, [own_done],
+                                                  f'match-{own_done.pk}', 'helper')
     context['can_repost'] = is_requester and help_request.status in (
         HelpRequest.Status.DONE, HelpRequest.Status.CANCELED, HelpRequest.Status.EXPIRED)
     if match is not None and (is_requester or is_helper):
@@ -341,7 +367,11 @@ def complete_help_request(request, pk):
     help_request = get_object_or_404(HelpRequest, pk=pk)
     _run(request, lambda: services.complete(help_request, request.user),
          '完了しました。お相手のレビューをお願いします。')
-    return redirect('core:help_request_detail', pk=pk)
+    help_request.refresh_from_db()
+    url = reverse('core:help_request_detail', args=[pk])
+    if help_request.status == HelpRequest.Status.DONE:
+        url += '?completed=1'
+    return redirect(url)
 
 
 @login_required
@@ -424,8 +454,14 @@ def chat(request, pk):
     members = [help_request.requester] + [m.helper for m in
                                           help_request.matches.exclude(status=Match.Status.CANCELED)
                                           .select_related('helper').order_by('created_at')]
+    celebration = None
+    if match.status == Match.Status.DONE:
+        role = 'requester' if request.user.pk == help_request.requester_id else 'helper'
+        celebration = _celebration(request.user, help_request, [match],
+                                   f'match-{match.pk}', role)
     return render(request, 'core/chat.html', {
         'match': match, 'help_request': help_request, 'other': match.other_user(request.user),
+        'celebration': celebration, 'celebrate_from': 'chat',
         'chat_messages': chat_messages, 'chat_open': services.chat_is_open(match), 'form': form,
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),

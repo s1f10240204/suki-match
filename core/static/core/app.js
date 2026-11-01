@@ -1742,3 +1742,28 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
     });
     overlay.querySelector('[data-qr-scan-close]').addEventListener('click', close);
 })();
+
+// 完了セレブレーション: 完了直後(?completed=1)は必ず表示、それ以外は1回だけ表示する。
+(function () {
+    var box = document.querySelector('[data-celebrate]');
+    if (!box) return;
+    var key = 'sukiCelebrated:' + box.getAttribute('data-key');
+    var force = box.getAttribute('data-force') === '1';
+    var seen = false;
+    try { seen = !!localStorage.getItem(key); } catch (e) {}
+    if (force || !seen) box.hidden = false;
+    if (force) {
+        try {
+            var url = new URL(location.href);
+            url.searchParams.delete('completed');
+            history.replaceState(null, '', url.pathname + url.search + url.hash);
+        } catch (e) {}
+    }
+    function close() {
+        box.hidden = true;
+        try { localStorage.setItem(key, '1'); } catch (e) {}
+    }
+    box.addEventListener('click', function (e) {
+        if (e.target === box || e.target.closest('[data-celebrate-close]')) close();
+    });
+})();

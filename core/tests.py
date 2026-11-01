@@ -538,6 +538,35 @@ class MultiHelperTests(BaseTestCase):
 
 
 class ImprovementBatchTests(BaseTestCase):
+    def test_google_linked_iniad_exempts_without_verified_emailaddress(self):
+        from allauth.socialaccount.models import SocialAccount
+        user = make_user('googiniad', avatar='', avatar_status=User.PhotoStatus.NONE)
+        user.email = 'googiniad@iniad.org'
+        user.save()
+        SocialAccount.objects.create(user=user, provider='google', uid='g-1')
+        self.assertTrue(services.photo_exempt(user))
+        self.assertEqual(services.photo_block_reason(user), '')
+        # Google 連携がなければ免除されない
+        other = make_user('plaininiad', avatar='', avatar_status=User.PhotoStatus.NONE)
+        other.email = 'plaininiad@iniad.org'
+        other.save()
+        self.assertFalse(services.photo_exempt(other))
+
+    def test_pre_social_login_syncs_verified_iniad_email(self):
+        from allauth.account.models import EmailAddress
+        from allauth.socialaccount.models import SocialAccount, SocialLogin
+        from core.signals import _on_pre_social_login
+        user = make_user('synciniad', avatar='', avatar_status=User.PhotoStatus.NONE)
+        user.email = 'synciniad@iniad.org'
+        user.save()
+        account = SocialAccount(user=user, provider='google', uid='g-2')
+        login = SocialLogin(account=account, user=user)
+        login.email_addresses = [EmailAddress(email='synciniad@iniad.org', verified=True, primary=True)]
+        _on_pre_social_login(None, login)
+        self.assertTrue(EmailAddress.objects.filter(
+            user=user, email='synciniad@iniad.org', verified=True).exists())
+        self.assertTrue(services.photo_exempt(user))
+
     def test_iniad_verified_email_exempts_photo_gate(self):
         from allauth.account.models import EmailAddress
         user = make_user('iniadok', avatar='', avatar_status=User.PhotoStatus.NONE)

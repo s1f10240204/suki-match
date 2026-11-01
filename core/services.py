@@ -135,7 +135,15 @@ def is_suspicious(user):
 def photo_exempt(user):
     """@iniad.org のメール認証が済んだアカウントは、大学で本人確認済みとして顔写真なしでも使える。"""
     from allauth.account.models import EmailAddress
-    return EmailAddress.objects.filter(user=user, verified=True, email__iendswith='@iniad.org').exists()
+    if EmailAddress.objects.filter(user=user, verified=True, email__iendswith='@iniad.org').exists():
+        return True
+    # Google ログインはメールの所有確認済みとして扱う設定(VERIFIED_EMAIL=True)。
+    # 後から Google を連携したケースでは確認済み EmailAddress が作られないことがあるため、
+    # Google 連携済みで登録メールが @iniad.org の場合も免除する。
+    if user.email and user.email.lower().endswith('@iniad.org'):
+        from allauth.socialaccount.models import SocialAccount
+        return SocialAccount.objects.filter(user=user, provider='google').exists()
+    return False
 
 
 def photo_block_reason(user):

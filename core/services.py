@@ -973,6 +973,33 @@ def register_invite_code(user, code):
     return referrer
 
 
+def grant_starter_points(user):
+    """新規登録のスターター100ptを付与する(冪等)。
+
+    フォーム登録は AccountAdapter.save_user が付与するが、Google/LINE の
+    ソーシャル登録(自動サインアップ)はアダプタを通らないため付与漏れになる。
+    シグナル側からこの関数で救済する。二重付与は台帳の STARTER 記録で防ぎ、
+    登録から10分以上経ったユーザー(後付け連携など)には付与しない。
+    """
+    from datetime import timedelta
+
+    from .adapters import STARTER_POINTS
+    from .models import PointTransaction
+    if user is None or not getattr(user, 'pk', None):
+        return False
+    if timezone.now() - user.date_joined > timedelta(minutes=10):
+        return False
+    if PointTransaction.objects.filter(
+            user=user, kind=PointTransaction.Kind.STARTER).exists():
+        return False
+    user.points = (user.points or 0) + STARTER_POINTS
+    user.save(update_fields=['points'])
+    PointTransaction.objects.create(
+        user=user, amount=STARTER_POINTS, balance_after=user.points,
+        kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
+    return True
+
+
 def referral_gate_passed(user):
     """招待ボーナスの参加条件：顔写真の承認済み、または写真免除(大学メール確認済み)。"""
     return bool(user.photo_approved or photo_exempt(user))

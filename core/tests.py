@@ -567,6 +567,42 @@ class ImprovementBatchTests(BaseTestCase):
             user=user, email='synciniad@iniad.org', verified=True).exists())
         self.assertTrue(services.photo_exempt(user))
 
+    def test_social_signup_gets_starter_points(self):
+        """ソーシャル登録(アダプタを通らない)でも初回ログインでスターター100ptが付くこと。
+
+        social_account_added は connect 時にしか送られないため、救済は
+        user_logged_in 側の _on_login で行う(あわせてログインボーナス+2も入る)。
+        """
+        from core.signals import _on_login
+        user = User.objects.create_user('social_new', email='new@example.jp')
+        self.assertEqual(user.points, 0)
+        _on_login(User, None, user)
+        user.refresh_from_db()
+        self.assertEqual(user.points, 102)  # スターター100 + ログインボーナス2
+        from core.models import PointTransaction
+        self.assertTrue(PointTransaction.objects.filter(
+            user=user, kind=PointTransaction.Kind.STARTER).exists())
+        _on_login(User, None, user)  # 二重付与されない
+        user.refresh_from_db()
+        self.assertEqual(user.points, 102)
+
+    def test_old_user_connecting_social_gets_no_starter(self):
+        """登録から時間が経ったユーザーの後付け連携ではスターターは付かないこと。"""
+        from datetime import timedelta
+
+        from allauth.socialaccount.models import SocialAccount, SocialLogin
+        from django.utils import timezone as djtz
+
+        from core.signals import _on_social_added
+        user = User.objects.create_user('old_conn', email='old@example.jp')
+        User.objects.filter(pk=user.pk).update(
+            date_joined=djtz.now() - timedelta(days=30))
+        user.refresh_from_db()
+        account = SocialAccount(user=user, provider='google', uid='g-11')
+        _on_social_added(None, SocialLogin(user=user, account=account))
+        user.refresh_from_db()
+        self.assertEqual(user.points, 0)
+
     def test_iniad_verified_email_exempts_photo_gate(self):
         from allauth.account.models import EmailAddress
         user = make_user('iniadok', avatar='', avatar_status=User.PhotoStatus.NONE)
@@ -2178,12 +2214,13 @@ class PointsEarnTests(BaseTestCase):
         user = User.objects.create_user(username='lgb2', password='V3ry-Str0ng-Pass!')
         self.assertTrue(self.client.login(username='lgb2', password='V3ry-Str0ng-Pass!'))
         user.refresh_from_db()
-        self.assertEqual(user.points, 2)
+        # スターター救済+100(台帳に無い作成直後ユーザーのため) + ログインボーナス2
+        self.assertEqual(user.points, 102)
         self.assertEqual(user.last_login_bonus_date, timezone.localdate())
         self.client.logout()
         self.assertTrue(self.client.login(username='lgb2', password='V3ry-Str0ng-Pass!'))
         user.refresh_from_db()
-        self.assertEqual(user.points, 2)  # 同日2回目は付与されない
+        self.assertEqual(user.points, 102)  # 同日2回目はどちらも付与されない
 
     # ---- ポイントページ ----
     def test_points_page_shows_earn_hub(self):

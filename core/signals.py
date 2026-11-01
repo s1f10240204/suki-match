@@ -47,6 +47,11 @@ def _on_pre_social_login(request, sociallogin, **kwargs):
 @receiver(social_account_added)
 def _on_social_added(request, sociallogin, **kwargs):
     _sync_line_user_id(sociallogin.user)
+    try:
+        from . import services
+        services.grant_starter_points(sociallogin.user)
+    except Exception:
+        pass  # 付与の失敗でログイン自体を止めない
 
 
 @receiver(social_account_updated)
@@ -68,6 +73,10 @@ def _on_login(sender, request, user, **kwargs):
             apply_referral(request, user)
             if user.referred_by_id is not None:
                 user.save(update_fields=['referred_by'])
+    try:
+        services.grant_starter_points(user)  # ソーシャル登録で漏れた場合の救済(冪等)
+    except Exception:
+        pass
     try:
         services.grant_login_bonus(user)
     except Exception:

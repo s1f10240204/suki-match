@@ -1592,3 +1592,70 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
     if (btn) btn.addEventListener('click', close);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
 })();
+
+// 同じページでの切り替え(タブ・表示範囲・送信後の再表示)ではスクロール位置を保つ。
+// 一番上に戻ってしまう煩わしさの解消用。チャットと認証まわりは対象外。
+(function () {
+    var KEY = 'sukiScrollRestore';
+    function excluded(path) {
+        return path.indexOf('/chat/') !== -1 || path.indexOf('/accounts/') === 0;
+    }
+    // --- 復元 ---
+    try {
+        var raw = sessionStorage.getItem(KEY);
+        if (raw && !location.hash && !excluded(location.pathname)) {
+            var data = JSON.parse(raw);
+            var fresh = data && (Date.now() - data.t < 10 * 60 * 1000);
+            var hit = data && (data.key === location.pathname + location.search ||
+                               (data.loose && data.key === location.pathname));
+            if (fresh && hit) {
+                sessionStorage.removeItem(KEY);
+                var y = data.y || 0;
+                var cancelled = false;
+                ['wheel', 'touchmove', 'keydown'].forEach(function (ev) {
+                    window.addEventListener(ev, function () { cancelled = true; }, { passive: true, once: true });
+                });
+                var restore = function () { if (!cancelled) window.scrollTo(0, y); };
+                document.addEventListener('DOMContentLoaded', restore);
+                window.addEventListener('load', restore);
+                setTimeout(restore, 350);
+            }
+        }
+    } catch (e) {}
+    // --- 保存 ---
+    function save(key, loose) {
+        try {
+            sessionStorage.setItem(KEY, JSON.stringify({
+                key: key, loose: !!loose,
+                y: window.scrollY || window.pageYOffset || 0,
+                t: Date.now()
+            }));
+        } catch (e) {}
+    }
+    document.addEventListener('click', function (e) {
+        var a = e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+        var url;
+        try { url = new URL(a.href, location.href); } catch (err) { return; }
+        if (url.origin !== location.origin || url.hash) return;
+        if (url.pathname === location.pathname && url.href !== location.href && !excluded(url.pathname)) {
+            save(url.pathname + url.search, false);
+        }
+    });
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        var action;
+        try { action = new URL(form.action || location.href, location.href); } catch (err) { return; }
+        if (action.origin !== location.origin || excluded(location.pathname)) return;
+        var method = (form.method || 'get').toLowerCase();
+        if (action.pathname === location.pathname) {
+            save(location.pathname, true);
+        } else if (method === 'post' && (/^\/\d+\/$/.test(location.pathname) ||
+                   location.pathname.indexOf('/me/') === 0 ||
+                   location.pathname.indexOf('/users/') === 0 ||
+                   location.pathname.indexOf('/support') === 0)) {
+            // 詳細・設定・ポイント等は送信後に同じページへ戻ることが多い
+            save(location.pathname, true);
+        }
+    });
+})();

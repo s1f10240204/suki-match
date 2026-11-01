@@ -1142,6 +1142,11 @@ class PointsEconomyTests(BaseTestCase):
     def _funded(self, name, points):
         user = make_user(name)
         User.objects.filter(pk=user.pk).update(points=points)
+        # 登録済みユーザーの再現:スターター台帳があるのでログイン時の救済付与は走らない
+        from .models import PointTransaction
+        PointTransaction.objects.create(
+            user=user, amount=100, balance_after=points,
+            kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
         user.refresh_from_db()
         return user
 
@@ -1397,6 +1402,9 @@ class WorkTimerTests(BaseTestCase):
         hr = make_request(requester, duration_minutes=duration)
         services.publish_request(hr)
         helper = make_user(f'{name}help')
+        PointTransaction.objects.create(
+            user=helper, amount=100, balance_after=helper.points,
+            kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
         match = services.accept_first_come(hr, helper)
         return requester, hr, helper, match
 
@@ -1835,10 +1843,17 @@ class TipTests(BaseTestCase):
     def _completed(self, name, requester_points=100):
         requester = make_user(f'{name}req')
         User.objects.filter(pk=requester.pk).update(points=requester_points)
+        from .models import PointTransaction
+        PointTransaction.objects.create(
+            user=requester, amount=100, balance_after=requester_points,
+            kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
         requester.refresh_from_db()
         hr = make_request(requester, duration_minutes=15)
         services.publish_request(hr)
         helper = make_user(f'{name}help')
+        PointTransaction.objects.create(
+            user=helper, amount=100, balance_after=helper.points,
+            kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
         match = services.accept_first_come(hr, helper)
         services.complete(hr, requester)
         requester.refresh_from_db()

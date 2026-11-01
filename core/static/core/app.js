@@ -1306,42 +1306,92 @@
         var file = input.files && input.files[0];
         if (file && /^image\//.test(file.type)) { open(file); }
     });
-    var drag = null;
+    var toLocal = function (clientX, clientY) {
+        var r = viewport.getBoundingClientRect();
+        return { x: clientX - r.left, y: clientY - r.top };
+    };
+    // anchor(画面上の点)が動かないように scale を変える
+    var applyZoom = function (newScale, anchor) {
+        newScale = Math.min(3, Math.max(1, newScale));
+        var imgX = (anchor.x - state.x) / (state.base * state.scale);
+        var imgY = (anchor.y - state.y) / (state.base * state.scale);
+        state.scale = newScale;
+        state.x = anchor.x - imgX * state.base * state.scale;
+        state.y = anchor.y - imgY * state.base * state.scale;
+        zoom.value = String(state.scale);
+        clampPos(); draw();
+    };
+    var centerAnchor = function () {
+        var vw = viewport.clientWidth;
+        return { x: vw / 2, y: vw / 2 };
+    };
+    var pointers = new Map();
+    var pinchStart = null;
     viewport.addEventListener('pointerdown', function (e) {
-        drag = { x: e.clientX, y: e.clientY, ox: state.x, oy: state.y };
-        viewport.setPointerCapture(e.pointerId);
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+        if (pointers.size === 2) {
+            var pts = Array.from(pointers.values());
+            var mid = toLocal((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
+            pinchStart = {
+                d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+                scale: state.scale,
+                imgX: (mid.x - state.x) / (state.base * state.scale),
+                imgY: (mid.y - state.y) / (state.base * state.scale),
+            };
+        }
     });
     viewport.addEventListener('pointermove', function (e) {
-        if (!drag) { return; }
-        state.x = drag.ox + (e.clientX - drag.x);
-        state.y = drag.oy + (e.clientY - drag.y);
-        clampPos(); draw();
+        if (!pointers.has(e.pointerId)) { return; }
+        var prev = pointers.get(e.pointerId);
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 1) {
+            state.x += e.clientX - prev.x;
+            state.y += e.clientY - prev.y;
+            clampPos(); draw();
+        } else if (pointers.size === 2 && pinchStart) {
+            var pts = Array.from(pointers.values());
+            var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            var mid = toLocal((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
+            var newScale = Math.min(3, Math.max(1, pinchStart.scale * d / pinchStart.d));
+            state.scale = newScale;
+            state.x = mid.x - pinchStart.imgX * state.base * state.scale;
+            state.y = mid.y - pinchStart.imgY * state.base * state.scale;
+            zoom.value = String(state.scale);
+            clampPos(); draw();
+        }
     });
     ['pointerup', 'pointercancel'].forEach(function (ev) {
-        viewport.addEventListener(ev, function () { drag = null; });
+        viewport.addEventListener(ev, function (e) {
+            pointers.delete(e.pointerId);
+            if (pointers.size < 2) { pinchStart = null; }
+        });
     });
-    var pinch = null;
-    viewport.addEventListener('touchmove', function (e) {
-        if (e.touches.length === 2) {
-            e.preventDefault();
-            var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-            if (pinch) {
-                state.scale = Math.min(3, Math.max(1, state.scale * d / pinch));
-                zoom.value = String(state.scale);
-                clampPos(); draw();
-            }
-            pinch = d;
-        }
+    viewport.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        applyZoom(state.scale * (e.deltaY < 0 ? 1.12 : 0.89), toLocal(e.clientX, e.clientY));
     }, { passive: false });
-    viewport.addEventListener('touchend', function () { pinch = null; });
     zoom.addEventListener('input', function () {
-        var vw = viewport.clientWidth;
-        var cx = (vw / 2 - state.x) / state.scale, cy = (vw / 2 - state.y) / state.scale;
-        state.scale = Number(zoom.value);
-        state.x = vw / 2 - cx * state.scale;
-        state.y = vw / 2 - cy * state.scale;
-        clampPos(); draw();
+        applyZoom(Number(zoom.value), centerAnchor());
     });
+    var zoomStep = function (delta) {
+        applyZoom(state.scale + delta, centerAnchor());
+    };
+    var zoomIn = document.getElementById('crop-zoom-in');
+    var zoomOut = document.getElementById('crop-zoom-out');
+    var resetBtn = document.getElementById('crop-reset');
+    if (zoomIn) { zoomIn.addEventListener('click', function () { zoomStep(0.25); }); }
+    if (zoomOut) { zoomOut.addEventListener('click', function () { zoomStep(-0.25); }); }
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+            var vw = viewport.clientWidth;
+            state.scale = 1;
+            zoom.value = '1';
+            state.x = (vw - img.naturalWidth * state.base) / 2;
+            state.y = (vw - img.naturalHeight * state.base) / 2;
+            clampPos(); draw();
+        });
+    }
     document.getElementById('crop-cancel').addEventListener('click', function () {
         modal.hidden = true;
         input.value = '';
@@ -1365,7 +1415,9 @@
             modal.hidden = true;
             var preview = document.querySelector('.photo-edit .avatar-img, .photo-edit img');
             if (preview) { preview.src = canvas.toDataURL('image/jpeg', 0.85); }
-            // 写真は選んだ時点で自動保存する(保存ボタンの押し忘れ防止)
+            // 保存中であることを見せてから、自動保存する(保存ボタンの押し忘れ防止)
+            var saving = document.getElementById('photo-saving');
+            if (saving) { saving.hidden = false; }
             var form = input.closest('form');
             if (form) {
                 if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }

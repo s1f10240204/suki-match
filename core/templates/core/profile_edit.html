@@ -19,14 +19,22 @@
     <div class="crop-modal" id="crop-modal" hidden>
         <div class="crop-dialog">
             <h2>写真の位置を調整</h2>
-            <p class="help">ドラッグで位置、スライダーやピンチで大きさを変えられます。</p>
-            <div class="crop-viewport" id="crop-viewport"><img id="crop-img" alt="切り取り対象の写真" draggable="false"></div>
-            <input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1" aria-label="拡大縮小">
+            <p class="help">ドラッグで位置、ピンチやスライダーで大きさを変えられます。丸い枠の中が、プロフィール写真として表示されます。</p>
+            <div class="crop-viewport" id="crop-viewport"><img id="crop-img" alt="切り取り対象の写真" draggable="false"><div class="crop-guide"></div></div>
+            <div class="crop-zoom-row">
+                <button type="button" class="btn btn-outline btn-sm" id="crop-zoom-out" aria-label="縮小">−</button>
+                <input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1" aria-label="拡大縮小">
+                <button type="button" class="btn btn-outline btn-sm" id="crop-zoom-in" aria-label="拡大">＋</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="crop-reset">リセット</button>
+            </div>
             <div class="crop-actions">
                 <button type="button" class="btn btn-ghost" id="crop-cancel">キャンセル</button>
                 <button type="button" class="btn btn-primary" id="crop-apply">この範囲で決定</button>
             </div>
         </div>
+    </div>
+    <div class="saving-overlay" id="photo-saving" hidden>
+        <div class="saving-box"><span class="saving-spinner"></span>写真を保存しています…</div>
     </div>
     {% include 'core/_field.html' with field=form.motivation %}
     {% include 'core/_field.html' with field=form.bio %}

@@ -38,6 +38,7 @@ urlpatterns = [
     path('me/invite-code/', views.register_invite_code, name='register_invite_code'),
     path('me/edit/', views.profile_edit, name='profile_edit'),
     path('me/settings/', views.account_settings, name='account_settings'),
+    path('me/tour/done/', views.tour_done, name='tour_done'),
     path('me/delete/', views.account_delete, name='account_delete'),
     path('me/break/', views.account_break, name='account_break'),
     path('me/break/end/', views.account_break_end, name='account_break_end'),

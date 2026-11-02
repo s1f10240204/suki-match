@@ -158,6 +158,7 @@
     <div class="qr-scanner-frame"></div>
     <p class="qr-scanner-status" data-qr-status>カメラを起動しています…</p>
 </div>
+{% if user.is_authenticated %}{% include 'core/_tour.html' %}{% endif %}
 <script src="{% static 'core/app.js' %}"></script>
     {% block extra_body %}{% endblock %}
 </body>

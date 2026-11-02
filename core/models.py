@@ -122,6 +122,7 @@ class User(AbstractUser):
     last_login_bonus_date = models.DateField('ログインボーナス受取日', null=True, blank=True)
     is_on_break = models.BooleanField('休会中', default=False)
     leave_footprints = models.BooleanField('足あとを残す', default=True)
+    tour_done = models.BooleanField('使い方ガイド確認済み', default=False)
     total_earned = models.IntegerField('累計獲得ポイント', default=0)  # レベルはこちらで決まる(使っても減らない)
     level = models.PositiveSmallIntegerField('レベル', default=1)
     skills = models.ManyToManyField(Skill, blank=True, related_name='users', verbose_name='できること')

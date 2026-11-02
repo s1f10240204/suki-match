@@ -1,0 +1,37 @@
+<div class="tour-modal" id="tour-modal" hidden{% if tour_autoshow %} data-tour-autoshow="1"{% endif %}>
+    <div class="tour-dialog">
+        <button type="button" class="tour-close" data-tour-close aria-label="閉じる">✕</button>
+        <section class="tour-slide" data-tour-slide>
+            <div class="tour-ico">🌱</div>
+            <h2>ようこそ suki-match へ</h2>
+            <p>スキマ時間で、近所のお手伝いを頼んだり、引き受けたりできる場所です。まずは使い方を5枚のカードで紹介します。</p>
+        </section>
+        <section class="tour-slide" data-tour-slide hidden>
+            <div class="tour-ico">📮</div>
+            <h2>依頼してみよう</h2>
+            <p>困りごとを投稿すると、近くのヘルパーが手を挙げてくれます。投稿のときに時間分のポイントを預けて、お手伝いが終わったら精算されます。</p>
+        </section>
+        <section class="tour-slide" data-tour-slide hidden>
+            <div class="tour-ico">🤝</div>
+            <h2>お手伝いしてみよう</h2>
+            <p>近くの依頼を探して、引き受けたり応募したりできます。作業の時間は、会ってQRコードを読み取る方法と、時間を申告する方法で記録します。</p>
+        </section>
+        <section class="tour-slide" data-tour-slide hidden>
+            <div class="tour-ico">🪙</div>
+            <h2>ポイント</h2>
+            <p>お手伝い1分 = 1ポイント。依頼するときに使って、お手伝いすると貯まります。ミッション・招待・ログインボーナスでも貯められます。残高と履歴はマイページから見られます。</p>
+        </section>
+        <section class="tour-slide" data-tour-slide hidden>
+            <div class="tour-ico">🛡️</div>
+            <h2>安心の仕組み</h2>
+            <p>顔写真は運営が審査してから公開されます。終わったあとはお互いにレビューを書けて、困った相手はブロック・通報もできます。</p>
+        </section>
+        <div class="tour-dots" data-tour-dots></div>
+        <label class="checkline tour-noshow"><input type="checkbox" data-tour-noshow> もう表示しない</label>
+        <div class="tour-nav">
+            <button type="button" class="btn btn-ghost" data-tour-prev>もどる</button>
+            <button type="button" class="btn btn-primary" data-tour-next>次へ</button>
+            <button type="button" class="btn btn-primary" data-tour-finish hidden>はじめる</button>
+        </div>
+    </div>
+</div>

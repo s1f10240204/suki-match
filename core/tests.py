@@ -3455,3 +3455,32 @@ class WorkQRTests(BaseTestCase):
         self.client.force_login(helper)
         response = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
         self.assertContains(response, '対面（QRで開始・終了）')
+
+
+class TourTests(BaseTestCase):
+    """使い方ガイド: 自動表示マーカー、確認済みAPI、設定画面の導線。"""
+
+    def test_autoshow_marker_until_done(self):
+        user = make_user('tour_user')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(response, 'data-tour-autoshow')
+        user.tour_done = True
+        user.save(update_fields=['tour_done'])
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertNotContains(response, 'data-tour-autoshow')
+
+    def test_tour_done_endpoint(self):
+        user = make_user('tour_api')
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:tour_done'))
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.tour_done)
+
+    def test_settings_has_guide_button(self):
+        user = make_user('tour_settings')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:account_settings'))
+        self.assertContains(response, 'data-tour-open')
+        self.assertContains(response, '使い方ガイドを見る')

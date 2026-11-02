@@ -29,5 +29,8 @@ def app_context(request):
                                  .filter(Q(help_request__requester=user) | Q(help_request__matches__helper=user))
                                  .distinct().count()),
         'open_chat_count': len(services.open_chats(user)),
+        'tour_autoshow': (not user.tour_done
+                          and getattr(request, 'resolver_match', None) is not None
+                          and request.resolver_match.url_name == 'help_request_list'),
     })
     return context

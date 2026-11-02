@@ -743,6 +743,25 @@ ul.socialaccount_providers li { list-style: none; }
 .bar-actions button { flex: 1 1 45%; border: 0; background: none; font-size: .88rem; padding: 9px 6px; cursor: pointer; color: var(--text); white-space: nowrap; }
 .bar-actions button:active { background: var(--bg); }
 
+/* ---------- 使い方ガイド(ツアー) ---------- */
+.tour-modal { position: fixed; inset: 0; z-index: 300; background: rgba(30, 25, 20, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.tour-modal[hidden] { display: none; }
+.tour-dialog { background: var(--surface); border-radius: 20px; padding: 26px 22px 20px; width: min(92vw, 400px); position: relative; box-shadow: var(--shadow); }
+.tour-close { position: absolute; top: 10px; right: 10px; width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--surface-soft); color: var(--muted); font-size: 1rem; cursor: pointer; }
+.tour-slide { text-align: center; }
+.tour-slide[hidden] { display: none; }
+.tour-ico { font-size: 3.2rem; line-height: 1.2; }
+.tour-slide h2 { font-size: 1.3rem; margin: 10px 0 8px; }
+.tour-slide p { color: var(--muted); line-height: 1.8; margin: 0; text-align: left; }
+.tour-dots { display: flex; justify-content: center; gap: 6px; margin: 18px 0 6px; }
+.tour-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--line); transition: all .2s; }
+.tour-dot.active { width: 20px; background: var(--primary); }
+.tour-noshow { justify-content: center; margin: 8px 0 4px; }
+.tour-nav { display: flex; gap: 10px; margin-top: 10px; }
+.tour-nav .btn { flex: 1; }
+.tour-nav .btn[hidden] { display: none; }
+.tour-nav .btn:disabled { opacity: .4; }
+
 /* ---------- 写真トリミング ---------- */
 .crop-modal {
     position: fixed; inset: 0; z-index: 300; background: rgba(30, 25, 20, .55);

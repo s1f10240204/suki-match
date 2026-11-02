@@ -1426,6 +1426,59 @@
     });
 })();
 
+/* 使い方ガイド(初回ツアー): スライド送り、閉じ方で自動表示の継続可否が変わる */
+(function () {
+    var modal = document.getElementById('tour-modal');
+    if (!modal) { return; }
+    var slides = Array.prototype.slice.call(modal.querySelectorAll('[data-tour-slide]'));
+    var prev = modal.querySelector('[data-tour-prev]');
+    var next = modal.querySelector('[data-tour-next]');
+    var finish = modal.querySelector('[data-tour-finish]');
+    var noshow = modal.querySelector('[data-tour-noshow]');
+    var dotsWrap = modal.querySelector('[data-tour-dots]');
+    var idx = 0;
+    slides.forEach(function () {
+        var d = document.createElement('span');
+        d.className = 'tour-dot';
+        dotsWrap.appendChild(d);
+    });
+    var dots = Array.prototype.slice.call(dotsWrap.children);
+    var render = function () {
+        slides.forEach(function (sl, i) { sl.hidden = i !== idx; });
+        dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
+        prev.disabled = idx === 0;
+        next.hidden = idx === slides.length - 1;
+        finish.hidden = idx !== slides.length - 1;
+    };
+    var openTour = function () { idx = 0; render(); modal.hidden = false; };
+    var markDone = function () {
+        var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+        fetch('/me/tour/done/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': m ? decodeURIComponent(m[1]) : '' },
+        }).catch(function () {});
+    };
+    var closeTour = function (completed) {
+        modal.hidden = true;
+        if (completed || noshow.checked) {
+            markDone();
+        } else {
+            // チェックなしの閉じるは、このセッションの間だけ隠す(次回また出る)
+            try { sessionStorage.setItem('sukiTourDismissed', '1'); } catch (e) {}
+        }
+    };
+    prev.addEventListener('click', function () { if (idx > 0) { idx--; render(); } });
+    next.addEventListener('click', function () { if (idx < slides.length - 1) { idx++; render(); } });
+    finish.addEventListener('click', function () { closeTour(true); });
+    modal.querySelector('[data-tour-close]').addEventListener('click', function () { closeTour(false); });
+    document.querySelectorAll('[data-tour-open]').forEach(function (btn) {
+        btn.addEventListener('click', openTour);
+    });
+    var dismissed = false;
+    try { dismissed = sessionStorage.getItem('sukiTourDismissed') === '1'; } catch (e) {}
+    if (modal.dataset.tourAutoshow && !dismissed) { openTour(); }
+})();
+
 /* 固定保存バー: フォームに変更があったら、下部に保存ボタンを出し続ける */
 (function () {
     document.querySelectorAll('[data-sticky-save]').forEach(function (bar) {

@@ -655,6 +655,16 @@ def profile_edit(request):
 
 @login_required
 @require_POST
+def tour_done(request):
+    """使い方ガイドを「確認済み」にする(自動表示を止める)。"""
+    if not request.user.tour_done:
+        request.user.tour_done = True
+        request.user.save(update_fields=['tour_done'])
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
 def review_reply(request, pk):
     """自分が受け取ったレビューへ返信する(編集・削除も同じ口)。"""
     review = get_object_or_404(Review, pk=pk, reviewee=request.user)

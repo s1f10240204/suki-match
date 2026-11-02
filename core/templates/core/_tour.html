@@ -1,31 +1,191 @@
 <div class="tour-modal" id="tour-modal" hidden{% if tour_autoshow %} data-tour-autoshow="1"{% endif %}>
     <div class="tour-dialog">
         <button type="button" class="tour-close" data-tour-close aria-label="閉じる">✕</button>
+
         <section class="tour-slide" data-tour-slide>
             <div class="tour-ico">🌱</div>
             <h2>ようこそ suki-match へ</h2>
-            <p>スキマ時間で、近所のお手伝いを頼んだり、引き受けたりできる場所です。まずは使い方を5枚のカードで紹介します。</p>
+            <p class="tour-lead">近所のお手伝いを頼んだり、引き受けたりできる場所です。光っている場所をタップして、実際の操作を体験してみましょう。</p>
+            <div class="tour-scenes">
+                <div data-step>
+                    <div class="mock">
+                        <div class="mock-head">近くの依頼</div>
+                        <div class="mock-card"><strong>買い物を手伝ってほしい</strong><span>30分 ・ 徒歩5分</span></div>
+                        <div class="mock-card"><strong>庭の草取り</strong><span>60分 ・ 徒歩8分</span></div>
+                        <div class="mock-tabbar">
+                            <span class="mock-tab" data-tour-tap>🔍<br>さがす</span>
+                            <span class="mock-tab">＋<br>依頼する</span>
+                            <span class="mock-tab">💬<br>メッセージ</span>
+                            <span class="mock-tab">👤<br>マイページ</span>
+                        </div>
+                    </div>
+                    <p class="tour-caption">下のメニューで画面を切り替えます。光っている「さがす」をタップ。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">依頼する</div>
+                        <div class="mock-input">タイトル：買い物を手伝ってほしい</div>
+                        <div class="mock-input">時間：30分</div>
+                        <div class="mock-btn">投稿する</div>
+                        <div class="mock-tabbar">
+                            <span class="mock-tab">🔍<br>さがす</span>
+                            <span class="mock-tab" data-tour-tap>＋<br>依頼する</span>
+                            <span class="mock-tab">💬<br>メッセージ</span>
+                            <span class="mock-tab">👤<br>マイページ</span>
+                        </div>
+                    </div>
+                    <p class="tour-caption">「＋ 依頼する」から、困りごとを投稿できます。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">マイページ</div>
+                        <div class="mock-points">現在のポイント<strong>120 pt</strong></div>
+                        <div class="mock-card"><strong>自分の依頼</strong><span>履歴や状況はこちら</span></div>
+                        <div class="mock-tabbar">
+                            <span class="mock-tab">🔍<br>さがす</span>
+                            <span class="mock-tab">＋<br>依頼する</span>
+                            <span class="mock-tab">💬<br>メッセージ</span>
+                            <span class="mock-tab" data-tour-tap>👤<br>マイページ</span>
+                        </div>
+                    </div>
+                    <p class="tour-caption">マイページではポイントや履歴を確認できます。</p>
+                </div>
+            </div>
         </section>
+
         <section class="tour-slide" data-tour-slide hidden>
             <div class="tour-ico">📮</div>
             <h2>依頼してみよう</h2>
-            <p>困りごとを投稿すると、近くのヘルパーが手を挙げてくれます。投稿のときに時間分のポイントを預けて、お手伝いが終わったら精算されます。</p>
+            <p class="tour-lead">投稿は3ステップです。</p>
+            <div class="tour-scenes">
+                <div data-step>
+                    <div class="mock">
+                        <div class="mock-head">依頼する</div>
+                        <div class="mock-input mock-tap" data-tour-tap>タイトルを入力…</div>
+                        <div class="mock-input">内容：重い荷物を持ってほしい</div>
+                        <div class="mock-btn mock-dim">投稿する</div>
+                    </div>
+                    <p class="tour-caption">① 困りごとを書きます。光っている欄をタップ。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">依頼する</div>
+                        <div class="mock-input">タイトル：荷物運び</div>
+                        <div class="mock-chips"><span>15分</span><span class="on" data-tour-tap>30分</span><span>60分</span></div>
+                        <div class="mock-points">必要なポイント<strong>30 pt</strong></div>
+                        <div class="mock-btn mock-dim">投稿する</div>
+                    </div>
+                    <p class="tour-caption">② 時間を選ぶと、必要なポイント（1分=1pt）が表示されます。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">依頼する</div>
+                        <div class="mock-input">タイトル：荷物運び</div>
+                        <div class="mock-input">時間：30分 ・ 30pt</div>
+                        <div class="mock-btn" data-tour-tap>投稿する</div>
+                    </div>
+                    <p class="tour-caption">③ 「投稿する」をタップ。ポイントは完了まで預かりになります。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-done">✓</div>
+                        <div class="mock-head">投稿できました</div>
+                        <div class="mock-card"><strong>荷物運び</strong><span>近くのヘルパーに知らせました</span></div>
+                    </div>
+                    <p class="tour-caption">あとはヘルパーが手を挙げるのを待つだけです。</p>
+                </div>
+            </div>
         </section>
+
         <section class="tour-slide" data-tour-slide hidden>
             <div class="tour-ico">🤝</div>
             <h2>お手伝いしてみよう</h2>
-            <p>近くの依頼を探して、引き受けたり応募したりできます。作業の時間は、会ってQRコードを読み取る方法と、時間を申告する方法で記録します。</p>
+            <p class="tour-lead">引き受けから完了までの流れです。</p>
+            <div class="tour-scenes">
+                <div data-step>
+                    <div class="mock">
+                        <div class="mock-head">近くの依頼</div>
+                        <div class="mock-card"><strong>買い物を手伝ってほしい</strong><span>30分 ・ 徒歩5分</span></div>
+                        <div class="mock-btn" data-tour-tap>引き受ける</div>
+                    </div>
+                    <p class="tour-caption">① できそうな依頼で「引き受ける」をタップ（承認制の依頼は「応募する」）。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">作業の開始</div>
+                        <div class="mock-qr" data-tour-tap><span></span></div>
+                        <div class="mock-card"><strong>相手のQRコード</strong><span>読み取るとタイマーが始まります</span></div>
+                    </div>
+                    <p class="tour-caption">② 会えたら、相手が表示するQRコードを読み取って開始します（会わない形式では時間申告でもOK）。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">作業中</div>
+                        <div class="mock-timer">⏱ 12:34</div>
+                        <div class="mock-card"><strong>買い物を手伝ってほしい</strong><span>終了時は自分のQRを読み取ってもらいます</span></div>
+                    </div>
+                    <p class="tour-caption">③ 終わったら相手に自分の終了QRを読み取ってもらい、自動で精算されます。</p>
+                </div>
+            </div>
         </section>
+
         <section class="tour-slide" data-tour-slide hidden>
             <div class="tour-ico">🪙</div>
             <h2>ポイント</h2>
-            <p>お手伝い1分 = 1ポイント。依頼するときに使って、お手伝いすると貯まります。ミッション・招待・ログインボーナスでも貯められます。残高と履歴はマイページから見られます。</p>
+            <p class="tour-lead">お手伝い1分 = 1ポイント。貯め方もいろいろあります。</p>
+            <div class="tour-scenes">
+                <div data-step>
+                    <div class="mock">
+                        <div class="mock-head">マイページ</div>
+                        <div class="mock-points">現在のポイント<strong>120 pt</strong></div>
+                        <div class="mock-card"><strong>ポイント履歴</strong><span>貯め方もこちら</span></div>
+                    </div>
+                    <p class="tour-caption">残高と履歴はマイページから確認できます。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">ポイントを貯める</div>
+                        <div class="mock-card mock-tap" data-tour-tap><strong>ミッション：顔写真を登録</strong><span>+10 pt</span></div>
+                        <div class="mock-card"><strong>友達を招待</strong><span>+30 pt</span></div>
+                        <div class="mock-card"><strong>ログインボーナス</strong><span>毎日 +2 pt</span></div>
+                    </div>
+                    <p class="tour-caption">ミッションをタップすると…</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">ポイントを貯める</div>
+                        <div class="mock-points">現在のポイント<strong>130 pt</strong></div>
+                        <div class="mock-card"><strong>✓ ミッション達成</strong><span>+10 pt が入りました</span></div>
+                    </div>
+                    <p class="tour-caption">こんなふうに貯まっていきます。</p>
+                </div>
+            </div>
         </section>
+
         <section class="tour-slide" data-tour-slide hidden>
             <div class="tour-ico">🛡️</div>
             <h2>安心の仕組み</h2>
-            <p>顔写真は運営が審査してから公開されます。終わったあとはお互いにレビューを書けて、困った相手はブロック・通報もできます。</p>
+            <p class="tour-lead">安心して使えるための仕組みです。</p>
+            <div class="tour-scenes">
+                <div data-step>
+                    <div class="mock">
+                        <div class="mock-head">プロフィール</div>
+                        <div class="mock-card"><strong>ヘルパーさん</strong><span class="mock-badge">顔写真 承認済み</span></div>
+                        <div class="mock-card"><strong>レビュー</strong><span>★★★★★ とても丁寧でした</span></div>
+                    </div>
+                    <p class="tour-caption">顔写真は運営が審査してから公開。終わったあとはお互いにレビューを書けます。</p>
+                </div>
+                <div data-step hidden>
+                    <div class="mock">
+                        <div class="mock-head">チャット</div>
+                        <div class="mock-card"><strong>困ったときは</strong><span>相手のプロフィールから操作できます</span></div>
+                        <div class="mock-btn mock-danger" data-tour-tap>ブロック / 通報</div>
+                    </div>
+                    <p class="tour-caption">困った相手はブロック・通報できます。準備は完了です。「はじめる」を押してください。</p>
+                </div>
+            </div>
         </section>
+
         <div class="tour-dots" data-tour-dots></div>
         <label class="checkline tour-noshow"><input type="checkbox" data-tour-noshow> もう表示しない</label>
         <div class="tour-nav">

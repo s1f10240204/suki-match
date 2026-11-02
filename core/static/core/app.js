@@ -1426,10 +1426,12 @@
     });
 })();
 
-/* 使い方ガイド(初回ツアー): スライド送り、閉じ方で自動表示の継続可否が変わる */
+/* 使い方ガイド(初回ツアー): スライド送り、閉じ方で自動表示の継続可否が変わる。
+   各スライド内では光った場所をタップすると操作体験が進み、横スワイプでもカードを移動できる */
 (function () {
     var modal = document.getElementById('tour-modal');
     if (!modal) { return; }
+    var dialog = modal.querySelector('.tour-dialog');
     var slides = Array.prototype.slice.call(modal.querySelectorAll('[data-tour-slide]'));
     var prev = modal.querySelector('[data-tour-prev]');
     var next = modal.querySelector('[data-tour-next]');
@@ -1437,19 +1439,64 @@
     var noshow = modal.querySelector('[data-tour-noshow]');
     var dotsWrap = modal.querySelector('[data-tour-dots]');
     var idx = 0;
+    var stepIdx = slides.map(function () { return 0; });
     slides.forEach(function () {
         var d = document.createElement('span');
         d.className = 'tour-dot';
         dotsWrap.appendChild(d);
     });
     var dots = Array.prototype.slice.call(dotsWrap.children);
+    var stepsOf = function (slide) {
+        return Array.prototype.slice.call(slide.querySelectorAll('[data-step]'));
+    };
     var render = function () {
-        slides.forEach(function (sl, i) { sl.hidden = i !== idx; });
+        slides.forEach(function (sl, i) {
+            sl.hidden = i !== idx;
+            stepsOf(sl).forEach(function (st, j) { st.hidden = j !== stepIdx[i]; });
+        });
         dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
         prev.disabled = idx === 0;
         next.hidden = idx === slides.length - 1;
         finish.hidden = idx !== slides.length - 1;
     };
+    var gotoSlide = function (n) {
+        idx = Math.max(0, Math.min(slides.length - 1, n));
+        render();
+    };
+    var pulseNav = function () {
+        var btn = idx === slides.length - 1 ? finish : next;
+        btn.classList.remove('tour-attention');
+        void btn.offsetWidth;
+        btn.classList.add('tour-attention');
+        setTimeout(function () { btn.classList.remove('tour-attention'); }, 1400);
+    };
+    // 光った場所のタップで、そのスライドの操作体験を1つ進める
+    modal.addEventListener('click', function (e) {
+        var tap = e.target.closest('[data-tour-tap]');
+        if (!tap || !slides[idx].contains(tap)) { return; }
+        var steps = stepsOf(slides[idx]);
+        if (stepIdx[idx] < steps.length - 1) {
+            stepIdx[idx]++;
+            render();
+        } else {
+            pulseNav();
+        }
+    });
+    // 横スワイプでもカード移動(ボタンやチェックの操作とは競合させない)
+    var swipeStart = null;
+    dialog.addEventListener('pointerdown', function (e) {
+        if (e.target.closest('button, label, input, a')) { swipeStart = null; return; }
+        swipeStart = { x: e.clientX, y: e.clientY };
+    });
+    dialog.addEventListener('pointerup', function (e) {
+        if (!swipeStart) { return; }
+        var dx = e.clientX - swipeStart.x;
+        var dy = e.clientY - swipeStart.y;
+        swipeStart = null;
+        if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            gotoSlide(idx + (dx < 0 ? 1 : -1));
+        }
+    });
     var openTour = function () { idx = 0; render(); modal.hidden = false; };
     var markDone = function () {
         var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
@@ -1467,8 +1514,8 @@
             try { sessionStorage.setItem('sukiTourDismissed', '1'); } catch (e) {}
         }
     };
-    prev.addEventListener('click', function () { if (idx > 0) { idx--; render(); } });
-    next.addEventListener('click', function () { if (idx < slides.length - 1) { idx++; render(); } });
+    prev.addEventListener('click', function () { gotoSlide(idx - 1); });
+    next.addEventListener('click', function () { gotoSlide(idx + 1); });
     finish.addEventListener('click', function () { closeTour(true); });
     modal.querySelector('[data-tour-close]').addEventListener('click', function () { closeTour(false); });
     document.querySelectorAll('[data-tour-open]').forEach(function (btn) {

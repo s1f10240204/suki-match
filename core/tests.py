@@ -3478,6 +3478,14 @@ class TourTests(BaseTestCase):
         user.refresh_from_db()
         self.assertTrue(user.tour_done)
 
+    def test_tour_has_interactive_steps(self):
+        user = make_user('tour_steps')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_list'))
+        self.assertContains(response, 'data-tour-tap')
+        self.assertContains(response, 'data-step')
+        self.assertContains(response, '引き受ける')
+
     def test_settings_has_guide_button(self):
         user = make_user('tour_settings')
         self.client.force_login(user)

@@ -1440,6 +1440,7 @@
     var dotsWrap = modal.querySelector('[data-tour-dots]');
     var idx = 0;
     var stepIdx = slides.map(function () { return 0; });
+    var slideDone = slides.map(function () { return false; });
     slides.forEach(function () {
         var d = document.createElement('span');
         d.className = 'tour-dot';
@@ -1456,7 +1457,10 @@
             stepsOf(sl).forEach(function (st, j) { st.hidden = j !== stepIdx[i]; });
         });
         var activeStep = stepsOf(slides[idx])[stepIdx[idx]];
-        hint.hidden = !(activeStep && activeStep.querySelector('[data-tour-tap]'));
+        hint.hidden = !(!slideDone[idx] && activeStep && activeStep.querySelector('[data-tour-tap]'));
+        // 光った場所を全部タップし終わるまで「次へ/はじめる」は押せない
+        next.disabled = !slideDone[idx];
+        finish.disabled = !slideDone[idx];
         dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
         prev.disabled = idx === 0;
         next.hidden = idx === slides.length - 1;
@@ -1481,7 +1485,10 @@
         if (stepIdx[idx] < steps.length - 1) {
             stepIdx[idx]++;
             render();
-        } else {
+        } else if (!slideDone[idx]) {
+            // 最後のステップのタップで、そのスライドの体験が完了
+            slideDone[idx] = true;
+            render();
             pulseNav();
         }
     });
@@ -1497,6 +1504,7 @@
         var dy = e.clientY - swipeStart.y;
         swipeStart = null;
         if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            if (dx < 0 && !slideDone[idx]) { return; }  // 進む方向は体験完了後のみ
             gotoSlide(idx + (dx < 0 ? 1 : -1));
         }
     });
@@ -1504,6 +1512,7 @@
         // 開くたびに全スライドのステップを最初に戻す(見直したとき途中から始まらないように)
         idx = 0;
         stepIdx = slides.map(function () { return 0; });
+        slideDone = slides.map(function () { return false; });
         render();
         modal.hidden = false;
     };

@@ -3488,6 +3488,18 @@ class TourTests(BaseTestCase):
         self.assertContains(response, 'data-tour-hint')
         self.assertContains(response, '光っているところをタップしてみてください')
 
+    def test_every_tour_step_has_tap_target(self):
+        # タップ対象のないステップがあると、体験が進めず詰むので全数チェックする
+        user = make_user('tour_all_steps')
+        self.client.force_login(user)
+        content = self.client.get(
+            reverse('core:help_request_list')).content.decode()
+        chunks = content.split('<div data-step')[1:]
+        self.assertEqual(len(chunks), 15)
+        for chunk in chunks:
+            step_html = chunk.split('tour-caption')[0]
+            self.assertIn('data-tour-tap', step_html)
+
     def test_settings_has_guide_button(self):
         user = make_user('tour_settings')
         self.client.force_login(user)

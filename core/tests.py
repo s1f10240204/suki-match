@@ -3485,6 +3485,8 @@ class TourTests(BaseTestCase):
         self.assertContains(response, 'data-tour-tap')
         self.assertContains(response, 'data-step')
         self.assertContains(response, '引き受ける')
+        self.assertContains(response, 'data-tour-hint')
+        self.assertContains(response, '光っているところをタップしてみてください')
 
     def test_settings_has_guide_button(self):
         user = make_user('tour_settings')

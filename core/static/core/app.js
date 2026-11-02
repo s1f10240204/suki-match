@@ -1449,11 +1449,14 @@
     var stepsOf = function (slide) {
         return Array.prototype.slice.call(slide.querySelectorAll('[data-step]'));
     };
+    var hint = modal.querySelector('[data-tour-hint]');
     var render = function () {
         slides.forEach(function (sl, i) {
             sl.hidden = i !== idx;
             stepsOf(sl).forEach(function (st, j) { st.hidden = j !== stepIdx[i]; });
         });
+        var activeStep = stepsOf(slides[idx])[stepIdx[idx]];
+        hint.hidden = !(activeStep && activeStep.querySelector('[data-tour-tap]'));
         dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
         prev.disabled = idx === 0;
         next.hidden = idx === slides.length - 1;
@@ -1497,7 +1500,13 @@
             gotoSlide(idx + (dx < 0 ? 1 : -1));
         }
     });
-    var openTour = function () { idx = 0; render(); modal.hidden = false; };
+    var openTour = function () {
+        // 開くたびに全スライドのステップを最初に戻す(見直したとき途中から始まらないように)
+        idx = 0;
+        stepIdx = slides.map(function () { return 0; });
+        render();
+        modal.hidden = false;
+    };
     var markDone = function () {
         var m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
         fetch('/me/tour/done/', {

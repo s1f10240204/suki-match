@@ -783,9 +783,15 @@ ul.socialaccount_providers li { list-style: none; }
 .mock-done + .mock-head { text-align: center; }
 [data-tour-tap] { cursor: pointer; position: relative; animation: tour-pulse 1.6s ease-in-out infinite; border-radius: 10px; }
 .mock-tab[data-tour-tap] { border-radius: 8px; }
+.tour-tap-hint { text-align: center; background: var(--primary-soft); color: var(--primary-dark); font-weight: 800; font-size: .92rem; border-radius: 99px; padding: 8px 12px; margin: 12px 0 0; animation: tour-hint-bounce 1.6s ease-in-out infinite; }
+.tour-tap-hint[hidden] { display: none; }
+@keyframes tour-hint-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
 @keyframes tour-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(76, 139, 107, .0), 0 0 0 2px rgba(76, 139, 107, .85); }
-    50% { box-shadow: 0 0 0 7px rgba(76, 139, 107, .18), 0 0 0 2px rgba(76, 139, 107, .85); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(76, 139, 107, .0), 0 0 0 2px rgba(76, 139, 107, .85); transform: scale(1); }
+    50% { box-shadow: 0 0 0 7px rgba(76, 139, 107, .18), 0 0 0 2px rgba(76, 139, 107, .85); transform: scale(1.035); }
 }
 .tour-attention { animation: tour-pulse 0.7s ease-in-out 2; }
 .tour-dots { display: flex; justify-content: center; gap: 6px; margin: 18px 0 6px; }

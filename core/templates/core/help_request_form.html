@@ -17,6 +17,7 @@
 
     <section class="card step" data-step data-title="何を手伝ってほしいですか?">
         <h2 class="step-title">何を手伝ってほしいですか?</h2>
+        {% include 'core/_field.html' with field=form.work_mode_pref %}
         {% include 'core/_field.html' with field=form.title %}
         {% include 'core/_field.html' with field=form.preset_tags %}
         <details class="more"{% if form.description.value %} open{% endif %}>
@@ -66,7 +67,6 @@
         <p class="points-note-box">この依頼では上のポイントを使います。お手伝いが完了すると、使ったポイントは手伝ってくれた人に渡ります。キャンセル・掲載期限切れのときは全額戻ります。</p>
         <p class="meta">ポイントが足りないときは、ツケ（最大 −50pt まで）で投稿できます。残高がマイナスの間は、お手伝いなどで貯めると自動で返済されます。</p>
         {% include 'core/_field.html' with field=form.mode %}
-        {% include 'core/_field.html' with field=form.work_mode_pref %}
         {% include 'core/_field.html' with field=form.headcount_choice %}
         <div data-headcount-custom hidden>
             {% include 'core/_field.html' with field=form.headcount_custom %}

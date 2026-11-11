@@ -722,6 +722,23 @@ class ImprovementBatchTests(BaseTestCase):
             services.notify(user, 'inquiry_reply', '回答しました', '/')
         self.assertEqual(push_mock.call_args[0][1], 'お問い合わせへの回答')
 
+    def test_nearby_request_push_sent_by_default(self):
+        user = make_user('nearpush')
+        with mock.patch.object(services.line_api, 'maybe_notify'),                 mock.patch.object(services, 'send_web_push') as push_mock:
+            services.notify(user, 'nearby_request', '近くで依頼「見守り」', '/')
+        push_mock.assert_called_once()
+        self.assertEqual(push_mock.call_args[0][1], '近くの新しい依頼')
+
+    def test_nearby_request_push_can_be_turned_off(self):
+        user = make_user('nearpushoff')
+        setting = services.notification_setting(user)
+        setting.push_nearby = False
+        setting.save()
+        with mock.patch.object(services.line_api, 'maybe_notify'),                 mock.patch.object(services, 'send_web_push') as push_mock:
+            services.notify(user, 'nearby_request', '近くで依頼「見守り」', '/')
+        push_mock.assert_not_called()
+        self.assertEqual(user.notifications.count(), 1)  # アプリ内履歴は残る
+
     def test_push_subscribe_endpoints(self):
         user = make_user('pushy')
         self.client.force_login(user)
@@ -3217,6 +3234,8 @@ class WorkQRTests(BaseTestCase):
         # 既定は従来ボタン形式
         requester2 = make_user('qr_req2')
         hr2 = make_request(requester2)
+        hr2.work_mode_pref = 'any'
+        hr2.save(update_fields=['work_mode_pref'])
         helper2 = make_user('qr_help2')
         match2 = services.accept_first_come(hr2, helper2)
         self.assertEqual(match2.work_mode, 'remote')
@@ -3224,6 +3243,7 @@ class WorkQRTests(BaseTestCase):
     def test_application_mode_inherited_on_approve(self):
         requester = make_user('qr_app_req')
         hr = make_request(requester)
+        hr.work_mode_pref = 'any'
         hr.mode = HelpRequest.Mode.APPROVAL
         hr.save(update_fields=['mode'])
         helper = make_user('qr_app_help')
@@ -3412,7 +3432,7 @@ class WorkQRTests(BaseTestCase):
         helper = make_user('pref_help')
         match = services.accept_first_come(hr, helper, work_mode='remote')
         self.assertEqual(match.work_mode, 'qr')
-        # 会わないのみ指定 + 応募経由
+        # 非対面のみ指定 + 応募経由
         requester2 = make_user('pref_req2')
         hr2 = make_request(requester2)
         hr2.mode = HelpRequest.Mode.APPROVAL
@@ -3426,6 +3446,8 @@ class WorkQRTests(BaseTestCase):
         # おまかせなら選択どおり
         requester3 = make_user('pref_req3')
         hr3 = make_request(requester3)
+        hr3.work_mode_pref = 'any'
+        hr3.save(update_fields=['work_mode_pref'])
         helper3 = make_user('pref_help3')
         match3 = services.accept_first_come(hr3, helper3, work_mode='remote')
         self.assertEqual(match3.work_mode, 'remote')
@@ -3436,6 +3458,19 @@ class WorkQRTests(BaseTestCase):
         response = self.client.get(reverse('core:help_request_create'))
         self.assertContains(response, 'お手伝いの形式')
         self.assertContains(response, '対面のみ（QRで開始・終了）')
+
+    def test_pref_default_is_qr(self):
+        from core.forms import HelpRequestForm
+        self.assertEqual(HelpRequestForm(user=make_user('pref_default')).fields['work_mode_pref'].initial, 'qr')
+        self.assertEqual(HelpRequest._meta.get_field('work_mode_pref').default, 'qr')
+
+    def test_pref_field_comes_first_in_form(self):
+        user = make_user('pref_order')
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:help_request_create'))
+        content = response.content.decode()
+        self.assertLess(content.index('お手伝いの形式'), content.index('name="title"'))
+        self.assertContains(response, '非対面のみ（ボタンで開始・終了）')
 
     def test_detail_fixed_pref_shows_note(self):
         requester = make_user('pref_note_req')
@@ -3451,6 +3486,8 @@ class WorkQRTests(BaseTestCase):
     def test_detail_shows_mode_choice(self):
         requester = make_user('qr_show_req')
         hr = make_request(requester)
+        hr.work_mode_pref = 'any'
+        hr.save(update_fields=['work_mode_pref'])
         helper = make_user('qr_show_help')
         self.client.force_login(helper)
         response = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
@@ -3495,7 +3532,7 @@ class TourTests(BaseTestCase):
         content = self.client.get(
             reverse('core:help_request_list')).content.decode()
         chunks = content.split('<div data-step')[1:]
-        self.assertEqual(len(chunks), 15)
+        self.assertEqual(len(chunks), 16)
         for chunk in chunks:
             step_html = chunk.split('tour-caption')[0]
             self.assertIn('data-tour-tap', step_html)

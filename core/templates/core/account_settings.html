@@ -57,6 +57,7 @@
     {% include 'core/_field.html' with field=notify_form.line_activity %}
     {% include 'core/_field.html' with field=notify_form.line_nearby %}
     {% include 'core/_field.html' with field=notify_form.push_activity %}
+    {% include 'core/_field.html' with field=notify_form.push_nearby %}
     {% if vapid_public_key %}
     <div class="push-setup">
         <p class="help">プッシュ通知は、この端末での許可も必要です。iPhoneではホーム画面に追加したアプリから開いて設定してください。</p>

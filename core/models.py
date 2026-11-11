@@ -224,9 +224,9 @@ class HelpRequest(models.Model):
         'お手伝いの形式', max_length=10,
         choices=[('any', 'おまかせ（お手伝いする人が選ぶ）'),
                  ('qr', '対面のみ（QRで開始・終了）'),
-                 ('remote', '会わないのみ（ボタンで開始・終了）')],
-        default='any',
-        help_text='「対面のみ」「会わないのみ」を選ぶと、その依頼の形式が固定されます。')
+                 ('remote', '非対面のみ（ボタンで開始・終了）')],
+        default='qr',
+        help_text='「対面のみ」「非対面のみ」を選ぶと、その依頼の形式が固定されます。')
     status = models.CharField('状況', max_length=20, choices=Status.choices, default=Status.OPEN, db_index=True)
 
     # 正確な位置はマッチ参加者にのみ開示する
@@ -296,7 +296,7 @@ class Application(models.Model):
     applicant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications')
     message = models.CharField('ひとこと', max_length=200, blank=True)
     work_mode = models.CharField('お手伝いの形式', max_length=10,
-                                 choices=[('qr', '対面（QRで開始・終了）'), ('remote', '会わない（ボタンで開始・終了）')],
+                                 choices=[('qr', '対面（QRで開始・終了）'), ('remote', '非対面（ボタンで開始・終了）')],
                                  default='qr')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPLIED)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -326,7 +326,7 @@ class Match(models.Model):
     auto_canceled = models.BooleanField('自動キャンセル', default=False)
     # 作業時間の実測(タイマー)と申告。精算は effective_minutes で決める
     work_mode = models.CharField('お手伝いの形式', max_length=10,
-                                 choices=[('qr', '対面（QRで開始・終了）'), ('remote', '会わない（ボタンで開始・終了）')],
+                                 choices=[('qr', '対面（QRで開始・終了）'), ('remote', '非対面（ボタンで開始・終了）')],
                                  default='remote')
     work_started_at = models.DateTimeField('作業開始', null=True, blank=True)
     work_ended_at = models.DateTimeField('作業終了', null=True, blank=True)
@@ -522,6 +522,7 @@ class NotificationSetting(models.Model):
     line_activity = models.BooleanField('マッチング・メッセージをLINEで受け取る', default=True)
     line_nearby = models.BooleanField('近くの新しい依頼をLINEで受け取る', default=False)
     push_activity = models.BooleanField('マッチング・メッセージをプッシュ通知で受け取る', default=True)
+    push_nearby = models.BooleanField('近くの新しい依頼をプッシュ通知で受け取る', default=True)
     forced_off = models.BooleanField('管理者による通知停止', default=False,
                                      help_text='オンにすると、このユーザーへのLINE・プッシュ通知をすべて止めます(管理者のみ変更可)')
 

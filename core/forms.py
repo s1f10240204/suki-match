@@ -137,15 +137,15 @@ class HelpRequestForm(forms.ModelForm):
         label='人数(5人以上)', required=False, min_value=5, max_value=20,
         widget=forms.NumberInput(attrs={'inputmode': 'numeric', 'placeholder': '例: 6'}))
     work_mode_pref = forms.ChoiceField(
-        label='お手伝いの形式', required=False, initial='any',
+        label='お手伝いの形式', required=False, initial='qr',
         choices=[('any', 'おまかせ（お手伝いする人が選ぶ）'),
                  ('qr', '対面のみ（QRで開始・終了）'),
-                 ('remote', '会わないのみ（ボタンで開始・終了）')],
+                 ('remote', '非対面のみ（ボタンで開始・終了）')],
         widget=forms.RadioSelect,
-        help_text='「対面のみ」「会わないのみ」を選ぶと、その依頼の形式が固定されます。')
+        help_text='「対面のみ」「非対面のみ」を選ぶと、その依頼の形式が固定されます。')
 
     def clean_work_mode_pref(self):
-        return self.cleaned_data.get('work_mode_pref') or 'any'
+        return self.cleaned_data.get('work_mode_pref') or 'qr'
 
     class Meta:
         model = HelpRequest
@@ -243,7 +243,7 @@ class ApplicationForm(forms.ModelForm):
     # work_mode は未送信でも応募が成立するよう任意項目にし、既定は対面(QR)
     work_mode = forms.ChoiceField(
         label='お手伝いの形式', required=False, initial='qr',
-        choices=[('qr', '対面（QRで開始・終了）'), ('remote', '会わない（ボタンで開始・終了）')],
+        choices=[('qr', '対面（QRで開始・終了）'), ('remote', '非対面（ボタンで開始・終了）')],
         widget=forms.RadioSelect)
 
     class Meta:
@@ -272,10 +272,11 @@ class ReportForm(forms.ModelForm):
 class NotificationSettingForm(forms.ModelForm):
     class Meta:
         model = NotificationSetting
-        fields = ('line_activity', 'line_nearby', 'push_activity')
+        fields = ('line_activity', 'line_nearby', 'push_activity', 'push_nearby')
         widgets = {'line_activity': forms.CheckboxInput(attrs={'class': 'switch'}),
                    'line_nearby': forms.CheckboxInput(attrs={'class': 'switch'}),
-                   'push_activity': forms.CheckboxInput(attrs={'class': 'switch'})}
+                   'push_activity': forms.CheckboxInput(attrs={'class': 'switch'}),
+                   'push_nearby': forms.CheckboxInput(attrs={'class': 'switch'})}
 
 
 class ActivityBaseForm(forms.ModelForm):

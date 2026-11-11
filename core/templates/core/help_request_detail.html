@@ -17,7 +17,7 @@
     <div class="chips">
         <span class="chip">{{ help_request.duration_minutes }}分</span>
         <span class="chip{% if help_request.mode == 'approval' %} chip-approval{% endif %}">{{ help_request.get_mode_display }}</span>
-        {% if help_request.work_mode_pref == 'qr' %}<span class="chip chip-skill">📷 対面形式（QR）</span>{% elif help_request.work_mode_pref == 'remote' %}<span class="chip">🏠 会わない形式</span>{% endif %}
+        {% if help_request.work_mode_pref == 'qr' %}<span class="chip chip-skill">📷 対面形式（QR）</span>{% elif help_request.work_mode_pref == 'remote' %}<span class="chip">🏠 非対面形式</span>{% endif %}
         {% if help_request.headcount > 1 %}<span class="chip chip-headcount">{{ help_request.headcount }}人募集{% if accepting %}（あと{{ slots_left }}人）{% endif %}</span>{% endif %}
         {% for s in help_request.required_skills.all %}<span class="chip chip-skill">{{ s.name }}</span>{% endfor %}
         {% if skill_ok and help_request.required_skills.all %}<span class="chip chip-ok">あなたの得意分野</span>{% endif %}
@@ -164,7 +164,7 @@
                     <label class="field-label">お手伝いの形式</label>
                     <div class="chips-choice"><div>
                         <label><input type="radio" name="work_mode" value="qr" checked> 対面（QRで開始・終了）</label>
-                        <label><input type="radio" name="work_mode" value="remote"> 会わない（ボタンで開始・終了）</label>
+                        <label><input type="radio" name="work_mode" value="remote"> 非対面（ボタンで開始・終了）</label>
                     </div></div>
                     <p class="help">対面の場合は、会った時にQRコードの読み取りでタイマーが始まります。</p>
                 </div>

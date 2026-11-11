@@ -310,6 +310,7 @@ PUSH_TITLES = {
     'photo_duplicate': '写真の重複検出',
     'sanction': 'アカウントのお知らせ',
     'staff_switch': 'アカウント切替',
+    'nearby_request': '近くの新しい依頼',
 }
 
 
@@ -323,7 +324,10 @@ def notify(user, kind, text, url=''):
     if user.is_on_break:
         return notification  # 休会中は外部通知を送らない(アプリ内履歴には残す)
     line_api.maybe_notify(user, kind, notification.text, url)
-    if kind != 'nearby_request' and setting.push_activity:
+    if kind == 'nearby_request':
+        if setting.push_nearby:
+            send_web_push(user, PUSH_TITLES.get(kind, 'お知らせ'), notification.text, url)
+    elif setting.push_activity:
         # iOS の Web Push は「タイトル行 + from アプリ名(システム固定・変更不可) +
         # 本文」の形で表示される。タイトルを空にすると iOS がアプリ名で補完して
         # 「suki-match / from suki-match」と重複して見えるため、種類別の文言を入れる。

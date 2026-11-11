@@ -1731,6 +1731,19 @@ def toggle_reaction(message, user, emoji):
     return created
 
 
+def reader_time_label(read_at):
+    """既読時刻の表示ラベル(例: 11/5 15:42)。"""
+    dt = timezone.localtime(read_at)
+    return f'{dt.month}/{dt.day} {dt:%H:%M}'
+
+
+def message_readers(message):
+    """メッセージを既読した人(送信者以外)を、既読順に名前と時刻で返す。"""
+    return [{'name': r.user.username, 'at': reader_time_label(r.read_at)}
+            for r in message.reads.exclude(user_id=message.sender_id)
+            .select_related('user').order_by('read_at')]
+
+
 def mark_chat_read(help_request, user):
     """依頼のチャットで、自分以外が送った表示可能なメッセージを既読にする。新しく既読になった件数を返す。"""
     if user.pk not in chat_participants(help_request):
@@ -1780,6 +1793,7 @@ def message_payload(message):
         'avatar_url': reverse('core:user_photo', args=[message.sender_id]) if message.sender.avatar else '',
         'report_url': reverse('core:report_user', args=[message.sender.username]),
         'read_count': message.reads.exclude(user_id=message.sender_id).count(),
+        'readers': message_readers(message),
         'reactions': reaction_summary(message) if message.pk else [],
         'hidden': message.is_hidden,
         'created_at': timezone.localtime(message.created_at).strftime('%H:%M'),

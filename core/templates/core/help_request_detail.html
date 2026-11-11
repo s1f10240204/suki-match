@@ -139,7 +139,7 @@
                         <button name="decision" value="reject" class="btn btn-ghost btn-sm">却下</button>
                     </form>
                     {% endif %}
-                    {% if p.work_mode == 'qr' %}{% include 'core/_work_qr.html' with wm=p %}{% endif %}
+                    {% if p.work_mode == 'qr' %}{% if participants|length > 1 %}<details class="work-qr-fold"><summary>{{ p.helper.username }}さんのQRコード</summary>{% include 'core/_work_qr.html' with wm=p %}</details>{% else %}{% include 'core/_work_qr.html' with wm=p %}{% endif %}{% endif %}
                     {% if p.work_finished %}
                     <form method="post" action="{% url 'core:complete_match' p.pk %}" class="work-review">
                         {% csrf_token %}

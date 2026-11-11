@@ -958,6 +958,25 @@
             }
         });
 
+        var readLabel = function (readers) {
+            return log.dataset.group === '1' ? '既読 ' + readers.length : '既読';
+        };
+        var makeReadMark = function (readers) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'read-mark';
+            b.title = '既読した人を見る';
+            b.dataset.readers = JSON.stringify(readers || []);
+            b.textContent = readLabel(readers || []);
+            return b;
+        };
+        var nowLabel = function () {
+            var dt = new Date();
+            var hh = ('0' + dt.getHours()).slice(-2);
+            var mm = ('0' + dt.getMinutes()).slice(-2);
+            return (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + hh + ':' + mm;
+        };
+
         var appendMessage = function (m) {
             if (seen[m.id]) { return; }
             seen[m.id] = true;
@@ -1021,6 +1040,10 @@
             var meta = document.createElement('span');
             meta.className = 'bubble-meta';
             meta.textContent = m.created_at;
+            if (mine && m.readers && m.readers.length) {
+                meta.appendChild(document.createTextNode(' · '));
+                meta.appendChild(makeReadMark(m.readers));
+            }
             if (!mine) {
                 var report = document.createElement('a');
                 report.href = (m.report_url || log.dataset.reportUrl) + '?message=' + m.id;
@@ -1061,23 +1084,66 @@
             if (!mine && document.visibilityState === 'visible') { chat.send({ type: 'read' }); }
         };
 
-        var markAllMineRead = function () {
+        var markAllMineRead = function (readerName) {
             var metas = log.querySelectorAll('.bubble-row.mine .bubble-meta');
             for (var i = 0; i < metas.length; i++) {
-                if (!metas[i].querySelector('.read-mark')) {
-                    var s = document.createElement('span');
-                    s.className = 'read-mark';
-                    s.textContent = '既読';
+                var mark = metas[i].querySelector('.read-mark');
+                var readers = [];
+                if (mark) {
+                    try { readers = JSON.parse(mark.dataset.readers || '[]'); } catch (e) { readers = []; }
+                }
+                if (readerName && !readers.some(function (r) { return r.name === readerName; })) {
+                    readers.push({ name: readerName, at: nowLabel() });
+                }
+                if (!readers.length) { continue; }
+                if (!mark) {
                     metas[i].appendChild(document.createTextNode(' · '));
-                    metas[i].appendChild(s);
+                    metas[i].appendChild(makeReadMark(readers));
+                } else {
+                    mark.dataset.readers = JSON.stringify(readers);
+                    mark.textContent = readLabel(readers);
                 }
             }
         };
 
+        var readersModal = document.getElementById('readers-modal');
+        if (readersModal) {
+            var readersList = document.getElementById('readers-list');
+            log.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('.read-mark') : null;
+                if (!btn) { return; }
+                var readers = [];
+                try { readers = JSON.parse(btn.dataset.readers || '[]'); } catch (err) { readers = []; }
+                readersList.innerHTML = '';
+                if (!readers.length) {
+                    var empty = document.createElement('li');
+                    empty.textContent = 'まだ誰も読んでいません';
+                    readersList.appendChild(empty);
+                }
+                readers.forEach(function (r) {
+                    var li = document.createElement('li');
+                    var nm = document.createElement('span');
+                    nm.textContent = r.name;
+                    var at = document.createElement('span');
+                    at.className = 'reader-at';
+                    at.textContent = r.at || '';
+                    li.appendChild(nm);
+                    li.appendChild(at);
+                    readersList.appendChild(li);
+                });
+                readersModal.hidden = false;
+            });
+            readersModal.addEventListener('click', function (e) {
+                if (e.target === readersModal || (e.target.closest && e.target.closest('[data-readers-close]'))) {
+                    readersModal.hidden = true;
+                }
+            });
+        }
+
         var chat = connect('/ws/chat/' + log.dataset.chatId + '/', {
             message: function (data) {
                 if (data.error) { toast(data.error, '', 'warning'); return; }
-                if (data.kind === 'read') { if (data.reader_id !== me) { markAllMineRead(); } return; }
+                if (data.kind === 'read') { if (data.reader_id !== me) { markAllMineRead(data.reader_name); } return; }
                 if (data.kind === 'reaction_update') { updateReactions(data.message_id, data.reactions); return; }
                 if (data.kind === 'recall') { applyRecall(data.message_id); return; }
                 appendMessage(data.message);
@@ -1756,6 +1822,16 @@ document.querySelectorAll('[data-copy]').forEach(function (btn) {
 
 // ---------- 対面QRタイマー(QRコードの自動更新) ----------
 (function () {
+    document.querySelectorAll('.work-qr-fold').forEach(function (fold) {
+        fold.addEventListener('toggle', function () {
+            if (!fold.open) { return; }
+            var panel = fold.closest('.work-panel');
+            if (!panel) { return; }
+            panel.querySelectorAll('.work-qr-fold').forEach(function (other) {
+                if (other !== fold) { other.open = false; }
+            });
+        });
+    });
     document.querySelectorAll('[data-qr-box]').forEach(function (box) {
         var url = box.getAttribute('data-qr-url');
         if (!url) { return; }

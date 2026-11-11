@@ -1048,3 +1048,17 @@ body.simple-ui .celebrate-title { font-size: 1.8rem; }
 /* ---------- 履歴の「すべて見る」とページ送り ---------- */
 .more-link { display: block; text-align: right; padding: 10px 2px 4px; font-weight: 700; color: var(--primary-dark); text-decoration: none; }
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+
+/* ---------- チャット画面の整理(ヘッダー集約・既読詳細・QR折りたたみ) ---------- */
+.chat-head-title { font-weight: 700; font-size: 1.02rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chat-members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chat-member { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-soft); border-radius: 999px; padding: 2px 11px 2px 2px; font-size: .8rem; font-weight: 700; color: #6b6158; text-decoration: none; }
+.chat-switch-hint { margin-top: 6px; }
+button.read-mark { background: none; border: none; padding: 0; font: inherit; color: var(--ok); font-weight: 700; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.readers-card { text-align: left; }
+.readers-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; text-align: center; }
+.readers-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.readers-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; background: var(--surface-soft); border-radius: 12px; padding: 8px 12px; font-weight: 700; font-size: .9rem; }
+.readers-list .reader-at { color: var(--muted); font-weight: 500; font-size: .8rem; white-space: nowrap; }
+.work-qr-fold { margin-top: 6px; }
+.work-qr-fold > summary { cursor: pointer; font-weight: 700; color: var(--primary-dark); padding: 6px 0; }

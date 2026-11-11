@@ -114,10 +114,12 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def _mark_read(self):
         if await self._mark_read_db():
             await self.channel_layer.group_send(
-                self.group, {'type': 'chat.read', 'reader_id': self.scope['user'].pk})
+                self.group, {'type': 'chat.read', 'reader_id': self.scope['user'].pk,
+                 'reader_name': self.scope['user'].username})
 
     async def chat_read(self, event):
-        await self.send_json({'kind': 'read', 'reader_id': event['reader_id']})
+        await self.send_json({'kind': 'read', 'reader_id': event['reader_id'],
+                              'reader_name': event.get('reader_name', '')})
 
     async def chat_recall(self, event):
         await self.send_json({'kind': 'recall', 'message_id': event['message_id']})

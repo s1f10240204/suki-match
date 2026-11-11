@@ -20,6 +20,10 @@ def app_context(request):
     if user is None or not user.is_authenticated:
         return context
     active_matches, pending_requests = services.active_items(user)
+    suppress_pk = getattr(request, 'suppress_active_request_pk', None)
+    if suppress_pk:  # チャット画面では、その依頼自身のバーはヘッダーと重複するので除く
+        active_matches = [m for m in active_matches if m.help_request_id != suppress_pk]
+        pending_requests = [hr for hr in pending_requests if hr.pk != suppress_pk]
     context.update({
         'active_matches': active_matches,
         'pending_requests': pending_requests,

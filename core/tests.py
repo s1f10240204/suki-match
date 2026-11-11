@@ -3942,3 +3942,121 @@ class AreaLabelTests(BaseTestCase):
         self.assertFalse(ok)  # 失敗は False で返る
         user.refresh_from_db()
         self.assertEqual(user.area_label, '東京都北区赤羽台')  # 失敗時に古い名前を消さない
+
+
+class ChatPolishTests(BaseTestCase):
+    """チャット画面の上部整理・QR集約・グループ既読の詳細表示。"""
+
+    def _solo_chat(self, name):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = make_user(f'{name}help')
+        match = services.accept_first_come(hr, helper)
+        return requester, hr, helper, match
+
+    def _group_chat(self, name, headcount=2):
+        requester = make_user(f'{name}req')
+        User.objects.filter(pk=requester.pk).update(points=300)
+        requester.refresh_from_db()
+        hr = make_request(requester, headcount=headcount)
+        services.publish_request(hr)
+        helpers, matches = [], []
+        for i in range(headcount):
+            h = make_user(f'{name}h{i + 1}')
+            helpers.append(h)
+            matches.append(services.accept_first_come(hr, h, work_mode='qr'))
+        return requester, hr, helpers, matches
+
+    # --- 上部: 進行中バーの重複解消 ---
+
+    def test_chat_page_hides_active_bar_for_current_request(self):
+        requester, hr, helper, match = self._solo_chat('cp1')
+        self.client.force_login(requester)
+        chat_page = self.client.get(reverse('core:chat', args=[match.pk]))
+        self.assertNotContains(chat_page, 'active-bar')
+        # 他の画面では従来どおりバーが出る
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, 'active-bar')
+
+    def test_chat_page_keeps_other_active_items(self):
+        requester, hr, helper, match = self._solo_chat('cp2')
+        hr2 = make_request(requester)
+        hr2.title = '別の依頼タイトル'
+        hr2.save(update_fields=['title'])
+        services.publish_request(hr2)
+        services.accept_first_come(hr2, helper)
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[match.pk]))
+        self.assertContains(page, 'active-bar')          # バー自体は残る
+        self.assertContains(page, '別の依頼タイトル')      # 他の依頼は出る
+
+    # --- 上部: グループヘッダーの集約 ---
+
+    def test_group_chat_header_is_compact(self):
+        requester, hr, helpers, matches = self._group_chat('cp3')
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[matches[0].pk]))
+        self.assertContains(page, 'chat-members')                    # メンバーはチップ表示
+        self.assertContains(page, helpers[0].username)
+        self.assertContains(page, helpers[1].username)
+        self.assertNotContains(page, 'グループチャット（')            # 旧来の長い1行は廃止
+        self.assertNotContains(page, 'メンバーを切り替えると、その人の作業パネル')
+        self.assertContains(page, 'member-switch')                   # 切替チップは残る
+
+    # --- 詳細画面: QR の折りたたみ集約 ---
+
+    def test_detail_group_qr_is_folded(self):
+        requester, hr, helpers, matches = self._group_chat('cp4')
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(page, 'work-qr-fold')
+        self.assertContains(page, 'さんのQRコード')
+
+    def test_detail_solo_qr_stays_expanded(self):
+        requester = make_user('cp5req')
+        User.objects.filter(pk=requester.pk).update(points=200)
+        requester.refresh_from_db()
+        hr = make_request(requester)
+        services.publish_request(hr)
+        helper = make_user('cp5help')
+        services.accept_first_come(hr, helper, work_mode='qr')
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertNotContains(page, 'work-qr-fold')
+        self.assertContains(page, 'qr-box')
+
+    # --- 既読の詳細(誰が読んだか) ---
+
+    def test_group_readers_visible_on_own_message(self):
+        requester, hr, helpers, matches = self._group_chat('cp6')
+        msg = services.post_message(matches[0], requester, 'よろしくお願いします')
+        services.mark_chat_read(hr, helpers[0])
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[matches[0].pk]))
+        self.assertContains(page, '既読 1')
+        self.assertContains(page, 'data-readers')
+        self.assertContains(page, helpers[0].username)   # 既読者データに名前が入る
+        self.assertContains(page, 'readers-modal')       # タップで開くモーダルがある
+        payload = services.message_payload(msg)
+        self.assertEqual(payload['read_count'], 1)
+        self.assertEqual([r['name'] for r in payload['readers']], [helpers[0].username])
+
+    def test_solo_reader_visible_on_own_message(self):
+        requester, hr, helper, match = self._solo_chat('cp7')
+        services.post_message(match, requester, 'こんにちは')
+        services.mark_chat_read(hr, helper)
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[match.pk]))
+        self.assertContains(page, 'data-readers')
+        self.assertContains(page, helper.username)
+        self.assertContains(page, '既読')
+
+    def test_no_readers_until_someone_reads(self):
+        requester, hr, helpers, matches = self._group_chat('cp8')
+        services.post_message(matches[0], requester, 'まだ誰も読んでいない')
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[matches[0].pk]))
+        self.assertNotContains(page, 'class="read-mark"')  # 既読マーク自体が出ない

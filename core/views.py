@@ -464,6 +464,7 @@ def chat(request, pk):
     match = get_object_or_404(Match.objects.select_related('help_request__requester', 'helper'), pk=pk)
     if request.user.pk not in services.chat_participants(match.help_request):
         raise Http404
+    request.suppress_active_request_pk = match.help_request_id  # 上部の進行中バーと重複させない
     form = MessageForm(request.POST or None, request.FILES or None)
     if request.method == 'POST' and form.is_valid():  # JavaScriptが使えない環境向け
         reply_raw = request.POST.get('reply_to') or ''
@@ -477,12 +478,13 @@ def chat(request, pk):
     marked = services.mark_chat_read(help_request, request.user)
     if marked:  # ページを開いて既読にした場合も、送信者へリアルタイムに知らせる
         services.push(services.chat_group_name(help_request),
-                      {'type': 'chat.read', 'reader_id': request.user.pk})
+                      {'type': 'chat.read', 'reader_id': request.user.pk,
+                      'reader_name': request.user.username})
     request.user.notifications.filter(url=request.path, is_read=False).update(is_read=True)
     history_visible = services.chat_history_visible(match)
     chat_messages = []
     if history_visible:
-        for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads', 'reactions', 'hidden_by', 'reply_to__hidden_by'):
+        for m in help_request.messages.select_related('sender', 'reply_to__sender').prefetch_related('reads__user', 'reactions', 'hidden_by', 'reply_to__hidden_by'):
             if m.is_hidden and m.sender_id != request.user.pk:
                 continue
             if any(u.pk == request.user.pk for u in m.hidden_by.all()):
@@ -495,6 +497,10 @@ def chat(request, pk):
                 else:
                     m.reply_excerpt = services.reply_excerpt(m.reply_to)
             m.read_count = sum(1 for r in m.reads.all() if r.user_id != m.sender_id)
+            m.readers = [{'name': r.user.username, 'at': services.reader_time_label(r.read_at)}
+                         for r in sorted((r for r in m.reads.all() if r.user_id != m.sender_id),
+                                         key=lambda r: r.read_at)]
+            m.readers_json = json.dumps(m.readers, ensure_ascii=False)
             summary = services.reaction_summary(m)
             for entry in summary:
                 entry['mine'] = request.user.pk in entry['user_ids']

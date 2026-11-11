@@ -6,15 +6,20 @@
 
 {% block content %}
 <div class="chat-head card">
+    {% if is_group %}
+    <p class="chat-head-title"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a> <span class="status status-{{ match.status }}">{{ match.get_status_display }}</span></p>
+    <p class="meta chat-place">場所: {{ help_request.address_detail|default:help_request.area_label }}
+        <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図</a></p>
+    <div class="chat-members" aria-label="メンバー">
+        {% for member in members %}<a class="chat-member" href="{% url 'core:public_profile' member.username %}">{% avatar member 'xs' %}<span>{{ member.username }}{% if member.pk == help_request.requester_id %}（依頼者）{% endif %}</span></a>{% endfor %}
+    </div>
+    {% else %}
     <a href="{% url 'core:public_profile' other.username %}" class="person person-compact">
         {% avatar other 'sm' %}
         <p class="person-name">{{ other.username }} <span class="rank-badge">{{ other.rank }}</span></p>
     </a>
-    <p class="meta chat-place"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a>({{ match.get_status_display }})</p>
-    <p class="meta chat-place">場所: {{ help_request.address_detail|default:help_request.area_label }}
+    <p class="meta chat-place"><a class="link" href="{% url 'core:help_request_detail' help_request.pk %}">{{ help_request.title }}</a>（{{ match.get_status_display }}） ・ 場所: {{ help_request.address_detail|default:help_request.area_label }}
         <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ help_request.latitude }},{{ help_request.longitude }}">地図</a></p>
-    {% if is_group %}
-    <p class="meta chat-members">グループチャット（{{ members|length }}人）: {% for member in members %}{{ member.username }}{% if not forloop.last %}、{% endif %}{% endfor %}</p>
     {% endif %}
     {% if member_matches|length > 1 %}
     <div class="member-switch" aria-label="メンバーの切り替え">
@@ -22,7 +27,7 @@
         <a href="{% url 'core:chat' mm.pk %}" class="member-chip{% if mm.pk == match.pk %} is-current{% endif %}">{{ mm.helper.username }}さん{% if mm.status == 'done' %}（完了）{% endif %}</a>
         {% endfor %}
     </div>
-    <p class="meta">メンバーを切り替えると、その人の作業パネル（QR・申告の確認・完了）が表示されます。メッセージは全員で共通です。</p>
+    <p class="meta chat-switch-hint">タップで、その人の作業パネル（QR・申告・完了）に切り替わります。メッセージは全員で共通です。</p>
     {% endif %}
 </div>
 
@@ -88,5 +93,12 @@
 {% else %}
     <p class="notice">このチャットは終了したため、送信できません。{% if retention_deadline %}履歴は{{ retention_deadline|date:"n/j H:i" }}まで保存されます。{% endif %}</p>
 {% endif %}
+<div class="modal-overlay" id="readers-modal" hidden>
+    <div class="modal-card readers-card" role="dialog" aria-modal="true" aria-label="既読した人">
+        <h2 class="readers-title">既読した人</h2>
+        <ul class="readers-list" id="readers-list"></ul>
+        <button type="button" class="btn btn-ghost btn-block" data-readers-close>閉じる</button>
+    </div>
+</div>
 {% include 'core/_complete_celebration.html' %}
 {% endblock %}

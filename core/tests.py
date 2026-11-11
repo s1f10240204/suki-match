@@ -1190,6 +1190,77 @@ class ShadowBanTests(BaseTestCase):
         self.client.force_login(requester)
         context = self.client.get(reverse('core:help_request_detail', args=[hr.pk])).context
         self.assertEqual(list(context['applications']), [])
+    def test_banned_requester_publish_looks_normal(self):
+        # 本人側は通常どおり投稿でき、預かりも引かれる(ただし通知は誰にも行かない)
+        banned = make_user('ghostpub', is_shadow_banned=True)
+        User.objects.filter(pk=banned.pk).update(points=100)
+        banned.refresh_from_db()
+        hr = make_request(banned, duration_minutes=30)
+        self.assertEqual(services.publish_request(hr), 0)
+        banned.refresh_from_db()
+        hr.refresh_from_db()
+        self.assertEqual(hr.points_cost, 30)
+        self.assertEqual(banned.points, 70)
+        self.assertEqual(hr.status, HelpRequest.Status.OPEN)
+
+    def test_banned_requester_photo_gated(self):
+        banned = make_user('ghostphoto', is_shadow_banned=True)
+        hr = make_request(banned)
+        hr.image = jpeg_upload('req.jpg')
+        hr.save()
+        other = make_user('photoother')
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(reverse('core:request_image', args=[hr.pk])).status_code, 404)
+        self.client.force_login(banned)
+        self.assertEqual(self.client.get(reverse('core:request_image', args=[hr.pk])).status_code, 200)
+
+    def test_matched_helper_can_still_see_banned_detail_and_photo(self):
+        # マッチ成立後に依頼者がBanされても、相手(関係者)からは見え続ける
+        requester = make_user('ghostreq2')
+        hr = make_request(requester)
+        hr.image = jpeg_upload('req.jpg')
+        hr.save()
+        helper = make_user('ghosthelp2')
+        services.accept_first_come(hr, helper)
+        User.objects.filter(pk=requester.pk).update(is_shadow_banned=True)
+        self.client.force_login(helper)
+        self.assertEqual(self.client.get(reverse('core:help_request_detail', args=[hr.pk])).status_code, 200)
+        self.assertEqual(self.client.get(reverse('core:request_image', args=[hr.pk])).status_code, 200)
+
+    def test_ongoing_match_survives_helper_ban(self):
+        # 進行中マッチの途中でBanされても、チャットと完了・精算は止まらない(相手を詰ませない)
+        requester = make_user('ghostreq3')
+        hr = make_request(requester)
+        helper = make_user('ghosthelp3')
+        match = services.accept_first_come(hr, helper)
+        User.objects.filter(pk=helper.pk).update(is_shadow_banned=True)
+        helper.refresh_from_db()
+        services.post_message(match, helper, 'まだいます')
+        services.complete(hr, requester)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+
+    def test_unban_restores_visibility(self):
+        banned = make_user('ghostunban', is_shadow_banned=True)
+        hr = make_request(banned)
+        other = make_user('unbanother')
+        self.client.force_login(other)
+        listed = self.client.get(reverse('core:help_request_list'), {'all': '1'}).context['help_requests']
+        self.assertNotIn(hr, listed)
+        User.objects.filter(pk=banned.pk).update(is_shadow_banned=False)
+        listed = self.client.get(reverse('core:help_request_list'), {'all': '1'}).context['help_requests']
+        self.assertIn(hr, listed)
+        self.assertEqual(self.client.get(reverse('core:help_request_detail', args=[hr.pk])).status_code, 200)
+
+    def test_banned_helper_still_receives_nearby_notification(self):
+        # 通知まで止めるとバレるため、Ban中も近くの依頼の通知は通常どおり届く
+        # (引き受けようとすると「締め切られました」と表示されて静かに止まる)
+        requester = make_user('ghostreq5')
+        ghost = make_user('ghost5', NEAR, ['見守り'], is_shadow_banned=True)
+        hr = make_request(requester, skill_names=['見守り'])
+        self.assertGreaterEqual(services.notify_nearby_helpers(hr), 1)
+        self.assertTrue(Notification.objects.filter(user=ghost, kind='nearby_request').exists())
+
 class PointsEconomyTests(BaseTestCase):
     """ポイント制(振替モデル): 投稿で預かり、完了でヘルパーへ、キャンセル・期限切れで返金。"""
 

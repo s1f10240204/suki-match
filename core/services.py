@@ -813,6 +813,15 @@ def declare_minutes(match, user, minutes):
     match.declared_minutes = minutes
     match.declaration_approved = match.work_started_at is None
     match.save(update_fields=['declared_minutes', 'declaration_approved'])
+    # 申告は相手にも即時に伝える(通知+プッシュ+開いている画面の自動更新)
+    if match.declaration_approved:
+        notify(match.help_request.requester, 'work',
+               f'「{match.help_request.title}」の作業時間として{minutes}分が申告されました',
+               detail_url(match.help_request))
+    else:
+        notify(match.help_request.requester, 'work',
+               f'「{match.help_request.title}」の作業時間が{minutes}分に訂正申告されました。確認をお願いします',
+               detail_url(match.help_request))
     maybe_auto_complete(match.help_request)
     return match
 
@@ -823,14 +832,21 @@ def review_declaration(match, user, approve):
         raise ServiceError('申告を確認できるのは依頼者だけです。')
     if match.status != Match.Status.IN_PROGRESS or not match.declared_minutes:
         raise ServiceError('確認できる申告がありません。')
+    declared = match.declared_minutes
     if approve:
         match.declaration_approved = True
         match.save(update_fields=['declaration_approved'])
+        notify(match.helper, 'work',
+               f'「{match.help_request.title}」の申告（{declared}分）が承認されました',
+               detail_url(match.help_request))
         maybe_auto_complete(match.help_request)
     else:
         match.declared_minutes = None
         match.declaration_approved = False
         match.save(update_fields=['declared_minutes', 'declaration_approved'])
+        notify(match.helper, 'work',
+               f'「{match.help_request.title}」の申告（{declared}分）は却下されました',
+               detail_url(match.help_request))
         maybe_auto_complete(match.help_request)
     return match
 
@@ -888,12 +904,13 @@ def complete(help_request, user):
             dues = {m.pk: effective_minutes(m, help_request, now) * POINTS_PER_MINUTE
                     for m in matches}
             requester = User.objects.select_for_update().get(pk=help_request.requester_id)
-            available = help_request.points_cost + requester.points
+            # 精算は実効分数どおりに払う。預かり分を超えた分は依頼者の残高から
+            # 引く(残高が足りなければマイナスになる)。以前は「預かり分+残高」を
+            # 上限に黙って切り捨てており、承認した申告どおりに払われなかった。
             paid_total = 0
             for m in matches:
-                pay = min(dues[m.pk], max(0, available - paid_total))
-                awarded[m.pk] = pay
-                paid_total += pay
+                awarded[m.pk] = dues[m.pk]
+                paid_total += dues[m.pk]
             delta = paid_total - help_request.points_cost
             if delta:
                 requester.points -= delta

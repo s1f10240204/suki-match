@@ -1533,14 +1533,15 @@ class WorkTimerTests(BaseTestCase):
         self.assertEqual(helper.points, 10)
         self.assertEqual(requester.points, 100 - 10)
 
-    def test_insufficient_balance_pays_what_is_available(self):
+    def test_insufficient_balance_pays_in_full_with_overdraft(self):
         requester, hr, helper, match = self._setup('w5', requester_points=15, duration=15)
-        self._set_timer(match, 27)  # 30分ぶん発生するが残高は預かり15のみ
+        self._set_timer(match, 27)  # 30分ぶん発生。預かりは15しかない
         services.complete(hr, requester)
+        # 精算は実績どおり全額払い、不足分は依頼者の残高がマイナスになる
         helper.refresh_from_db()
         requester.refresh_from_db()
-        self.assertEqual(helper.points, 15)
-        self.assertEqual(requester.points, 0)
+        self.assertEqual(helper.points, 30)
+        self.assertEqual(requester.points, -15)
 
     def test_declaration_without_timer_is_used(self):
         requester, hr, helper, match = self._setup('w6', requester_points=100, duration=15)
@@ -1584,6 +1585,42 @@ class WorkTimerTests(BaseTestCase):
         helper.refresh_from_db()
         self.assertEqual(helper.points, 30)
 
+
+    def test_approved_declaration_paid_in_full_when_balance_short(self):
+        # 本人報告の再現: 30分の依頼・残高は預かり分ちょうど。対面タイマー実測30分、
+        # 60分と訂正申告して承認されたら、60pt全額が払われる(以前は30ptで打ち切り)
+        requester, hr, helper, match = self._setup('wfull', requester_points=30, duration=30)
+        self._set_timer(match, 30)  # 実測30分・終了済み
+        services.declare_minutes(match, helper, 60)
+        services.review_declaration(match, requester, approve=True)
+        hr.refresh_from_db()
+        helper.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        self.assertEqual(helper.points, 60)
+        self.assertEqual(requester.points, -30)
+
+    def test_declare_notifies_requester(self):
+        from .models import Notification
+        requester, hr, helper, match = self._setup('wnoti', requester_points=100, duration=30)
+        self._set_timer(match, 30)
+        before = Notification.objects.filter(user=requester, kind='work').count()
+        services.declare_minutes(match, helper, 45)
+        notes = Notification.objects.filter(user=requester, kind='work')
+        self.assertEqual(notes.count(), before + 1)
+        self.assertIn('45分', notes.latest('id').text)
+
+    def test_review_rejection_notifies_helper(self):
+        from .models import Notification
+        requester, hr, helper, match = self._setup('wrej', requester_points=100, duration=30)
+        self._set_timer(match, 30, None)  # 開始済み・未終了(却下しても完了しない)
+        services.declare_minutes(match, helper, 45)
+        services.review_declaration(match, requester, approve=False)
+        notes = Notification.objects.filter(user=helper, kind='work')
+        self.assertTrue(notes.exists())
+        self.assertIn('却下', notes.latest('id').text)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)
 
 class PointHistoryTests(BaseTestCase):
     """ポイント台帳: 主要な増減が記録され、履歴ページで自分の分だけ見えること。"""

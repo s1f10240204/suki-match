@@ -675,7 +675,7 @@
     }
 
     if (document.body.dataset.wsEnabled === '1') {
-        var REFRESH_KINDS = ['matched', 'applied', 'completed', 'canceled', 'rejected', 'expired'];
+        var REFRESH_KINDS = ['matched', 'applied', 'completed', 'canceled', 'rejected', 'expired', 'work'];
         connect('/ws/notifications/', {
             open: function (ws) {
                 // 位置情報がすでに許可されているときだけ現在地を送る(勝手に許可ダイアログを出さない)

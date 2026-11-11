@@ -506,10 +506,6 @@ def chat(request, pk):
                 entry['mine'] = request.user.pk in entry['user_ids']
             m.reaction_list = summary
             chat_messages.append(m)
-    if match.status == Match.Status.IN_PROGRESS:
-        now = timezone.now()
-        match.work_basis = services.effective_minutes(match, help_request, now)
-        match.work_measured = services.measured_minutes(match, help_request, now)
     members = [help_request.requester] + [m.helper for m in
                                           help_request.matches.exclude(status=Match.Status.CANCELED)
                                           .select_related('helper').order_by('created_at')]
@@ -518,15 +514,6 @@ def chat(request, pk):
         role = 'requester' if request.user.pk == help_request.requester_id else 'helper'
         celebration = _celebration(request.user, help_request, [match],
                                    f'match-{match.pk}', role)
-    if match.status == Match.Status.IN_PROGRESS:
-        match.work_finished = services.match_work_finished(match)
-    member_matches = []
-    if help_request.is_group:
-        if request.user.pk == help_request.requester_id:
-            member_matches = list(help_request.matches.exclude(
-                status=Match.Status.CANCELED).select_related('helper').order_by('created_at'))
-        elif match.helper_id == request.user.pk:
-            member_matches = [match]
     return render(request, 'core/chat.html', {
         'match': match, 'help_request': help_request, 'other': match.other_user(request.user),
         'celebration': celebration, 'celebrate_away': bool(celebration),
@@ -534,7 +521,6 @@ def chat(request, pk):
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),
         'is_group': help_request.is_group, 'members': members,
-        'member_matches': member_matches,
         'stamps': [(key, emoji, label) for key, (emoji, label) in services.STAMPS.items()],
     })
 

@@ -3837,15 +3837,20 @@ class GroupPerPersonTests(BaseTestCase):
         with self.assertRaises(services.ServiceError):  # 未完了の相手には書けない
             services.submit_review(hr, requester, 5, reviewee=h2)
 
-    def test_chat_member_switcher_and_detail_review_forms(self):
+    def test_chat_is_message_only_and_detail_review_forms(self):
         requester, hr = self._funded_group('gp9', points=100, duration=10, headcount=2)
         h1, h2 = make_user('gp9h1'), make_user('gp9h2')
         m1 = services.accept_first_come(hr, h1)
         m2 = services.accept_first_come(hr, h2)
         self.client.force_login(requester)
         page = self.client.get(reverse('core:chat', args=[m1.pk]))
-        self.assertContains(page, reverse('core:chat', args=[m2.pk]))  # 切替リンクがある
-        self.assertContains(page, 'member-chip')
+        # チャットはメッセージ専用: メンバー切替チップも作業パネルも置かない
+        self.assertNotContains(page, 'member-switch')
+        self.assertNotContains(page, 'work-panel')
+        self.assertNotContains(page, reverse('core:chat', args=[m2.pk]))
+        # 代わりに、詳細の作業セクション(#work)へすぐ戻れる導線がある
+        self.assertContains(page, reverse('core:help_request_detail', args=[hr.pk]) + '#work')
+        self.assertContains(page, 'QR・作業画面を開く')
         # 1人分を完了 → 詳細に完了済み表示と、その人へのレビューフォームが出る
         services.declare_minutes(m1, h1, 10)
         services.complete_match(m1, requester)
@@ -3866,18 +3871,23 @@ class GroupPerPersonTests(BaseTestCase):
                          {'rating': 3, 'comment': '', 'reviewee': h2.pk})
         self.assertEqual(Review.objects.filter(help_request=hr, reviewer=requester).count(), 2)
 
-    def test_chat_complete_button_for_finished_member(self):
+    def test_detail_complete_button_for_finished_member(self):
         requester, hr = self._funded_group('gp10', points=100, duration=10, headcount=2)
         h1, h2 = make_user('gp10h1'), make_user('gp10h2')
         m1 = services.accept_first_come(hr, h1)
         services.accept_first_come(hr, h2)
         self._finish_work(m1, h1, minutes_ago=8)
         self.client.force_login(requester)
+        # チャットはメッセージ専用なので完了ボタンは無い
         page = self.client.get(reverse('core:chat', args=[m1.pk]))
-        self.assertContains(page, reverse('core:complete_match', args=[m1.pk]))
-        self.assertContains(page, 'さんの分を完了する')
+        self.assertNotContains(page, reverse('core:complete_match', args=[m1.pk]))
+        # 完了は詳細の作業セクション(#work)から行う
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, 'id="work"')
+        self.assertContains(detail, reverse('core:complete_match', args=[m1.pk]))
+        self.assertContains(detail, 'この人の分を完了する')
         resp = self.client.post(reverse('core:complete_match', args=[m1.pk]),
-                                {'next': reverse('core:chat', args=[m1.pk])})
+                                {'next': reverse('core:help_request_detail', args=[hr.pk])})
         self.assertEqual(resp.status_code, 302)
         m1.refresh_from_db()
         self.assertEqual(m1.status, Match.Status.DONE)
@@ -4004,7 +4014,9 @@ class ChatPolishTests(BaseTestCase):
         self.assertContains(page, helpers[1].username)
         self.assertNotContains(page, 'グループチャット（')            # 旧来の長い1行は廃止
         self.assertNotContains(page, 'メンバーを切り替えると、その人の作業パネル')
-        self.assertContains(page, 'member-switch')                   # 切替チップは残る
+        self.assertNotContains(page, 'member-switch')                   # 切替チップは廃止(チャットはメッセージ専用)
+        self.assertNotContains(page, 'work-panel')                      # 作業パネルもチャットには置かない
+        self.assertContains(page, 'QR・作業画面を開く')                  # 代わりに詳細の作業セクションへの導線がある
 
     # --- 詳細画面: QR の折りたたみ集約 ---
 
@@ -4060,3 +4072,18 @@ class ChatPolishTests(BaseTestCase):
         self.client.force_login(requester)
         page = self.client.get(reverse('core:chat', args=[matches[0].pk]))
         self.assertNotContains(page, 'class="read-mark"')  # 既読マーク自体が出ない
+
+    def test_helper_chat_is_message_only_with_work_link(self):
+        requester, hr, helper, match = self._solo_chat('cp9')
+        self.client.force_login(helper)
+        page = self.client.get(reverse('core:chat', args=[match.pk]))
+        # ヘルパー側のチャットにも作業パネルは出ない
+        self.assertNotContains(page, 'work-panel')
+        self.assertNotContains(page, '作業開始')
+        # 詳細の作業セクションへすぐ戻れる導線がある
+        self.assertContains(page, reverse('core:help_request_detail', args=[hr.pk]) + '#work')
+        self.assertContains(page, 'QR・作業画面を開く')
+        # 詳細側には自分の作業パネル(アンカー付き)が残っている
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, 'id="work"')
+        self.assertContains(detail, '作業時間')

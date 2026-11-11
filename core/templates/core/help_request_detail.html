@@ -125,7 +125,7 @@
             {% endif %}
             {% if match %}<a href="{% url 'core:chat' match.pk %}" class="btn btn-outline btn-block">チャットを開く</a>{% endif %}
             {% if participants %}
-            <div class="work-panel">
+            <div class="work-panel" id="work">
                 <p class="work-title">⏱ 作業時間と精算見込み</p>
                 {% for p in participants %}
                 <div class="work-row">
@@ -163,7 +163,7 @@
 
     {% elif is_helper and help_request.status == 'in_progress' %}
         <a href="{% url 'core:chat' match.pk %}" class="btn btn-primary btn-block">チャットを開く</a>
-        {% if my_match %}{% include 'core/_work_helper.html' with wm=my_match %}{% endif %}
+        {% if my_match %}<div id="work">{% include 'core/_work_helper.html' with wm=my_match %}</div>{% endif %}
         <p class="meta">終わったら、依頼者が「完了」にするとポイントが付与されます。</p>
 
     {% elif accepting %}

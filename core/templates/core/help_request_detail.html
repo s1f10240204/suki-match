@@ -140,9 +140,23 @@
                     </form>
                     {% endif %}
                     {% if p.work_mode == 'qr' %}{% include 'core/_work_qr.html' with wm=p %}{% endif %}
+                    {% if p.work_finished %}
+                    <form method="post" action="{% url 'core:complete_match' p.pk %}" class="work-review">
+                        {% csrf_token %}
+                        <button class="btn btn-primary btn-sm">この人の分を完了する（{{ p.work_basis }}pt）</button>
+                    </form>
+                    {% endif %}
                 </div>
                 {% endfor %}
-                <p class="meta">全員の作業が終わると、上記の時間で自動で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
+                <p class="meta">作業が終わった人は「この人の分を完了する」から1人ずつ完了できます。全員の作業が終わると自動で精算されます。投稿時の預かり分を超えた分は残高から引かれ、余った分は返金されます。</p>
+            </div>
+            {% endif %}
+            {% if done_matches_progress %}
+            <div class="work-panel">
+                <p class="work-title">✅ 完了済み</p>
+                {% for dm in done_matches_progress %}
+                <div class="work-row"><span>{{ dm.helper.username }}さん: 完了（{{ dm.awarded }}pt 支払い済み）</span></div>
+                {% endfor %}
             </div>
             {% endif %}
         {% endif %}
@@ -225,14 +239,19 @@
         </div>
     {% endif %}
 
-    {% if review_form %}
-        <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form" id="review-form">
+    {% if review_targets %}
+    <div id="review-form">
+        {% for rt in review_targets %}
+        <form method="post" action="{% url 'core:submit_review' help_request.pk %}" class="form review-form" id="review-form-{{ rt.user.pk }}">
             {% csrf_token %}
-            <h2 class="section-title">{{ review_target.username }}さんを評価する</h2>
+            <input type="hidden" name="reviewee" value="{{ rt.user.pk }}">
+            <h2 class="section-title">{{ rt.user.username }}さんを評価する</h2>
             {% include 'core/_field.html' with field=review_form.rating %}
             {% include 'core/_field.html' with field=review_form.comment %}
             <button class="btn btn-primary btn-block">レビューを送信</button>
         </form>
+        {% endfor %}
+    </div>
     {% endif %}
 
     {% if is_requester and help_request.status == 'open' or is_requester and help_request.status == 'in_progress' or is_helper and help_request.status == 'in_progress' %}

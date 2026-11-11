@@ -43,15 +43,20 @@ def _run(request, action, success=''):
 
 def _celebration(user, help_request, matches, key, role):
     """完了セレブレーション表示用のデータ(相手・分数・ポイント)。"""
+    reviewed_ids = set(Review.objects.filter(
+        reviewer=user, help_request=help_request).values_list('reviewee_id', flat=True))
     rows = []
     for m in matches:
         earned = (PointTransaction.objects.filter(
             help_request=help_request, user=m.helper,
             kind=PointTransaction.Kind.EARNED).aggregate(t=Sum('amount'))['t'] or 0)
+        partner = m.helper if role == 'requester' else help_request.requester
         rows.append({
             'name': m.helper.username if role == 'requester' else help_request.requester.username,
             'minutes': services.effective_minutes(m, help_request, timezone.now()),
             'points': earned,
+            'review_anchor': (f'review-form-{partner.pk}'
+                              if partner.pk not in reviewed_ids else ''),
         })
     return {'key': key, 'role': role, 'rows': rows,
             'request_pk': help_request.pk, 'title': help_request.title,
@@ -89,7 +94,7 @@ def help_request_list(request):
                                      expires_at__gt=timezone.now(),
                                      scheduled_for__isnull=(tab == 'now'))
           .exclude(requester__is_shadow_banned=True)
-          .annotate(joined_active=Count('matches', filter=Q(matches__status=Match.Status.IN_PROGRESS)))
+          .annotate(joined_active=Count('matches', filter=Q(matches__status__in=[Match.Status.IN_PROGRESS, Match.Status.DONE])))
           .filter(headcount__gt=F('joined_active'))
           .select_related('requester').prefetch_related('required_skills', 'preset_tags'))
     if request.user.is_authenticated:
@@ -207,6 +212,8 @@ def help_request_detail(request, pk):
     help_request.requester.rating_avg, help_request.requester.rating_count = services.rating_summary(
         help_request.requester)
     participants = list(help_request.active_matches)
+    for participant in participants:
+        participant.work_finished = services.match_work_finished(participant)
     my_match = None
     if is_requester or is_helper:
         now = timezone.now()
@@ -272,10 +279,29 @@ def help_request_detail(request, pk):
         context['retention_deadline'] = services.chat_retention_deadline(match)
         if match.status == Match.Status.IN_PROGRESS:
             context['grace_seconds'] = services.grace_remaining_seconds(match)
-        if (help_request.status == HelpRequest.Status.DONE
-                and not Review.objects.filter(reviewer=user, help_request=help_request).exists()):
-            context['review_target'] = match.other_user(user)
+        pass  # レビュー対象は return 直前のペア単位の計算で入れる
+    if user.is_authenticated and (is_requester or help_request.matches.filter(helper=user).exists()):
+        reviewed_ids = set(Review.objects.filter(
+            reviewer=user, help_request=help_request).values_list('reviewee_id', flat=True))
+        targets = []
+        for dm in help_request.matches.filter(status=Match.Status.DONE).select_related('helper'):
+            if user.pk not in dm.participants():
+                continue
+            partner = dm.other_user(user)
+            if partner.pk not in reviewed_ids:
+                targets.append({'user': partner, 'match': dm})
+        context['review_targets'] = targets
+        if targets:
+            context['review_target'] = targets[0]['user']
             context['review_form'] = ReviewForm()
+    if help_request.status == HelpRequest.Status.IN_PROGRESS:
+        progress_done = list(help_request.matches.filter(
+            status=Match.Status.DONE).select_related('helper'))
+        for dm in progress_done:
+            dm.awarded = (PointTransaction.objects.filter(
+                help_request=help_request, user=dm.helper,
+                kind=PointTransaction.Kind.EARNED).aggregate(t=Sum('amount'))['t'] or 0)
+        context['done_matches_progress'] = progress_done
     return render(request, 'core/help_request_detail.html', context)
 
 
@@ -387,6 +413,19 @@ def complete_help_request(request, pk):
 
 @login_required
 @require_POST
+def complete_match(request, pk):
+    """依頼者が特定のヘルパーとの分だけを完了する(1人ごとの完了)。"""
+    match = get_object_or_404(Match.objects.select_related('help_request'), pk=pk)
+    _run(request, lambda: services.complete_match(match, request.user),
+         f'{match.helper.username}さんの分を完了しました。')
+    match.help_request.refresh_from_db()
+    if match.help_request.status == HelpRequest.Status.DONE:
+        return redirect(reverse('core:help_request_detail', args=[match.help_request_id]) + '?completed=1')
+    return _work_back(request, match)
+
+
+@login_required
+@require_POST
 def cancel_help_request(request, pk):
     help_request = get_object_or_404(HelpRequest, pk=pk)
     form = CancelForm(request.POST)
@@ -408,8 +447,11 @@ def submit_review(request, pk):
     help_request = get_object_or_404(HelpRequest, pk=pk)
     form = ReviewForm(request.POST)
     if form.is_valid():
+        reviewee_raw = request.POST.get('reviewee', '')
+        reviewee = int(reviewee_raw) if reviewee_raw.isdigit() else None
         _run(request, lambda: services.submit_review(help_request, request.user, form.cleaned_data['rating'],
-                                                     form.cleaned_data['comment']), 'レビューを送信しました。')
+                                                     form.cleaned_data['comment'], reviewee),
+             'レビューを送信しました。')
     else:
         messages.error(request, '評価を選んでください。')
     return redirect('core:help_request_detail', pk=pk)
@@ -470,6 +512,15 @@ def chat(request, pk):
         role = 'requester' if request.user.pk == help_request.requester_id else 'helper'
         celebration = _celebration(request.user, help_request, [match],
                                    f'match-{match.pk}', role)
+    if match.status == Match.Status.IN_PROGRESS:
+        match.work_finished = services.match_work_finished(match)
+    member_matches = []
+    if help_request.is_group:
+        if request.user.pk == help_request.requester_id:
+            member_matches = list(help_request.matches.exclude(
+                status=Match.Status.CANCELED).select_related('helper').order_by('created_at'))
+        elif match.helper_id == request.user.pk:
+            member_matches = [match]
     return render(request, 'core/chat.html', {
         'match': match, 'help_request': help_request, 'other': match.other_user(request.user),
         'celebration': celebration, 'celebrate_away': bool(celebration),
@@ -477,6 +528,7 @@ def chat(request, pk):
         'history_visible': history_visible,
         'retention_deadline': services.chat_retention_deadline(match),
         'is_group': help_request.is_group, 'members': members,
+        'member_matches': member_matches,
         'stamps': [(key, emoji, label) for key, (emoji, label) in services.STAMPS.items()],
     })
 
@@ -645,10 +697,15 @@ def profile_edit(request):
                 and user.avatar_status == User.PhotoStatus.REJECTED and user.avatar_reject_reason):
             messages.error(request, f'顔写真は承認されませんでした。{user.avatar_reject_reason}')
         lat, lng = form.cleaned_data.get('latitude'), form.cleaned_data.get('longitude')
-        if lat is not None and lng is not None and (
-                (lat, lng) != (user.latitude, user.longitude) or user.location_updated_at is None):
-            services.update_user_location(user, lat, lng)
+        label_ok = True
+        if lat is not None and lng is not None:
+            # 明示的な保存では、座標が前回と同じでもエリア名を必ず取り直す
+            # (過去に取得失敗したまま古いエリア名が残り続けるのを直すため)
+            label_ok = services.update_user_location(user, lat, lng, force_relabel=True)
         messages.success(request, 'プロフィールを更新しました。')
+        if not label_ok:
+            messages.warning(request, '現在地は保存しましたが、エリア名を取得できませんでした。'
+                                      '通信状態のよい場所でもう一度保存すると直ります。')
         return redirect('core:profile')
     return render(request, 'core/profile_edit.html', {'form': form})
 

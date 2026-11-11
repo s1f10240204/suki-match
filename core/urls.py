@@ -26,6 +26,7 @@ urlpatterns = [
     path('matches/<int:pk>/work/declare/', views.work_declare, name='work_declare'),
     path('matches/<int:pk>/work/declaration/', views.work_declaration_review, name='work_declaration_review'),
     path('matches/<int:pk>/tip/', views.tip_match, name='tip_match'),
+    path('matches/<int:pk>/complete/', views.complete_match, name='complete_match'),
     path('messages/', views.message_list, name='message_list'),
     path('messages/person/<str:username>/', views.message_person, name='message_person'),
     path('photos/<int:pk>/', views.user_photo, name='user_photo'),

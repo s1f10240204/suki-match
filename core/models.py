@@ -271,8 +271,18 @@ class HelpRequest(models.Model):
         return self.active_matches.count()
 
     @property
+    def filled_count(self):
+        """枠を消費している人数(進行中+完了)。キャンセルした人は数えない。
+
+        1人分だけ完了しても、その人の枠は埋まったままにする(合計人数を超えて
+        新しいヘルパーが入ってこないように)。
+        """
+        return self.matches.filter(
+            status__in=[Match.Status.IN_PROGRESS, Match.Status.DONE]).count()
+
+    @property
     def slots_left(self):
-        return max(0, self.headcount - self.joined_count)
+        return max(0, self.headcount - self.filled_count)
 
     @property
     def accepting(self):
@@ -360,7 +370,7 @@ class Review(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = 'レビュー'
         constraints = [
-            models.UniqueConstraint(fields=['reviewer', 'help_request'], name='one_review_per_request'),
+            models.UniqueConstraint(fields=['reviewer', 'reviewee', 'help_request'], name='one_review_per_pair'),
         ]
 
 

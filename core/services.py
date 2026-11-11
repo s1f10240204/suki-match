@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Avg, Count, F, Q
+from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.functions import ExtractHour
 from django.urls import reverse
 from django.utils import timezone
@@ -85,13 +85,27 @@ def bounding_box(lat, lng, meters):
     return (lat - dlat, lat + dlat), (lng - dlng, lng + dlng)
 
 
-def update_user_location(user, lat, lng):
+def update_user_location(user, lat, lng, force_relabel=False):
+    """現在地を保存する。戻り値は「エリア名が今の座標に合っているか」。
+
+    エリア名は通常、200m以上動いたときだけ取り直す(ライブ位置の頻繁な
+    更新でAPIを叩きすぎないため)。ただし取り直しに失敗(空)すると座標だけが
+    先に進み、次回以降は「動いていない」と判定されて古いエリア名が
+    残り続けてしまう。明示的な保存では force_relabel=True で毎回取り直し、
+    失敗したら False を返して呼び出し側が本人に知らせられるようにする。
+    """
     moved = not user.has_location or distance_m(user.latitude, user.longitude, lat, lng) > RELABEL_DISTANCE_M
     user.latitude, user.longitude = lat, lng
     user.location_updated_at = timezone.now()
-    if moved or not user.area_label:
-        user.area_label = area_label_for(lat, lng) or user.area_label
+    label_ok = True
+    if moved or not user.area_label or force_relabel:
+        label = area_label_for(lat, lng)
+        if label:
+            user.area_label = label
+        else:
+            label_ok = False  # 古いエリア名は消さずに残すが、失敗したことは返す
     user.save(update_fields=['latitude', 'longitude', 'location_updated_at', 'area_label'])
+    return label_ok
 
 
 def can_view_exact_location(user, help_request):
@@ -494,19 +508,55 @@ def _claim_points_settlement(help_request):
         pk=help_request.pk, points_settled=False).update(points_settled=True) == 1
 
 
+def _total_paid_to_helpers(help_request):
+    """この依頼でヘルパーへ支払い済みの報酬合計(台帳の EARNED 合計)。"""
+    return (PointTransaction.objects.filter(
+        help_request=help_request, kind=PointTransaction.Kind.EARNED)
+        .aggregate(total=Sum('amount'))['total'] or 0)
+
+
+def _settle_points(help_request):
+    """依頼終了時の最終精算(一度だけ)。
+
+    預かり分(points_cost)と支払い済み報酬合計の差額を、依頼者へ返金するか
+    残高から追加で引く。1人分だけ先に完了・精算した場合でも、最終的に
+    「依頼者の総支出 = ヘルパーの受取合計」に一致する。
+    """
+    if not help_request.points_cost:
+        return
+    if not _claim_points_settlement(help_request):
+        return
+    help_request.points_settled = True
+    total_paid = _total_paid_to_helpers(help_request)
+    delta = total_paid - help_request.points_cost
+    if delta == 0:
+        return
+    if delta > 0:
+        # 預かり分を超えた分は依頼者の残高から引く(残高がマイナスになることもある)
+        User.objects.filter(pk=help_request.requester_id).update(points=F('points') - delta)
+        kind, amount = PointTransaction.Kind.SETTLE_EXTRA, -delta
+        description = f'「{help_request.title}」の実績精算の追加分'
+    else:
+        User.objects.filter(pk=help_request.requester_id).update(points=F('points') + (-delta))
+        amount = -delta
+        if total_paid:
+            kind = PointTransaction.Kind.SETTLE_REFUND
+            description = f'「{help_request.title}」の実績精算の返金'
+        else:
+            kind = PointTransaction.Kind.REFUND
+            description = f'「{help_request.title}」の預かり分返金'
+    balance = User.objects.values_list('points', flat=True).get(pk=help_request.requester_id)
+    PointTransaction.objects.create(
+        user_id=help_request.requester_id, amount=amount, balance_after=balance,
+        kind=kind, help_request=help_request, description=description)
+
+
 def _refund_escrow(help_request):
-    """預かったポイントを依頼者へ返す(キャンセル・期限切れ用)。精算は一度だけ。"""
-    if help_request.points_cost and _claim_points_settlement(help_request):
-        help_request.points_settled = True
-        User.objects.filter(pk=help_request.requester_id).update(
-            points=F('points') + help_request.points_cost)
-        help_request.points_settled = True
-        balance = User.objects.values_list('points', flat=True).get(pk=help_request.requester_id)
-        PointTransaction.objects.create(
-            user_id=help_request.requester_id, amount=help_request.points_cost,
-            balance_after=balance, kind=PointTransaction.Kind.REFUND,
-            help_request=help_request,
-            description=f'「{help_request.title}」の預かり分返金')
+    """預かったポイントを依頼者へ返す(キャンセル・期限切れ用)。精算は一度だけ。
+
+    一部のヘルパーへ支払い済みの場合は、差額だけが返る(_settle_points に委譲)。
+    """
+    _settle_points(help_request)
 
 
 def publish_request(help_request):
@@ -526,7 +576,7 @@ def _claim(help_request, helper, work_mode='remote'):
         raise ServiceError('この依頼はすでに締め切られました。')
     if locked.matches.filter(status=Match.Status.IN_PROGRESS, helper=helper).exists():
         raise ServiceError('すでに参加しています。')
-    if locked.matches.filter(status=Match.Status.IN_PROGRESS).count() >= locked.headcount:
+    if locked.matches.filter(status__in=[Match.Status.IN_PROGRESS, Match.Status.DONE]).count() >= locked.headcount:
         raise ServiceError('募集人数に達しました。')
     match = Match.objects.create(help_request=locked, helper=helper, work_mode=work_mode)
     if locked.status == HelpRequest.Status.OPEN:
@@ -851,6 +901,16 @@ def review_declaration(match, user, approve):
     return match
 
 
+def match_work_finished(match):
+    """その人の作業が確定済みか(作業終了、または承認済みの時間申告がある)。
+
+    承認待ちの訂正申告がある間は未確定として完了できない(承認/却下が先)。
+    """
+    if match.declared_minutes and not match.declaration_approved:
+        return False
+    return bool(match.work_ended_at) or bool(match.declared_minutes and match.declaration_approved)
+
+
 def maybe_auto_complete(help_request):
     """全員の作業が終わっていれば、ボタンを介さず自動で完了(精算)する。
 
@@ -863,14 +923,7 @@ def maybe_auto_complete(help_request):
     matches = list(help_request.active_matches)
     if not matches:
         return False
-
-    def finished(m):
-        # 承認待ちの訂正申告がある間は未確定として完了しない(承認/却下が先)
-        if m.declared_minutes and not m.declaration_approved:
-            return False
-        return bool(m.work_ended_at) or bool(m.declared_minutes and m.declaration_approved)
-
-    if not all(finished(m) for m in matches):
+    if not all(match_work_finished(m) for m in matches):
         return False
     requester = User.objects.get(pk=help_request.requester_id)
     try:
@@ -878,6 +931,21 @@ def maybe_auto_complete(help_request):
     except ServiceError:
         return False
     return True
+
+
+def _pay_match(match, help_request, now):
+    """1人分の報酬を支払い、そのマッチを完了にする。呼び出し側のトランザクション内で使う。"""
+    if help_request.points_cost:
+        amount = effective_minutes(match, help_request, now) * POINTS_PER_MINUTE
+    else:
+        amount = HELPER_POINTS  # ポイント制より前の依頼は従来どおり
+    match.status, match.completed_at = Match.Status.DONE, now
+    match.save(update_fields=['status', 'completed_at'])
+    match.helper.add_points(amount)
+    record_points(match.helper, amount, PointTransaction.Kind.EARNED,
+                  help_request, counterparty=help_request.requester,
+                  description=f'「{help_request.title}」のお手伝い報酬')
+    return amount
 
 
 def complete(help_request, user):
@@ -894,49 +962,52 @@ def complete(help_request, user):
         matches = list(help_request.active_matches)
         if not matches:
             raise ServiceError('進行中のマッチングがありません。')
-        if help_request.points_cost and not _claim_points_settlement(help_request):
-            raise ServiceError('この依頼は既に精算されています。')
-        if help_request.points_cost:
-            help_request.points_settled = True
-            # 実績ベース精算: 各ヘルパーに実効分数×単価を支払う。預かり分を
-            # 超えた分は依頼者の残高から追加で引き、余った分は依頼者へ返す。
-            now = timezone.now()
-            dues = {m.pk: effective_minutes(m, help_request, now) * POINTS_PER_MINUTE
-                    for m in matches}
-            requester = User.objects.select_for_update().get(pk=help_request.requester_id)
-            # 精算は実効分数どおりに払う。預かり分を超えた分は依頼者の残高から
-            # 引く(残高が足りなければマイナスになる)。以前は「預かり分+残高」を
-            # 上限に黙って切り捨てており、承認した申告どおりに払われなかった。
-            paid_total = 0
-            for m in matches:
-                awarded[m.pk] = dues[m.pk]
-                paid_total += dues[m.pk]
-            delta = paid_total - help_request.points_cost
-            if delta:
-                requester.points -= delta
-                requester.save(update_fields=['points'])
-                record_points(
-                    requester, -delta,
-                    PointTransaction.Kind.SETTLE_EXTRA if delta > 0 else PointTransaction.Kind.SETTLE_REFUND,
-                    help_request,
-                    description=f'「{help_request.title}」の実績精算' + ('の追加分' if delta > 0 else 'の返金'))
-            help_request.points_settled = True
-        else:
-            for match in matches:
-                awarded[match.pk] = HELPER_POINTS  # ポイント制より前の依頼は従来どおり
+        now = timezone.now()
         for match in matches:
-            match.status, match.completed_at = Match.Status.DONE, timezone.now()
-            match.save(update_fields=['status', 'completed_at'])
-            match.helper.add_points(awarded[match.pk])
-            record_points(match.helper, awarded[match.pk], PointTransaction.Kind.EARNED,
-                          help_request, counterparty=help_request.requester,
-                          description=f'「{help_request.title}」のお手伝い報酬')
+            awarded[match.pk] = _pay_match(match, help_request, now)
         help_request.status = HelpRequest.Status.DONE
+        _settle_points(help_request)
         help_request.save(update_fields=['status', 'points_settled'])
     for match in matches:
         notify(match.helper, 'completed',
                f'「{help_request.title}」が完了しました(+{awarded[match.pk]}pt)', detail_url(help_request))
     return matches[0]
+
+
+def complete_match(match, user):
+    """依頼者が特定のヘルパーとの分だけを完了(精算)する。
+
+    作業が終わった人から1人ずつ完了できる。その人への支払いは即時に行い、
+    全員の分が終わったら依頼も完了にして預かり分との差額を最終精算する。
+    まだ枠が残っている場合は、キャンセル時と同じく募集を再開する
+    (預かり分は保持し、精算は依頼が本当に終わるまで行わない)。
+    """
+    help_request = match.help_request
+    if help_request.requester_id != user.pk:
+        raise ServiceError('完了にできるのは依頼者だけです。')
+    with transaction.atomic():
+        help_request = HelpRequest.objects.select_for_update().get(pk=help_request.pk)
+        if help_request.status not in (HelpRequest.Status.OPEN, HelpRequest.Status.IN_PROGRESS):
+            raise ServiceError('この依頼は既に終了しています。')
+        match = Match.objects.select_for_update().get(pk=match.pk)
+        if match.status != Match.Status.IN_PROGRESS:
+            raise ServiceError('このお手伝いはすでに完了しています。')
+        if not match_work_finished(match):
+            if match.declared_minutes and not match.declaration_approved:
+                raise ServiceError('訂正申告の確認が終わってから完了してください。')
+            raise ServiceError('まだ作業が終わっていません。作業の終了か、時間申告の確定が先です。')
+        awarded = _pay_match(match, help_request, timezone.now())
+        if not help_request.active_matches.exists():
+            if help_request.filled_count >= help_request.headcount \
+                    or help_request.expires_at <= timezone.now():
+                help_request.status = HelpRequest.Status.DONE
+                _settle_points(help_request)
+            else:
+                help_request.status = HelpRequest.Status.OPEN
+            help_request.save(update_fields=['status', 'points_settled'])
+    notify(match.helper, 'completed',
+           f'「{help_request.title}」が完了しました(+{awarded}pt)', detail_url(help_request))
+    return match
 
 
 def grace_remaining_seconds(match):
@@ -1101,20 +1172,37 @@ def auto_cancel_stale_matches():
     return len(stale)
 
 
-def submit_review(help_request, user, rating, comment=''):
+def submit_review(help_request, user, rating, comment='', reviewee=None):
+    """完了したペア(依頼者×ヘルパー)ごとに1回レビューできる。
+
+    reviewee を指定するとその相手へのレビューになる。指定がなければ、
+    まだレビューしていない相手が自動で選ばれる。
+    """
     try:
         rating = int(rating)
     except (TypeError, ValueError):
         raise ServiceError('評価が不正です。')
     if not 1 <= rating <= 5:
         raise ServiceError('評価は1〜5で入力してください。')
-    match = next((m for m in help_request.matches.filter(status=Match.Status.DONE)
-                  .select_related('helper') if user.pk in m.participants()), None)
-    if help_request.status != HelpRequest.Status.DONE or match is None:
+    matches = [m for m in help_request.matches.filter(status=Match.Status.DONE)
+               .select_related('helper') if user.pk in m.participants()]
+    if not matches:
         raise ServiceError('レビューできません。')
-    if Review.objects.filter(reviewer=user, help_request=help_request).exists():
-        raise ServiceError('すでにレビュー済みです。')
+    reviewee_pk = getattr(reviewee, 'pk', reviewee)
+    if reviewee_pk is not None:
+        match = next((m for m in matches if m.other_user(user).pk == reviewee_pk), None)
+        if match is None:
+            raise ServiceError('レビューできません。')
+    else:
+        match = next((m for m in matches
+                      if not Review.objects.filter(
+                          reviewer=user, reviewee=m.other_user(user),
+                          help_request=help_request).exists()), None)
+        if match is None:
+            raise ServiceError('すでにレビュー済みです。')
     reviewee = match.other_user(user)
+    if Review.objects.filter(reviewer=user, reviewee=reviewee, help_request=help_request).exists():
+        raise ServiceError('すでにレビュー済みです。')
     review = Review.objects.create(reviewer=user, reviewee=reviewee, help_request=help_request,
                                    rating=rating, comment=comment)
     if rating >= 4:
@@ -1122,11 +1210,7 @@ def submit_review(help_request, user, rating, comment=''):
         record_points(reviewee, REVIEW_BONUS_POINTS, PointTransaction.Kind.REVIEW_BONUS,
                       help_request, counterparty=user, description='高評価レビューのボーナス')
     return review
-
-
 TIP_MAX_POINTS = 200
-
-
 def tipped_helper_ids(help_request, tipper):
     """その依頼でチップ送信済みのヘルパーID集合(1つのお手伝いにつき1回まで)。"""
     return set(PointTransaction.objects.filter(

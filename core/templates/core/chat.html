@@ -16,14 +16,38 @@
     {% if is_group %}
     <p class="meta chat-members">グループチャット（{{ members|length }}人）: {% for member in members %}{{ member.username }}{% if not forloop.last %}、{% endif %}{% endfor %}</p>
     {% endif %}
+    {% if member_matches|length > 1 %}
+    <div class="member-switch" aria-label="メンバーの切り替え">
+        {% for mm in member_matches %}
+        <a href="{% url 'core:chat' mm.pk %}" class="member-chip{% if mm.pk == match.pk %} is-current{% endif %}">{{ mm.helper.username }}さん{% if mm.status == 'done' %}（完了）{% endif %}</a>
+        {% endfor %}
+    </div>
+    <p class="meta">メンバーを切り替えると、その人の作業パネル（QR・申告の確認・完了）が表示されます。メッセージは全員で共通です。</p>
+    {% endif %}
 </div>
 
 {% if chat_open and user.pk == match.helper_id %}
 {% include 'core/_work_helper.html' with wm=match %}
-{% elif chat_open and user.pk == match.help_request.requester_id and match.work_mode == 'qr' %}
+{% elif chat_open and user.pk == match.help_request.requester_id %}
 <div class="work-panel">
-    <p class="work-title">⏱ 作業時間</p>
-    {% include 'core/_work_qr.html' with wm=match %}
+    <p class="work-title">⏱ 作業時間（{{ match.helper.username }}さん）</p>
+    {% if match.work_mode == 'qr' %}{% include 'core/_work_qr.html' with wm=match %}{% endif %}
+    <p class="meta">{% if match.work_measured %}実測 約{{ match.work_measured }}分{% elif match.work_started_at %}作業中{% else %}未開始{% endif %}{% if match.declared_minutes %} / 申告 {{ match.declared_minutes }}分{% endif %} → 精算見込み {{ match.work_basis }}分（{{ match.work_basis }}pt）</p>
+    {% if match.declared_minutes and match.work_started_at and not match.declaration_approved %}
+    <form method="post" action="{% url 'core:work_declaration_review' match.pk %}" class="work-review">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+        <button name="decision" value="approve" class="btn btn-primary btn-sm">申告を承認</button>
+        <button name="decision" value="reject" class="btn btn-ghost btn-sm">却下</button>
+    </form>
+    {% endif %}
+    {% if match.work_finished %}
+    <form method="post" action="{% url 'core:complete_match' match.pk %}">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+        <button class="btn btn-primary btn-block">{{ match.helper.username }}さんの分を完了する（{{ match.work_basis }}pt）</button>
+    </form>
+    {% else %}
+    <p class="meta">作業が終わると（終了・QR読み取り・申告の確定）、ここからこの人の分だけを完了できます。</p>
+    {% endif %}
 </div>
 {% endif %}
 

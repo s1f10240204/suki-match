@@ -3651,3 +3651,294 @@ class TourTests(BaseTestCase):
         response = self.client.get(reverse('core:account_settings'))
         self.assertContains(response, 'data-tour-open')
         self.assertContains(response, '使い方ガイドを見る')
+
+
+from django.db.models import Sum
+
+from .models import PointTransaction
+
+
+class GroupPerPersonTests(BaseTestCase):
+    """グループ(複数人)マッチの1人ごとの完了・レビュー・ポイント精算の監査テスト。"""
+
+    def _funded_group(self, name, points=100, duration=10, headcount=2):
+        requester = make_user(name)
+        User.objects.filter(pk=requester.pk).update(points=points)
+        PointTransaction.objects.create(
+            user=requester, amount=100, balance_after=points,
+            kind=PointTransaction.Kind.STARTER, description='新規登録のスターターポイント')
+        hr = make_request(requester, duration_minutes=duration, headcount=headcount)
+        services.publish_request(hr)
+        requester.refresh_from_db()
+        hr.refresh_from_db()
+        return requester, hr
+
+    def _finish_work(self, match, helper, minutes_ago=10):
+        """タイマーを「開始→終了」済みの状態にする。minutes_ago は経過分(実測は5分切り上げ)。"""
+        now = timezone.now()
+        Match.objects.filter(pk=match.pk).update(
+            work_started_at=now - timedelta(minutes=minutes_ago), work_ended_at=now)
+        match.refresh_from_db()
+        return match
+
+    def test_complete_match_pays_only_that_helper(self):
+        requester, hr = self._funded_group('gp1')  # 100pt, 預かり10pt → 残高90
+        h1, h2 = make_user('gp1h1'), make_user('gp1h2')
+        m1 = services.accept_first_come(hr, h1)
+        m2 = services.accept_first_come(hr, h2)
+        self._finish_work(m1, h1, minutes_ago=8)
+        services.complete_match(m1, requester)
+        h1.refresh_from_db()
+        h2.refresh_from_db()
+        requester.refresh_from_db()
+        hr.refresh_from_db()
+        m1.refresh_from_db()
+        m2.refresh_from_db()
+        self.assertEqual(h1.points, 10)          # 終わった人だけ支払われる
+        self.assertEqual(h2.points, 0)           # まだの人は払われない
+        self.assertEqual(m1.status, Match.Status.DONE)
+        self.assertEqual(m2.status, Match.Status.IN_PROGRESS)
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)  # 依頼は閉じない
+        self.assertEqual(requester.points, 90)   # 最終精算はまだ(預かり保持)
+        self.assertFalse(hr.points_settled)
+        note = Notification.objects.filter(user=h1, kind='completed')
+        self.assertTrue(note.exists())           # 完了した人へ通知が行く
+        self.assertFalse(Notification.objects.filter(user=h2, kind='completed').exists())
+
+    def test_complete_match_rejects_unfinished_work(self):
+        requester, hr = self._funded_group('gp2')
+        h1 = make_user('gp2h1')
+        m1 = services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, make_user('gp2h2'))
+        with self.assertRaises(services.ServiceError):  # 未開始は完了できない
+            services.complete_match(m1, requester)
+        # 訂正申告の確認待ちも完了できない
+        services.start_work(m1, h1)
+        self._finish_work(m1, h1, minutes_ago=8)
+        services.declare_minutes(m1, h1, 15)
+        with self.assertRaises(services.ServiceError):
+            services.complete_match(m1, requester)
+        # 承認すれば完了できる
+        services.review_declaration(m1, requester, approve=True)
+        services.complete_match(m1, requester)
+        m1.refresh_from_db()
+        self.assertEqual(m1.status, Match.Status.DONE)
+        with self.assertRaises(services.ServiceError):  # 二重完了はできない
+            services.complete_match(m1, requester)
+
+    def test_complete_match_twice_settles_exactly_once(self):
+        # 本人のスクショの再現: 10分・10分・5分 = 合計25pt。依頼者の総支出と一致すること
+        requester, hr = self._funded_group('gp3', points=100, duration=10, headcount=3)
+        helpers = [make_user(f'gp3h{i}') for i in range(3)]
+        matches = [services.accept_first_come(hr, h) for h in helpers]
+        self._finish_work(matches[0], helpers[0], minutes_ago=8)    # 実測10分
+        self._finish_work(matches[1], helpers[1], minutes_ago=8)    # 実測10分
+        self._finish_work(matches[2], helpers[2], minutes_ago=4)    # 実測5分
+        services.complete_match(matches[0], requester)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)
+        services.complete_match(matches[1], requester)
+        services.complete_match(matches[2], requester)
+        hr.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.DONE)
+        self.assertTrue(hr.points_settled)
+        for h in helpers:
+            h.refresh_from_db()
+        paid = [h.points for h in helpers]
+        self.assertEqual(paid, [10, 10, 5])
+        self.assertEqual(sum(paid), 25)
+        self.assertEqual(requester.points, 100 - 25)  # 預かり10 + 追加15 で合計25の支出
+        earned_total = PointTransaction.objects.filter(
+            help_request=hr, kind=PointTransaction.Kind.EARNED).aggregate(t=Sum('amount'))['t']
+        self.assertEqual(earned_total, 25)
+
+    def test_partial_complete_then_requester_cancel_refunds_only_remainder(self):
+        requester, hr = self._funded_group('gp4', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp4h1'), make_user('gp4h2')
+        m1 = services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        services.declare_minutes(m1, h1, 5)  # 5ptだけ先に精算
+        services.complete_match(m1, requester)
+        services.cancel(hr, requester)       # 残りを取り下げ → 預かり10 - 支払済5 = 5だけ返る
+        requester.refresh_from_db()
+        h1.refresh_from_db()
+        h2.refresh_from_db()
+        self.assertEqual(h1.points, 5)
+        self.assertEqual(h2.points, 0)
+        self.assertEqual(requester.points, 100 - 5)  # 二重返金になっていない
+
+    def test_partial_complete_then_auto_cancel_settles_remainder(self):
+        requester, hr = self._funded_group('gp5', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp5h1'), make_user('gp5h2')
+        m1 = services.accept_first_come(hr, h1)
+        m2 = services.accept_first_come(hr, h2)
+        services.declare_minutes(m1, h1, 5)
+        services.complete_match(m1, requester)
+        # もう1人のマッチが24時間放置 → 自動キャンセル。掲載期限も過ぎていれば差額が返る
+        Match.objects.filter(pk=m2.pk).update(created_at=timezone.now() - timedelta(hours=25))
+        HelpRequest.objects.filter(pk=hr.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        services.auto_cancel_stale_matches()
+        hr.refresh_from_db()
+        requester.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.EXPIRED)
+        self.assertEqual(requester.points, 100 - 5)
+
+    def test_done_match_keeps_its_slot(self):
+        requester, hr = self._funded_group('gp6', points=100, duration=10, headcount=2)
+        h1, h2, h3 = make_user('gp6h1'), make_user('gp6h2'), make_user('gp6h3')
+        m1 = services.accept_first_come(hr, h1)
+        m2 = services.accept_first_come(hr, h2)
+        services.declare_minutes(m1, h1, 10)
+        services.complete_match(m1, requester)
+        hr.refresh_from_db()
+        self.assertEqual(hr.slots_left, 0)   # 完了した人の枠は埋まったまま
+        with self.assertRaises(services.ServiceError):
+            services.accept_first_come(hr, h3)
+        services.cancel(hr, h2)              # キャンセルなら枠が空く
+        services.accept_first_come(hr, h3)
+        hr.refresh_from_db()
+        self.assertEqual(hr.slots_left, 0)
+
+    def test_review_per_pair_for_all_helpers(self):
+        requester, hr = self._funded_group('gp7', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp7h1'), make_user('gp7h2')
+        services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        services.complete(hr, requester)
+        hr.refresh_from_db()
+        r1 = services.submit_review(hr, requester, 5, reviewee=h1)
+        self.assertEqual(r1.reviewee, h1)
+        r2 = services.submit_review(hr, requester, 3, reviewee=h2)  # 2人目にも書ける
+        self.assertEqual(r2.reviewee, h2)
+        with self.assertRaises(services.ServiceError):  # 同じ相手へは2回書けない
+            services.submit_review(hr, requester, 4, reviewee=h1)
+        # ヘルパー側もそれぞれ依頼者をレビューできる
+        services.submit_review(hr, h1, 5)
+        services.submit_review(hr, h2, 4)
+        self.assertEqual(Review.objects.filter(help_request=hr).count(), 4)
+        # 高評価ボーナスはレビューごとに付く
+        h1.refresh_from_db()
+        self.assertEqual(h1.points, 10 + services.REVIEW_BONUS_POINTS)
+
+    def test_review_allowed_for_finished_pair_before_request_done(self):
+        requester, hr = self._funded_group('gp8', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp8h1'), make_user('gp8h2')
+        m1 = services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        services.declare_minutes(m1, h1, 10)
+        services.complete_match(m1, requester)
+        hr.refresh_from_db()
+        self.assertEqual(hr.status, HelpRequest.Status.IN_PROGRESS)  # 全体はまだ進行中
+        review = services.submit_review(hr, requester, 5, reviewee=h1)
+        self.assertEqual(review.reviewee, h1)
+        back = services.submit_review(hr, h1, 4)
+        self.assertEqual(back.reviewee, requester)
+        with self.assertRaises(services.ServiceError):  # 未完了の相手には書けない
+            services.submit_review(hr, requester, 5, reviewee=h2)
+
+    def test_chat_member_switcher_and_detail_review_forms(self):
+        requester, hr = self._funded_group('gp9', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp9h1'), make_user('gp9h2')
+        m1 = services.accept_first_come(hr, h1)
+        m2 = services.accept_first_come(hr, h2)
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[m1.pk]))
+        self.assertContains(page, reverse('core:chat', args=[m2.pk]))  # 切替リンクがある
+        self.assertContains(page, 'member-chip')
+        # 1人分を完了 → 詳細に完了済み表示と、その人へのレビューフォームが出る
+        services.declare_minutes(m1, h1, 10)
+        services.complete_match(m1, requester)
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, '完了済み')
+        self.assertContains(detail, f'id="review-form-{h1.pk}"')
+        self.assertNotContains(detail, f'id="review-form-{h2.pk}"')
+        # 全員完了後は両方のフォームが出る
+        self._finish_work(m2, h2, minutes_ago=8)
+        services.complete_match(m2, requester)
+        detail = self.client.get(reverse('core:help_request_detail', args=[hr.pk]))
+        self.assertContains(detail, f'id="review-form-{h1.pk}"')
+        self.assertContains(detail, f'id="review-form-{h2.pk}"')
+        # フォームから実際に2人分レビューできる
+        self.client.post(reverse('core:submit_review', args=[hr.pk]),
+                         {'rating': 5, 'comment': '', 'reviewee': h1.pk})
+        self.client.post(reverse('core:submit_review', args=[hr.pk]),
+                         {'rating': 3, 'comment': '', 'reviewee': h2.pk})
+        self.assertEqual(Review.objects.filter(help_request=hr, reviewer=requester).count(), 2)
+
+    def test_chat_complete_button_for_finished_member(self):
+        requester, hr = self._funded_group('gp10', points=100, duration=10, headcount=2)
+        h1, h2 = make_user('gp10h1'), make_user('gp10h2')
+        m1 = services.accept_first_come(hr, h1)
+        services.accept_first_come(hr, h2)
+        self._finish_work(m1, h1, minutes_ago=8)
+        self.client.force_login(requester)
+        page = self.client.get(reverse('core:chat', args=[m1.pk]))
+        self.assertContains(page, reverse('core:complete_match', args=[m1.pk]))
+        self.assertContains(page, 'さんの分を完了する')
+        resp = self.client.post(reverse('core:complete_match', args=[m1.pk]),
+                                {'next': reverse('core:chat', args=[m1.pk])})
+        self.assertEqual(resp.status_code, 302)
+        m1.refresh_from_db()
+        self.assertEqual(m1.status, Match.Status.DONE)
+
+    def test_modal_card_scrolls_css(self):
+        from django.contrib.staticfiles import finders
+        path = finders.find('core/style.css')
+        with open(path, encoding='utf-8') as f:
+            css = f.read()
+        card = next(line for line in css.splitlines() if line.startswith('.modal-card {'))
+        self.assertIn('max-height', card)
+        self.assertIn('overflow-y: auto', card)
+
+
+class AreaLabelTests(BaseTestCase):
+    """現在地を保存してもエリア名(area_label)が古いまま残る問題の回帰テスト。"""
+
+    AKABANE = (35.7798, 139.7163)     # 東京都北区赤羽台
+    FUJISAWA = (35.3388, 139.4874)    # 神奈川県藤沢市鵠沼花沢町あたり
+
+    def _user_with_old_label(self):
+        user = make_user('areauser', loc=self.FUJISAWA)
+        User.objects.filter(pk=user.pk).update(area_label='神奈川県藤沢市鵠沼花沢町')
+        user.refresh_from_db()
+        return user
+
+    def test_failed_relabel_then_resave_same_coords_recovers(self):
+        user = self._user_with_old_label()
+        self.client.force_login(user)
+        payload = {'motivation': '', 'bio': '', 'skill_names': '',
+                   'latitude': self.AKABANE[0], 'longitude': self.AKABANE[1]}
+        # 1回目: ジオコーディング失敗(空) → 座標は進むがエリア名は古いまま+警告が出る
+        with mock.patch.object(services, 'area_label_for', return_value=''):
+            response = self.client.post(reverse('core:profile_edit'), payload, follow=True)
+        self.assertContains(response, 'エリア名を取得できませんでした')
+        user.refresh_from_db()
+        self.assertAlmostEqual(user.latitude, self.AKABANE[0])
+        self.assertEqual(user.area_label, '神奈川県藤沢市鵠沼花沢町')  # 消えずに残る
+        # 2回目: 同じ座標のまま再保存 → 今度は取得できて新しいエリア名になる
+        with mock.patch.object(services, 'area_label_for', return_value='東京都北区赤羽台'):
+            self.client.post(reverse('core:profile_edit'), payload)
+        user.refresh_from_db()
+        self.assertEqual(user.area_label, '東京都北区赤羽台')
+        # プロフィール編集画面の「他の人には『…』」表示も新しいエリアになる
+        page = self.client.get(reverse('core:profile_edit'))
+        self.assertContains(page, '他の人には「東京都北区赤羽台」')
+
+    def test_update_user_location_force_relabel(self):
+        user = self._user_with_old_label()
+        with mock.patch.object(services, 'area_label_for', return_value='神奈川県藤沢市鵠沼花沢町') as geo:
+            ok = services.update_user_location(user, *self.FUJISAWA)  # 動いていないので取り直さない
+        self.assertTrue(ok)
+        geo.assert_not_called()
+        with mock.patch.object(services, 'area_label_for', return_value='東京都北区赤羽台') as geo:
+            ok = services.update_user_location(user, *self.FUJISAWA, force_relabel=True)
+        self.assertTrue(ok)
+        geo.assert_called_once()
+        user.refresh_from_db()
+        self.assertEqual(user.area_label, '東京都北区赤羽台')
+        with mock.patch.object(services, 'area_label_for', return_value=''):
+            ok = services.update_user_location(user, *self.AKABANE, force_relabel=True)
+        self.assertFalse(ok)  # 失敗は False で返る
+        user.refresh_from_db()
+        self.assertEqual(user.area_label, '東京都北区赤羽台')  # 失敗時に古い名前を消さない
